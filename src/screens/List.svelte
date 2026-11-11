@@ -10,6 +10,7 @@
   let banner = $state<string | null>(null);
 
   async function load() {
+    banner = null;
     try {
       [entries, dir] = await Promise.all([listDefinitions(), dataDir()]);
     } catch (e) {

@@ -56,8 +56,13 @@
     }
   }
 
+  /** True when nothing is entered or the user agrees to discard it. */
+  export async function confirmDiscard(): Promise<boolean> {
+    return Object.keys(answers).length === 0 || (await ask("Eingaben verwerfen?", { title: "Abbrechen", kind: "warning" }));
+  }
+
   async function cancel() {
-    if (Object.keys(answers).length === 0 || (await ask("Eingaben verwerfen?", { title: "Abbrechen", kind: "warning" }))) onback();
+    if (await confirmDiscard()) onback();
   }
 
   function onkeydown(e: KeyboardEvent) {

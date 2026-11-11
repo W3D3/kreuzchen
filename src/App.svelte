@@ -14,7 +14,13 @@
     | { name: "saved" };
 
   let screen = $state<Screen>({ name: "list" });
+  let entry = $state<Entry>();
   installTech();
+
+  async function go(next: Screen) {
+    if (screen.name === "entry" && !(await entry?.confirmDiscard())) return;
+    screen = next;
+  }
 
   function showSaved(res: OpenedResult, notice: string | null) {
     const { record, current, outdated } = res;
@@ -40,8 +46,8 @@
 </script>
 
 <nav>
-  <button class:active={screen.name === "list" || screen.name === "entry"} onclick={() => (screen = { name: "list" })}>Fragebögen</button>
-  <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => (screen = { name: "saved" })}>Gespeicherte Auswertungen</button>
+  <button class:active={screen.name === "list" || screen.name === "entry"} onclick={() => go({ name: "list" })}>Fragebögen</button>
+  <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
 </nav>
 <main>
   {#if screen.name === "list"}
@@ -49,6 +55,7 @@
   {:else if screen.name === "entry"}
     {@const e = screen}
     <Entry
+      bind:this={entry}
       opened={e.opened}
       input={e.input}
       onback={() => (screen = { name: "list" })}
