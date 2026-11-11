@@ -52,40 +52,63 @@ fn parse(bytes: &[u8]) -> Result<Questionnaire, String> {
     })
 }
 
+fn broken(file: String, error: String) -> DefinitionEntry {
+    DefinitionEntry {
+        file,
+        hash: String::new(),
+        summary: None,
+        error: Some(error),
+    }
+}
+
+fn scan_entry(e: std::fs::DirEntry) -> Option<DefinitionEntry> {
+    if !e.file_type().is_ok_and(|t| t.is_file()) {
+        return None;
+    }
+    let path = e.path();
+    let ext = path.extension()?.to_string_lossy().to_lowercase();
+    if ext != "yaml" && ext != "yml" {
+        return None;
+    }
+    let lossy = e.file_name().to_string_lossy().into_owned();
+    let Ok(file) = e.file_name().into_string() else {
+        return Some(broken(lossy, "Dateiname ist nicht UTF-8".into()));
+    };
+    let bytes = match fs::read(&path) {
+        Ok(b) => b,
+        Err(err) => return Some(broken(file, format!("Datei nicht lesbar: {err}"))),
+    };
+    let (summary, error) = match parse(&bytes) {
+        Ok(q) => (
+            Some(Summary {
+                id: q.def.id.clone(),
+                title: q.def.title.clone(),
+                version: q.def.version.clone(),
+                item_count: q.item_count(),
+                scale_count: q.scale_count(),
+            }),
+            None,
+        ),
+        Err(e) => (None, Some(e)),
+    };
+    Some(DefinitionEntry {
+        hash: hash(&bytes),
+        file,
+        summary,
+        error,
+    })
+}
+
 /// Valid definitions first (by title), then broken ones (by file name).
 pub fn scan(dir: &Path) -> Vec<DefinitionEntry> {
-    let Ok(rd) = fs::read_dir(dir) else {
-        return vec![];
+    let rd = match fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) => return vec![broken(String::new(), format!("Ordner nicht lesbar: {e}"))],
     };
     let mut entries: Vec<DefinitionEntry> = rd
-        .flatten()
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .filter_map(|e| {
-            let file = e.file_name().into_string().ok()?;
-            let ext = Path::new(&file).extension()?.to_str()?.to_lowercase();
-            if ext != "yaml" && ext != "yml" {
-                return None;
-            }
-            let bytes = fs::read(e.path()).ok()?;
-            let (summary, error) = match parse(&bytes) {
-                Ok(q) => (
-                    Some(Summary {
-                        id: q.def.id.clone(),
-                        title: q.def.title.clone(),
-                        version: q.def.version.clone(),
-                        item_count: q.item_count(),
-                        scale_count: q.scale_count(),
-                    }),
-                    None,
-                ),
-                Err(e) => (None, Some(e)),
-            };
-            Some(DefinitionEntry {
-                hash: hash(&bytes),
-                file,
-                summary,
-                error,
-            })
+        .filter_map(|e| match e {
+            Ok(e) => scan_entry(e),
+            Err(e) => Some(broken(String::new(), format!("Ordner nicht lesbar: {e}"))),
         })
         .collect();
     entries.sort_by(|a, b| match (&a.summary, &b.summary) {
@@ -164,6 +187,34 @@ mod tests {
         assert_eq!(
             check_hash("a", "b").unwrap_err(),
             "Der Fragebogen wurde geändert. Bitte neu starten."
+        );
+    }
+
+    #[test]
+    fn uppercase_extension_listed() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("A.YAML"), FIXTURE).unwrap();
+        assert!(scan(d.path())[0].summary.is_some());
+    }
+
+    #[test]
+    fn non_utf8_content_is_broken_entry() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("a.yaml"), [0xff, 0xfe, 0xfd]).unwrap();
+        let e = scan(d.path());
+        assert_eq!(e[0].error.as_deref(), Some("Datei ist nicht UTF-8"));
+    }
+
+    #[test]
+    fn missing_dir_is_one_broken_entry() {
+        let d = tempfile::tempdir().unwrap();
+        let e = scan(&d.path().join("nope"));
+        assert_eq!(e.len(), 1);
+        assert!(
+            e[0].error
+                .as_ref()
+                .unwrap()
+                .starts_with("Ordner nicht lesbar")
         );
     }
 }
