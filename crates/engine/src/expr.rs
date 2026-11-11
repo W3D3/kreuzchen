@@ -237,7 +237,7 @@ fn kind(v: &Value) -> &'static str {
     }
 }
 
-fn want_bool(v: Value) -> Result<bool, String> {
+pub(crate) fn want_bool(v: Value) -> Result<bool, String> {
     match v {
         Value::Bool(b) => Ok(b),
         v => Err(format!(

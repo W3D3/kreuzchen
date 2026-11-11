@@ -65,6 +65,18 @@ pub enum FieldKind {
     Checkbox,
 }
 
+impl FieldKind {
+    /// Whether `v` is the value type this kind of field takes.
+    pub fn accepts(&self, v: &FieldValue) -> bool {
+        matches!(
+            (self, v),
+            (FieldKind::Checkbox, FieldValue::Bool(_))
+                | (FieldKind::Number, FieldValue::Num(_))
+                | (FieldKind::Text | FieldKind::Date, FieldValue::Text(_))
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum FieldValue {

@@ -129,3 +129,9 @@ fn collects_all() {
             >= 2
     );
 }
+
+#[test]
+fn default_type_mismatch() {
+    let e = errs("type: checkbox }", "type: checkbox, default: 1 }");
+    assert!(e.contains(&"Feld „erwachsen“: Standardwert passt nicht zum Typ".to_string()));
+}

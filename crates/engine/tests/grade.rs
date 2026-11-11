@@ -164,3 +164,49 @@ fn unknown_field() {
         GradeError::UnknownField("foo".into())
     );
 }
+
+#[test]
+fn wrong_field_type() {
+    assert_eq!(
+        grade_with(YAML, &[], &[("erwachsen", FieldValue::Text("true".into()))]).unwrap_err(),
+        GradeError::WrongFieldType("erwachsen".into())
+    );
+}
+
+#[test]
+fn rows_in_result_order() {
+    let g = grade(
+        &[("1", 3), ("2", 2), ("3", 0), ("4", 3), ("zusatz", 0)],
+        &[],
+    );
+    let sum = |id: &str, label: &str, value, cutoff| ResultRow::Sum {
+        id: id.into(),
+        label: label.into(),
+        value,
+        cutoff: Some(cutoff),
+        over: true,
+    };
+    assert_eq!(
+        g.rows,
+        vec![
+            sum("gesamt", "Gesamtsumme", 7, 7),
+            sum("X", "Skala X", 4, 4),
+            sum("Y", "Skala Y", 3, 3),
+            ResultRow::Answer {
+                id: "zusatz".into(),
+                label: "Zusatzfrage".into(),
+                answer: Some("Nein".into()),
+            },
+        ]
+    );
+}
+
+#[test]
+fn unset_number_field_is_eval_error() {
+    let yaml = YAML.replace("erwachsen, text:", "alter > 24, text:");
+    let yaml = yaml.replace("{ when: erwachsen,", "{ when: alter > 24,");
+    match grade_with(&yaml, &[], &[]).unwrap_err() {
+        GradeError::Eval(m) => assert!(m.contains("„alter“ hat keinen Wert"), "{m}"),
+        e => panic!("{e:?}"),
+    }
+}

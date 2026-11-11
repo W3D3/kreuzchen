@@ -1,6 +1,6 @@
 use crate::expr::{self, Value};
 use crate::schema::*;
-use crate::validate::add_scored;
+use crate::validate::{build_env, EnvSource};
 use crate::Questionnaire;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -52,6 +52,7 @@ pub enum GradeError {
     UnknownItem(String),
     AnswerOutOfRange { item: String, index: usize },
     UnknownField(String),
+    WrongFieldType(String),
     Eval(String),
 }
 
@@ -63,6 +64,7 @@ impl fmt::Display for GradeError {
                 write!(f, "Frage {item}: Antwort {} gibt es nicht", index + 1)
             }
             Self::UnknownField(id) => write!(f, "Unbekanntes Feld „{id}“"),
+            Self::WrongFieldType(id) => write!(f, "Feld „{id}“ hat den falschen Typ"),
             Self::Eval(m) => write!(f, "{m}"),
         }
     }
@@ -74,8 +76,8 @@ fn eval(e: &expr::Expr, env: &BTreeMap<String, Value>) -> Result<Value, GradeErr
     expr::eval(e, env).map_err(GradeError::Eval)
 }
 
-fn truth(v: Value) -> bool {
-    matches!(v, Value::Bool(true))
+fn truth(v: Value) -> Result<bool, GradeError> {
+    expr::want_bool(v).map_err(GradeError::Eval)
 }
 
 impl Questionnaire {
@@ -89,6 +91,16 @@ impl Questionnaire {
             .or(self.def.default_answers.as_ref())
             .and_then(|n| self.def.answer_sets.get(n))
             .map_or(&[], |v| v.as_slice())
+    }
+
+    fn derived_expr(&self, id: &str) -> &expr::Expr {
+        let e = self.derived.iter().find(|(d, _)| d.id == id);
+        &e.expect("validated: every derived value compiled").1
+    }
+
+    fn rule_expr(&self, id: &str) -> &expr::Expr {
+        let e = self.rules.iter().find(|(r, _)| r.id == id);
+        &e.expect("validated: every rule compiled").1
     }
 
     fn over(&self, value: i64, cutoff: Option<i64>) -> bool {
@@ -119,6 +131,12 @@ impl Questionnaire {
                 return Err(GradeError::UnknownField(k.clone()));
             }
         }
+        for f in &def.fields {
+            let ok = input.fields.get(&f.id).is_none_or(|v| f.kind.accepts(v));
+            if !ok {
+                return Err(GradeError::WrongFieldType(f.id.clone()));
+            }
+        }
 
         // Scale sums and missing answers.
         let mut sums: BTreeMap<&str, i64> = def.scales.iter().map(|s| (s.id.as_str(), 0)).collect();
@@ -134,109 +152,120 @@ impl Questionnaire {
                         None => None,
                     };
                     // Validation guarantees the key length matches the answer set.
-                    *sums.entry(scale).or_default() += key.map_or(0, |k| k[idx]);
+                    let key = key.expect("validated: scale items have a key");
+                    *sums.entry(scale).or_default() += key[idx];
                 }
             }
         }
 
-        let mut env = BTreeMap::new();
-        let mut values: BTreeMap<&str, (i64, Option<i64>, bool)> = BTreeMap::new();
-        for s in &def.scales {
-            let v = sums[s.id.as_str()];
-            let over = self.over(v, s.cutoff);
-            add_scored(&mut env, &s.id, v, s.cutoff, over);
-            values.insert(&s.id, (v, s.cutoff, over));
-        }
-        for (d, e) in &self.derived {
-            let Value::Num(n) = eval(e, &env)? else {
-                return Err(GradeError::Eval("Ergebnis muss eine Zahl sein".into()));
-            };
-            let v = n as i64;
-            let over = self.over(v, d.cutoff);
-            add_scored(&mut env, &d.id, v, d.cutoff, over);
-            values.insert(&d.id, (v, d.cutoff, over));
-        }
-        for f in &def.fields {
-            let v = match input.fields.get(&f.id).or(f.default.as_ref()) {
-                Some(FieldValue::Bool(b)) => Some(Value::Bool(*b)),
-                Some(FieldValue::Num(n)) => Some(Value::Num(*n)),
-                Some(FieldValue::Text(t)) => Some(Value::Str(t.clone())),
-                None => match f.kind {
-                    FieldKind::Checkbox => Some(Value::Bool(false)),
-                    FieldKind::Text | FieldKind::Date => Some(Value::Str(String::new())),
-                    FieldKind::Number => None, // referencing it is an Eval error
-                },
-            };
-            if let Some(v) = v {
-                env.insert(f.id.clone(), v);
-            }
-        }
-        let mut answers: BTreeMap<&str, (&str, Option<String>)> = BTreeMap::new();
-        for item in self.items() {
-            let Some(id) = &item.id else { continue };
-            let a = input
-                .answers
-                .get(id)
-                .map(|&i| self.answer_set(item)[i].clone());
-            env.insert(id.clone(), Value::Str(a.clone().unwrap_or_default()));
-            answers.insert(id, (&item.text, a));
-        }
+        let scale_vals: BTreeMap<&str, (i64, bool)> = def
+            .scales
+            .iter()
+            .map(|s| {
+                let v = sums[s.id.as_str()];
+                (s.id.as_str(), (v, self.over(v, s.cutoff)))
+            })
+            .collect();
+        let mut derived_vals: BTreeMap<String, (i64, bool)> = BTreeMap::new();
         let missing = missing_items.len() as u32;
-        env.insert("fehlend".to_string(), Value::Num(missing as f64));
-
         let mut rules = Vec::new();
-        for (r, e) in &self.rules {
-            let met = truth(eval(e, &env)?);
-            env.insert(r.id.clone(), Value::Bool(met));
-            rules.push(RuleOutcome {
-                id: r.id.clone(),
-                label: r.label.clone(),
-                met,
-            });
-        }
+        let env = build_env(
+            def,
+            EnvSource {
+                scale: &|s| scale_vals[s.id.as_str()],
+                field: &|f| match input.fields.get(&f.id).or(f.default.as_ref()) {
+                    Some(FieldValue::Bool(b)) => Some(Value::Bool(*b)),
+                    Some(FieldValue::Num(n)) => Some(Value::Num(*n)),
+                    Some(FieldValue::Text(t)) => Some(Value::Str(t.clone())),
+                    None => match f.kind {
+                        FieldKind::Checkbox => Some(Value::Bool(false)),
+                        FieldKind::Text | FieldKind::Date => Some(Value::Str(String::new())),
+                        FieldKind::Number => None, // referencing it is an Eval error
+                    },
+                },
+                item: &|i| {
+                    input
+                        .answers
+                        .get(&i.key_name())
+                        .map(|&a| self.answer_set(i)[a].clone())
+                        .unwrap_or_default()
+                },
+                missing: missing as f64,
+                derived: &mut |d, env| {
+                    let n = match eval(self.derived_expr(&d.id), env)? {
+                        Value::Num(n) if n.fract() == 0.0 => n,
+                        Value::Num(_) => {
+                            return Err(GradeError::Eval(format!(
+                                "Abgeleiteter Wert „{}“ ist keine ganze Zahl",
+                                d.id
+                            )))
+                        }
+                        _ => return Err(GradeError::Eval("Ergebnis muss eine Zahl sein".into())),
+                    };
+                    let v = n as i64;
+                    let r = (v, self.over(v, d.cutoff));
+                    derived_vals.insert(d.id.clone(), r);
+                    Ok(r)
+                },
+                rule: &mut |r, env| {
+                    let met = truth(eval(self.rule_expr(&r.id), env)?)?;
+                    rules.push(RuleOutcome {
+                        id: r.id.clone(),
+                        label: r.label.clone(),
+                        met,
+                    });
+                    Ok(met)
+                },
+            },
+        )?;
+        let answers: BTreeMap<&str, (&str, Option<String>)> = self
+            .items()
+            .filter_map(|i| {
+                let id = i.id.as_ref()?;
+                let a = input
+                    .answers
+                    .get(id)
+                    .map(|&a| self.answer_set(i)[a].clone());
+                Some((id.as_str(), (i.text.as_str(), a)))
+            })
+            .collect();
+
         let mut caveats = Vec::new();
         for (c, e) in &self.caveats {
-            if truth(eval(e, &env)?) {
+            if truth(eval(e, &env)?)? {
                 caveats.push(c.text.clone());
             }
         }
         let mut verdict = None;
         for (when, text) in &self.verdict {
-            if when
-                .as_ref()
-                .map_or(Ok(true), |e| eval(e, &env).map(truth))?
-            {
+            if when.as_ref().map_or(Ok(true), |e| truth(eval(e, &env)?))? {
                 verdict = Some(text.clone());
                 break;
             }
         }
 
-        let label_of = |id: &str| {
-            def.scales
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| &s.label)
-                .or_else(|| def.derived.iter().find(|d| d.id == id).map(|d| &d.label))
-        };
         let rows = def
             .result
             .iter()
-            .filter_map(|id| {
-                if let Some(&(value, cutoff, over)) = values.get(id.as_str()) {
-                    Some(ResultRow::Sum {
-                        id: id.clone(),
-                        label: label_of(id)?.clone(),
-                        value,
-                        cutoff,
-                        over,
-                    })
+            .map(|id| {
+                let sum = |label: &String, cutoff, (value, over)| ResultRow::Sum {
+                    id: id.clone(),
+                    label: label.clone(),
+                    value,
+                    cutoff,
+                    over,
+                };
+                if let Some(s) = def.scales.iter().find(|s| &s.id == id) {
+                    sum(&s.label, s.cutoff, scale_vals[id.as_str()])
+                } else if let Some(d) = def.derived.iter().find(|d| &d.id == id) {
+                    sum(&d.label, d.cutoff, derived_vals[id.as_str()])
                 } else {
-                    let (text, answer) = answers.get(id.as_str())?;
-                    Some(ResultRow::Answer {
+                    let (text, answer) = &answers[id.as_str()];
+                    ResultRow::Answer {
                         id: id.clone(),
                         label: text.to_string(),
                         answer: answer.clone(),
-                    })
+                    }
                 }
             })
             .collect();

@@ -68,12 +68,11 @@ fn compile(
 }
 
 /// Exposes a scale or derived value as `id`, plus `id.cutoff` and `id.over` when it has a cutoff.
-pub(crate) fn add_scored(
+fn add_scored(
     env: &mut BTreeMap<String, Value>,
     id: &str,
-    value: i64,
+    (value, over): (i64, bool),
     cutoff: Option<i64>,
-    over: bool,
 ) {
     env.insert(id.to_string(), Value::Num(value as f64));
     if let Some(c) = cutoff {
@@ -82,8 +81,53 @@ pub(crate) fn add_scored(
     }
 }
 
-fn add_cutoff(env: &mut BTreeMap<String, Value>, id: &str, cutoff: Option<i64>) {
-    add_scored(env, id, 0, cutoff.map(|_| 0), false);
+/// How the shared environment gets its values: validation passes stand-ins, grading real ones.
+type Env = BTreeMap<String, Value>;
+
+pub(crate) struct EnvSource<'a, E> {
+    /// Sum and over-cutoff flag of a scale.
+    pub scale: &'a dyn Fn(&Scale) -> (i64, bool),
+    /// Value of a field; `None` leaves it out of the environment.
+    pub field: &'a dyn Fn(&Field) -> Option<Value>,
+    /// Answer text of an item with an `id` (empty when unanswered).
+    pub item: &'a dyn Fn(&Item) -> String,
+    pub missing: f64,
+    /// Value and over-cutoff flag of a derived value, given the environment so far.
+    pub derived: &'a mut dyn FnMut(&Derived, &Env) -> Result<(i64, bool), E>,
+    /// Outcome of a rule, given the environment so far.
+    pub rule: &'a mut dyn FnMut(&Rule, &Env) -> Result<bool, E>,
+}
+
+/// Builds the expression environment in the one order both validation and grading use:
+/// scales, derived, fields, item ids, `fehlend`, then rules (later rules see earlier ones).
+pub(crate) fn build_env<E>(
+    def: &Definition,
+    src: EnvSource<'_, E>,
+) -> Result<BTreeMap<String, Value>, E> {
+    let mut env = BTreeMap::new();
+    for s in &def.scales {
+        add_scored(&mut env, &s.id, (src.scale)(s), s.cutoff);
+    }
+    for d in &def.derived {
+        let v = (src.derived)(d, &env)?;
+        add_scored(&mut env, &d.id, v, d.cutoff);
+    }
+    for f in &def.fields {
+        if let Some(v) = (src.field)(f) {
+            env.insert(f.id.clone(), v);
+        }
+    }
+    for i in def.sections.iter().flat_map(|s| &s.items) {
+        if let Some(id) = &i.id {
+            env.insert(id.clone(), Value::Str((src.item)(i)));
+        }
+    }
+    env.insert("fehlend".to_string(), Value::Num(src.missing));
+    for r in &def.rules {
+        let met = (src.rule)(r, &env)?;
+        env.insert(r.id.clone(), Value::Bool(met));
+    }
+    Ok(env)
 }
 
 pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>> {
@@ -169,39 +213,49 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
         }
     }
 
-    // Expressions, against a default environment that grows as names become visible.
-    let mut env = BTreeMap::new();
-    for s in &def.scales {
-        add_cutoff(&mut env, &s.id, s.cutoff);
-    }
-    let mut derived = Vec::new();
-    for d in &def.derived {
-        let w = format!("Abgeleiteter Wert „{}“", d.id);
-        let e = compile(&d.value, &env, Want::Num, &w, &mut errors);
-        add_cutoff(&mut env, &d.id, d.cutoff);
-        derived.extend(e.map(|e| (d.clone(), e)));
-    }
+    // Expressions, against a default environment of stand-in values. Compile errors are
+    // collected; the stand-ins keep later expressions checkable.
     for f in &def.fields {
-        let v = match f.kind {
-            FieldKind::Number => Value::Num(0.0),
-            FieldKind::Checkbox => Value::Bool(false),
-            FieldKind::Text | FieldKind::Date => Value::Str(String::new()),
-        };
-        env.insert(f.id.clone(), v);
-    }
-    for (_, i) in &items {
-        if let Some(id) = &i.id {
-            env.insert(id.clone(), Value::Str(String::new()));
+        let ok = f.default.as_ref().is_none_or(|d| f.kind.accepts(d));
+        if !ok {
+            errors.push(err(format!(
+                "Feld „{}“: Standardwert passt nicht zum Typ",
+                f.id
+            )));
         }
     }
-    env.insert("fehlend".to_string(), Value::Num(0.0));
+    let mut derived = Vec::new();
     let mut rules = Vec::new();
-    for r in &def.rules {
-        let w = format!("Regel „{}“", r.id);
-        let e = compile(&r.when, &env, Want::Bool, &w, &mut errors);
-        env.insert(r.id.clone(), Value::Bool(false));
-        rules.extend(e.map(|e| (r.clone(), e)));
-    }
+    let errs = std::cell::RefCell::new(std::mem::take(&mut errors));
+    let env = build_env::<()>(
+        &def,
+        EnvSource {
+            scale: &|_| (0, false),
+            field: &|f| {
+                Some(match f.kind {
+                    FieldKind::Number => Value::Num(0.0),
+                    FieldKind::Checkbox => Value::Bool(false),
+                    FieldKind::Text | FieldKind::Date => Value::Str(String::new()),
+                })
+            },
+            item: &|_| String::new(),
+            missing: 0.0,
+            derived: &mut |d, env| {
+                let w = format!("Abgeleiteter Wert „{}“", d.id);
+                let e = compile(&d.value, env, Want::Num, &w, &mut errs.borrow_mut());
+                derived.extend(e.map(|e| (d.clone(), e)));
+                Ok((0, false))
+            },
+            rule: &mut |r, env| {
+                let w = format!("Regel „{}“", r.id);
+                let e = compile(&r.when, env, Want::Bool, &w, &mut errs.borrow_mut());
+                rules.extend(e.map(|e| (r.clone(), e)));
+                Ok(false)
+            },
+        },
+    )
+    .expect("stand-in callbacks never fail");
+    errors = errs.into_inner();
     let mut caveats = Vec::new();
     for (i, c) in def.caveats.iter().enumerate() {
         let w = format!("Hinweis {}", i + 1);
