@@ -257,13 +257,22 @@ fn want_num(v: Value) -> Result<f64, String> {
 pub fn eval(e: &Expr, env: &BTreeMap<String, Value>) -> Result<Value, String> {
     match e {
         Expr::Lit(v) => Ok(v.clone()),
-        Expr::Name(n) => env.get(n).cloned().ok_or(format!("„{n}“ hat keinen Wert")),
+        Expr::Name(n) => env
+            .get(n)
+            .cloned()
+            .ok_or_else(|| format!("„{n}“ hat keinen Wert")),
         Expr::Not(x) => Ok(Value::Bool(!want_bool(eval(x, env)?)?)),
         Expr::Bin(op, l, r) => {
             let (l, r) = (eval(l, env)?, eval(r, env)?);
             Ok(match op {
-                Op::And => Value::Bool(want_bool(l)? && want_bool(r)?),
-                Op::Or => Value::Bool(want_bool(l)? || want_bool(r)?),
+                Op::And => {
+                    let (a, b) = (want_bool(l)?, want_bool(r)?);
+                    Value::Bool(a && b)
+                }
+                Op::Or => {
+                    let (a, b) = (want_bool(l)?, want_bool(r)?);
+                    Value::Bool(a || b)
+                }
                 Op::Add => Value::Num(want_num(l)? + want_num(r)?),
                 Op::Eq | Op::Ne => {
                     if std::mem::discriminant(&l) != std::mem::discriminant(&r) {
@@ -355,5 +364,20 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
         assert_eq!(n, want);
+    }
+
+    #[test]
+    fn both_operands_type_checked() {
+        for s in ["false and 1", "true or 1", "1 == \"a\""] {
+            assert!(run(s, &[]).unwrap_err().contains("Typfehler"), "{s}");
+        }
+    }
+
+    #[test]
+    fn keyword_prefixed_names_and_bad_input() {
+        let env = [("android", Value::Bool(true)), ("notiz", Value::Bool(true))];
+        assert_eq!(run("android and notiz", &env), Ok(Value::Bool(true)));
+        assert!(parse("ä").is_err());
+        assert!(parse("a.b.c").is_err());
     }
 }
