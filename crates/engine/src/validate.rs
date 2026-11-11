@@ -83,6 +83,8 @@ fn add_scored(
 
 /// How the shared environment gets its values: validation passes stand-ins, grading real ones.
 type Env = BTreeMap<String, Value>;
+/// Value and over-cutoff flag.
+type Scored = (i64, bool);
 
 pub(crate) struct EnvSource<'a, E> {
     /// Sum and over-cutoff flag of a scale.
@@ -93,7 +95,7 @@ pub(crate) struct EnvSource<'a, E> {
     pub item: &'a dyn Fn(&Item) -> String,
     pub missing: f64,
     /// Value and over-cutoff flag of a derived value, given the environment so far.
-    pub derived: &'a mut dyn FnMut(&Derived, &Env) -> Result<(i64, bool), E>,
+    pub derived: &'a mut dyn FnMut(&Derived, &Env) -> Result<Scored, E>,
     /// Outcome of a rule, given the environment so far.
     pub rule: &'a mut dyn FnMut(&Rule, &Env) -> Result<bool, E>,
 }

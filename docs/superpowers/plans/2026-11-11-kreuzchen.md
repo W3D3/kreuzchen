@@ -730,10 +730,16 @@ Key map (also the bar copy):
   - Installs the Tauri Linux packages (as in Task 1), sets up Rust stable and Node 24, then runs `npm ci`, `npm test`, `npm run check` and `cargo test --workspace`.
   - The MBAS tests skip themselves because `local/` is absent.
 
-- [ ] **Step 2: Write `release.yml`.**
-  - Triggers on tags `v*`.
+- [ ] **Step 2: Add a `build` job to `ci.yml` that runs only on pushes to `main`, after the test job passes.**
   - Matrix: `ubuntu-22.04`, `windows-latest`, `macos-latest` (args `--target universal-apple-darwin`, with both Apple targets added via rustup).
-  - Uses `tauri-apps/tauri-action@v0` with `tagName: ${{ github.ref_name }}` and `releaseDraft: true`.
+  - Uses `tauri-apps/tauri-action@v0` without `tagName`, so it builds but doesn't release.
+  - Uploads the bundles under `target/**/release/bundle/` with `actions/upload-artifact@v4`, named `kreuzchen-${{ matrix.platform }}`.
+
+- [ ] **Step 2b: Write `release.yml`.**
+  - Triggers on tags `v*`.
+  - Uses the same matrix.
+  - Uses `tauri-apps/tauri-action@v0` with `tagName: ${{ github.ref_name }}`, `releaseName: "Kreuzchen ${{ github.ref_name }}"` and `releaseDraft: false`, so a tagged push publishes a GitHub release with all installers attached.
+  - Needs `permissions: contents: write`.
   - No signing secrets.
 
 - [ ] **Step 3: Write `docs/installation.md` (German) for clinic staff:**
