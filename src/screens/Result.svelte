@@ -16,14 +16,6 @@
 
   const g = $derived(graded.grading);
   const kennung = $derived(String(input.fields.kennung ?? ""));
-  const others = $derived(
-    (opened?.definition.fields ?? [])
-      .filter((f) => f.id !== "kennung")
-      .map((f) => {
-        const v = input.fields[f.id];
-        return `${f.label}: ${typeof v === "boolean" ? (v ? "Ja" : "Nein") : v === undefined || v === "" ? "–" : v}`;
-      }),
-  );
   const anyMet = $derived(g.rules.some((r) => r.met));
   const meter = (value: number, cutoff: number) => Math.min(value / (cutoff * 2), 1) * 100;
 
@@ -72,7 +64,9 @@
 {#if banner}<p class="banner" role="alert">{banner}</p>{/if}
 
 <h1>Ergebnis</h1>
-<p class="head"><strong>{kennung}</strong>{#each others as o}<span class="muted"> · {o}</span>{/each}</p>
+<p class="head">
+  {#each g.fields as f, i (f.id)}{#if i > 0}<span class="muted"> · </span>{/if}{#if f.id === "kennung"}<strong>{f.value}</strong>{:else}<span class="muted">{f.label}: {f.value}</span>{/if}{/each}
+</p>
 
 <div class="rows">
   {#each g.rows as r (r.id)}

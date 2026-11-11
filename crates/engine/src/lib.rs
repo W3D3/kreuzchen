@@ -4,7 +4,7 @@ pub mod schema;
 mod text;
 mod validate;
 
-pub use grade::{GradeError, Grading, Input, ResultRow, RuleOutcome};
+pub use grade::{FieldLine, GradeError, Grading, Input, ResultRow, RuleOutcome};
 pub use validate::Questionnaire;
 
 use schema::Definition;

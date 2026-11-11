@@ -88,13 +88,32 @@ fn all_last() {
 fn exactly_at_cutoff() {
     let g = grade(
         &[("1", 3), ("2", 2), ("3", 0), ("4", 3), ("zusatz", 0)],
-        &[],
+        &[
+            (
+                "kennung",
+                FieldValue::Text("Anonym 11.11.2026 22:23".into()),
+            ),
+            ("alter", FieldValue::Num(9.0)),
+        ],
     );
     assert_eq!(sum(&g, "X"), (4, true));
     assert_eq!(sum(&g, "Y"), (3, true));
     assert_eq!(sum(&g, "gesamt"), (7, true));
     assert!(rule(&g, "r2"));
     assert_eq!(g.verdict.as_deref(), Some("Auffällig (Regel 2)"));
+    let fields: Vec<_> = g
+        .fields
+        .iter()
+        .map(|f| (f.id.as_str(), f.label.as_str(), f.value.as_str()))
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            ("kennung", "Kennung", "Anonym 11.11.2026 22:23"),
+            ("alter", "Alter", "9"),
+            ("erwachsen", "Volljährig", "Nein")
+        ]
+    );
 }
 
 #[test]

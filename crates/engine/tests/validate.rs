@@ -135,3 +135,16 @@ fn default_type_mismatch() {
     let e = errs("type: checkbox }", "type: checkbox, default: 1 }");
     assert!(e.contains(&"Feld „erwachsen“: Standardwert passt nicht zum Typ".to_string()));
 }
+
+#[test]
+fn rejects_bad_names() {
+    let msg = |n: &str| format!("Name „{n}“ ist nicht erlaubt");
+    for (from, to, bad) in [
+        ("id: zusatz,", "id: \"zu satz\",", "zu satz"),
+        ("id: erwachsen,", "id: and,", "and"),
+        ("id: kennung,", "id: fehlend,", "fehlend"),
+        ("id: alter,", "id: A.over,", "A.over"),
+    ] {
+        assert!(errs(from, to).contains(&msg(bad)), "{bad}");
+    }
+}

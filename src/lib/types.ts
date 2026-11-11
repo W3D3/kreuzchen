@@ -29,7 +29,9 @@ export type ResultRow =
   | { kind: "sum"; id: string; label: string; value: number; cutoff: number | null; over: boolean }
   | { kind: "answer"; id: string; label: string; answer: string | null };
 export interface RuleOutcome { id: string; label: string; met: boolean }
+export interface FieldLine { id: string; label: string; value: string }
 export interface Grading {
+  fields: FieldLine[];
   rows: ResultRow[]; rules: RuleOutcome[]; caveats: string[];
   verdict: string | null; missing: number; missing_items: string[];
 }

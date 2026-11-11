@@ -132,6 +132,15 @@ pub(crate) fn build_env<E>(
     Ok(env)
 }
 
+/// `^[A-Za-z_][A-Za-z0-9_]*$`, minus expression keywords and `fehlend`.
+fn valid_name(n: &str) -> bool {
+    let mut c = n.chars();
+    c.next()
+        .is_some_and(|f| f.is_ascii_alphabetic() || f == '_')
+        && c.all(|x| x.is_ascii_alphanumeric() || x == '_')
+        && !["and", "or", "not", "true", "false", "fehlend"].contains(&n)
+}
+
 pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>> {
     let mut errors = Vec::new();
     if def.schema != 1 {
@@ -154,6 +163,9 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
         .chain(items.iter().filter_map(|(_, i)| i.id.as_ref()))
         .chain(def.rules.iter().map(|r| &r.id));
     for n in names {
+        if !valid_name(n) {
+            errors.push(err(format!("Name „{n}“ ist nicht erlaubt")));
+        }
         if !seen.insert(n) {
             errors.push(err(format!("Name „{n}“ ist doppelt vergeben")));
         }

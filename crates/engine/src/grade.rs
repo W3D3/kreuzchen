@@ -15,12 +15,22 @@ pub struct Input {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Grading {
+    /// Header lines in definition order, formatted for display and copy text.
+    #[serde(default)]
+    pub fields: Vec<FieldLine>,
     pub rows: Vec<ResultRow>,
     pub rules: Vec<RuleOutcome>,
     pub caveats: Vec<String>,
     pub verdict: Option<String>,
     pub missing: u32,
     pub missing_items: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct FieldLine {
+    pub id: String,
+    pub label: String,
+    pub value: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -270,7 +280,27 @@ impl Questionnaire {
             })
             .collect();
 
+        let fields = def
+            .fields
+            .iter()
+            .map(|f| {
+                let value = match input.fields.get(&f.id).or(f.default.as_ref()) {
+                    Some(FieldValue::Bool(b)) => (if *b { "Ja" } else { "Nein" }).to_string(),
+                    Some(FieldValue::Num(n)) => n.to_string(), // f64 Display omits ".0"
+                    Some(FieldValue::Text(s)) if !s.is_empty() => s.clone(),
+                    None if matches!(f.kind, FieldKind::Checkbox) => "Nein".into(),
+                    _ => "–".into(),
+                };
+                FieldLine {
+                    id: f.id.clone(),
+                    label: f.label.clone(),
+                    value,
+                }
+            })
+            .collect();
+
         Ok(Grading {
+            fields,
             rows,
             rules,
             caveats,

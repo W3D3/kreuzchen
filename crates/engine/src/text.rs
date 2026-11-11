@@ -1,22 +1,12 @@
-use crate::schema::FieldValue;
 use crate::{Grading, Input, Questionnaire, ResultRow};
 use std::fmt::Write;
 
 impl Questionnaire {
     /// Plain-text result for copying; layout is documented by `tests/text.rs`.
-    pub fn plain_text(&self, input: &Input, g: &Grading) -> String {
+    pub fn plain_text(&self, _input: &Input, g: &Grading) -> String {
         let d = &self.def;
         let mut lines = vec![format!("{} (Version {})", d.title, d.version)];
-        for f in &d.fields {
-            let value = match input.fields.get(&f.id).or(f.default.as_ref()) {
-                Some(FieldValue::Bool(b)) => (if *b { "Ja" } else { "Nein" }).to_string(),
-                Some(FieldValue::Num(n)) => n.to_string(), // f64 Display omits ".0"
-                Some(FieldValue::Text(s)) if !s.is_empty() => s.clone(),
-                None if matches!(f.kind, crate::schema::FieldKind::Checkbox) => "Nein".into(),
-                _ => "–".into(),
-            };
-            lines.push(format!("{}: {}", f.label, value));
-        }
+        lines.extend(g.fields.iter().map(|f| format!("{}: {}", f.label, f.value)));
         lines.push(String::new());
         for row in &g.rows {
             lines.push(match row {

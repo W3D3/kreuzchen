@@ -32,7 +32,11 @@ pub struct SavedSummary {
 const BAD_FILE: &str = "Diese Datei ist keine gültige Kreuzchen-Auswertung.";
 
 fn check_name(name: &str) -> Result<(), String> {
-    if name.ends_with(".json") && !name.contains(['/', '\\']) && !name.contains("..") {
+    if name.ends_with(".json")
+        && !name.contains(['/', '\\', ':'])
+        && !name.contains("..")
+        && Path::new(name).file_name() == Some(std::ffi::OsStr::new(name))
+    {
         Ok(())
     } else {
         Err("Ungültiger Dateiname".into())
@@ -109,7 +113,11 @@ pub fn delete(dir: &Path, name: &str) -> Result<(), String> {
 
 pub fn export(dir: &Path, name: &str, dest: &Path) -> Result<(), String> {
     check_name(name)?;
-    fs::copy(dir.join(name), dest)
+    let src = dir.join(name);
+    if fs::canonicalize(dest).ok() == fs::canonicalize(&src).ok() && dest.exists() {
+        return Err("Die Auswertung kann nicht auf sich selbst exportiert werden.".into());
+    }
+    fs::copy(src, dest)
         .map(|_| ())
         .map_err(|e| format!("Export fehlgeschlagen: {e}"))
 }
@@ -144,6 +152,7 @@ mod tests {
                 answers: BTreeMap::from([("a".to_string(), 1)]),
             },
             grading: Grading {
+                fields: vec![],
                 rows: vec![],
                 rules: vec![],
                 caveats: vec![],
@@ -153,6 +162,25 @@ mod tests {
             },
             text: "Text".into(),
         }
+    }
+
+    #[test]
+    fn export_onto_self_is_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let name = save(d.path(), &rec(T)).unwrap();
+        assert_eq!(
+            export(d.path(), &name, &d.path().join(&name))
+                .err()
+                .as_deref(),
+            Some("Die Auswertung kann nicht auf sich selbst exportiert werden.")
+        );
+        assert_eq!(load(d.path(), &name).unwrap(), rec(T));
+    }
+
+    #[test]
+    fn rejects_drive_style_names() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(load(d.path(), "C:x.json").is_err());
     }
 
     const T: &str = "2026-11-11T22:23:05";
