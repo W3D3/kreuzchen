@@ -1,1 +1,4 @@
 local/
+target/
+node_modules/
+dist/
