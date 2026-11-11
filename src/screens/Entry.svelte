@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { grade } from "../lib/api";
   import { entryItems } from "../lib/input";
@@ -24,6 +25,7 @@
   let banner = $state<string | null>(null);
   let busy = false;
   let els: HTMLElement[] = [];
+  onMount(() => els[0]?.focus());
 
   const scored = items.filter((i) => i.scored);
   const answered = $derived(scored.filter((i) => answers[i.key] !== undefined).length);
@@ -40,7 +42,11 @@
     busy = true;
     tried = true;
     banner = null;
-    const finalInput: Input = { fields: { ...fields }, answers: { ...answers } };
+    // A cleared number field is null, which Rust cannot read as a FieldValue.
+    const finalInput: Input = {
+      fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v != null)),
+      answers: { ...answers },
+    };
     try {
       ongraded(await grade(opened.file, opened.hash, finalInput), finalInput);
     } catch (e) {
@@ -56,6 +62,7 @@
 
   function onkeydown(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.altKey || e.metaKey) return;
+    if (e.ctrlKey && e.key !== "Enter") return;
     const item = items[focused];
     const a = entryKey(
       { key: e.key, shift: e.shiftKey, ctrl: e.ctrlKey },
@@ -78,11 +85,10 @@
   <span class="num">{answered} / {scored.length} beantwortet</span>
   <button onclick={cancel}>Abbrechen</button>
   <button class="primary" onclick={doGrade}>Auswerten</button>
+  {#if banner}<p class="banner" role="alert">{banner}</p>{/if}
 </div>
 
 <h1>{def.title}</h1>
-{#if banner}<p class="banner" role="alert">{banner}</p>{/if}
-
 <div class="fields">
   {#each def.fields as f (f.id)}
     <label class:check={f.type === "checkbox"}>
@@ -110,9 +116,9 @@
     {/if}
     <div
       class="item"
-      class:focus={i === focused}
       class:missing={tried && it.scored && answers[it.key] === undefined}
       role="radiogroup"
+      aria-invalid={tried && it.scored && answers[it.key] === undefined ? "true" : undefined}
       aria-label={it.text}
       tabindex={i === focused ? 0 : -1}
       bind:this={els[i]}
@@ -129,7 +135,7 @@
             class:sel={answers[it.key] === j}
             onclick={() => { answers[it.key] = j; focusItem(i); }}
           >
-            <span class="num k">{j + 1}</span> {o}
+            <span class="num k" aria-hidden="true">{j + 1}</span> {o}
           </button>
         {/each}
       </div>
@@ -143,7 +149,7 @@
 
 <style>
   .bar { background: var(--surface); border: 1px solid var(--line); padding: .5rem 1rem; }
-  .top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: .75rem; border-radius: 10px; margin-bottom: 1rem; }
+  .top { flex-wrap: wrap; position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: .75rem; border-radius: 10px; margin-bottom: 1rem; }
   .top span { flex: 1; font-size: 1.1rem; }
   .bottom { position: fixed; left: 0; right: 0; bottom: 0; text-align: center; color: var(--muted); border-width: 1px 0 0; }
   .fields { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
@@ -153,9 +159,9 @@
   input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
   .items { padding-bottom: 4rem; }
   .muted { color: var(--muted); }
-  .item { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: .75rem; }
+  .item { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: .75rem; scroll-margin-block: 5rem; }
   .item:focus { outline: none; }
-  .item.focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .item:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
   .item.missing { border-left: 6px solid var(--over); }
   .q { font-size: 1.15rem; margin-bottom: .75rem; }
   .n { color: var(--muted); margin-right: .5rem; }
@@ -165,5 +171,5 @@
   .k { font-size: .75rem; opacity: .7; margin-right: .35rem; }
   .bar button { font: inherit; min-height: 48px; padding: 0 1.5rem; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
   .bar button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
-  .banner { background: var(--over-soft); border-left: 4px solid var(--over); padding: .75rem 1rem; }
+  .banner { flex: 1 0 100%; margin: 0; background: var(--over-soft); border-left: 4px solid var(--over); padding: .75rem 1rem; }
 </style>
