@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { initialInput } from "./input";
+import { entryItems, initialInput } from "./input";
 import type { Definition } from "./types";
 
 const def = {
@@ -18,4 +18,23 @@ it("applies defaults, anonym becomes the Kennung", () => {
     fields: { kennung: "Anonym 11.11.2026 22:23" },
     answers: {},
   });
+});
+
+it("lists items in order with their options", () => {
+  const d = {
+    ...def,
+    answer_sets: { haeufigkeit: ["nie", "selten", "oft", "immer"], ja_nein: ["Nein", "Ja"] },
+    default_answers: "haeufigkeit",
+    sections: [
+      { title: "T1", intro: null, items: [1, 2, 3].map((n) => ({ n, id: null, text: `F${n}`, answers: null, scale: "X", key: "normal" })) },
+      { title: "T2", intro: null, items: [
+        { n: 4, id: null, text: "F4", answers: null, scale: "Y", key: "normal" },
+        { n: null, id: "zusatz", text: "Zusatzfrage", answers: "ja_nein", scale: null, key: null },
+      ] },
+    ],
+  } as Definition;
+  const items = entryItems(d);
+  expect(items.map((i) => i.key)).toEqual(["1", "2", "3", "4", "zusatz"]);
+  expect(items[4].options).toEqual(["Nein", "Ja"]);
+  expect(items[3]).toMatchObject({ options: ["nie", "selten", "oft", "immer"], section: 1 });
 });

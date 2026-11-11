@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Entry from "./screens/Entry.svelte";
   import List from "./screens/List.svelte";
   import { installTech } from "./lib/tech.svelte";
   import type { Graded, Input, OpenedDefinition, SavedRecord } from "./lib/types";
@@ -21,8 +22,16 @@
   {#if screen.name === "list"}
     <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} />
   {:else if screen.name === "entry"}
-    <!-- placeholder until Task 11 -->
-    <h1>{screen.opened.definition.title}</h1>
+    {@const e = screen}
+    <Entry
+      opened={e.opened}
+      input={e.input}
+      onback={() => (screen = { name: "list" })}
+      ongraded={(graded, input) => (screen = { name: "result", opened: e.opened, record: null, input, graded, notice: null })}
+    />
+  {:else if screen.name === "result"}
+    <!-- placeholder until Task 12 -->
+    <h1>Ergebnis</h1>
   {:else if screen.name === "saved"}
     <h1>Gespeicherte Auswertungen</h1>
   {/if}
