@@ -10,14 +10,6 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-ask",
-    "clipboard-manager:allow-write-text",
-    {
-      "identifier": "opener:allow-open-path",
-      "allow": [
-        {
-          "path": "$APPDATA/**"
-        }
-      ]
-    }
+    "clipboard-manager:allow-write-text"
   ]
 }

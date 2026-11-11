@@ -121,7 +121,10 @@ pub fn scan(dir: &Path) -> Vec<DefinitionEntry> {
 }
 
 pub fn open(dir: &Path, file: &str) -> Result<(Questionnaire, String), String> {
-    if file.contains(['/', '\\']) || file.contains("..") {
+    if file.contains(['/', '\\', ':'])
+        || file.contains("..")
+        || Path::new(file).file_name() != Some(std::ffi::OsStr::new(file))
+    {
         return Err("Ungültiger Dateiname".into());
     }
     let bytes = fs::read(dir.join(file)).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
@@ -173,6 +176,12 @@ mod tests {
             open(d.path(), "../x.yaml").err().as_deref(),
             Some("Ungültiger Dateiname")
         );
+    }
+
+    #[test]
+    fn open_rejects_colon() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(open(d.path(), "C:x.yaml").is_err());
     }
 
     #[test]

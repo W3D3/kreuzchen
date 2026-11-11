@@ -97,11 +97,13 @@ pub fn delete_result(paths: State<Paths>, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+// Paths come from OS dialogs; import only accepts valid records.
 pub fn export_result(paths: State<Paths>, name: String, dest: String) -> Result<(), String> {
     store::export(&paths.results, &name, Path::new(&dest))
 }
 
 #[tauri::command]
+// Paths come from OS dialogs; import only accepts valid records.
 pub fn import_result(paths: State<Paths>, src: String) -> Result<String, String> {
     store::import(&paths.results, Path::new(&src))
 }
