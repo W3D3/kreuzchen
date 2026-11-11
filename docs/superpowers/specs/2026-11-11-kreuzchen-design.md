@@ -1,7 +1,7 @@
 # Kreuzchen: design
 
 Date: 2026-11-11
-Status: draft, awaiting approval
+Status: approved 2026-11-11
 Mockups: https://claude.ai/artifact/RaX3pvQ7RfQTxQwScT7pfh
 
 ## Intent
@@ -53,7 +53,11 @@ Screens, matching the mockups:
    - Items grouped by the sections of the paper form ("Seite 1" …). Each item shows the answer labels ("niemals" … "immer") as radio buttons. **Points are never shown during entry**, because the reversal of an item's scoring happens only in grading.
    - A sticky progress bar ("23 / 51 beantwortet") with the "Auswerten" button.
    - Unanswered items are marked but **never block** grading.
-   - Keyboard entry should be quick: digits 1–5 or arrow keys select an answer and move to the next item. Exact keys are the builder's call.
+   - **Keyboard entry must be quick and obvious.** One question is focused at a time, with a clear highlight:
+     - Number keys pick the answer by position (1 = niemals … 5 = immer; 1 = Nein, 2 = Ja). Points are never typed. Picking an answer moves to the next question.
+     - Tab and Enter move to the next question; Shift+Tab goes back. Arrow keys move between answers.
+     - Each radio button shows its key number as a small label.
+     - A permanent shortcut bar at the bottom of the entry screen lists the keys in German (e.g. "1–5 Antwort · Enter/Tab nächste Frage · Umschalt+Tab zurück · Strg+Enter Auswerten").
 3. **Ergebnis.**
    - Kennung and header fields.
    - A row per scale and for the total: sum, cut-off, a bar with a cut-off marker, and an "über" pill when over.
