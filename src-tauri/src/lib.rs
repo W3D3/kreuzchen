@@ -1,4 +1,7 @@
 use std::{fs, path::PathBuf};
+mod commands;
+mod definitions;
+
 use tauri::Manager;
 
 pub struct Paths {
@@ -12,6 +15,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .invoke_handler(tauri::generate_handler![
+            commands::list_definitions,
+            commands::get_definition,
+            commands::grade,
+            commands::data_dir,
+            commands::open_definitions_folder,
+        ])
         .setup(|app| {
             let base = app.path().app_data_dir()?;
             let paths = Paths {
