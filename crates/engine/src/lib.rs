@@ -1,5 +1,8 @@
 pub mod expr;
 pub mod schema;
+mod validate;
+
+pub use validate::Questionnaire;
 
 use schema::Definition;
 use std::fmt;
@@ -27,4 +30,9 @@ pub fn parse_definition(yaml: &str) -> Result<Definition, LoadError> {
         line: e.location().map(|l| l.line()),
         message: e.to_string(),
     })
+}
+
+/// Parses and validates a definition, collecting every error.
+pub fn load(yaml: &str) -> Result<Questionnaire, Vec<LoadError>> {
+    validate::validate(parse_definition(yaml).map_err(|e| vec![e])?)
 }
