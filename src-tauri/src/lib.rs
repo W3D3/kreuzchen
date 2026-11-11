@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 mod commands;
 mod definitions;
+mod store;
 
 use tauri::Manager;
 
@@ -21,6 +22,12 @@ pub fn run() {
             commands::grade,
             commands::data_dir,
             commands::open_definitions_folder,
+            commands::save_result,
+            commands::list_results,
+            commands::open_result,
+            commands::delete_result,
+            commands::export_result,
+            commands::import_result,
         ])
         .setup(|app| {
             let base = app.path().app_data_dir()?;
