@@ -1,7 +1,9 @@
 pub mod expr;
+mod grade;
 pub mod schema;
 mod validate;
 
+pub use grade::{GradeError, Grading, Input, ResultRow, RuleOutcome};
 pub use validate::Questionnaire;
 
 use schema::Definition;

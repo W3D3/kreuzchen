@@ -65,7 +65,7 @@ pub enum FieldKind {
     Checkbox,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum FieldValue {
     Bool(bool),

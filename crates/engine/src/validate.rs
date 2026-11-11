@@ -3,8 +3,6 @@ use crate::schema::*;
 use crate::LoadError;
 use std::collections::{BTreeMap, BTreeSet};
 
-// Compiled fields are read by grading (Task 4).
-#[allow(dead_code)]
 /// A validated definition plus its compiled expressions, ready for grading.
 pub struct Questionnaire {
     pub def: Definition,
@@ -69,12 +67,23 @@ fn compile(
     }
 }
 
-fn add_cutoff(env: &mut BTreeMap<String, Value>, id: &str, cutoff: Option<i64>) {
-    env.insert(id.to_string(), Value::Num(0.0));
-    if cutoff.is_some() {
-        env.insert(format!("{id}.cutoff"), Value::Num(0.0));
-        env.insert(format!("{id}.over"), Value::Bool(false));
+/// Exposes a scale or derived value as `id`, plus `id.cutoff` and `id.over` when it has a cutoff.
+pub(crate) fn add_scored(
+    env: &mut BTreeMap<String, Value>,
+    id: &str,
+    value: i64,
+    cutoff: Option<i64>,
+    over: bool,
+) {
+    env.insert(id.to_string(), Value::Num(value as f64));
+    if let Some(c) = cutoff {
+        env.insert(format!("{id}.cutoff"), Value::Num(c as f64));
+        env.insert(format!("{id}.over"), Value::Bool(over));
     }
+}
+
+fn add_cutoff(env: &mut BTreeMap<String, Value>, id: &str, cutoff: Option<i64>) {
+    add_scored(env, id, 0, cutoff.map(|_| 0), false);
 }
 
 pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>> {
