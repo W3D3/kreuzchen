@@ -1,6 +1,7 @@
 pub mod expr;
 mod grade;
 pub mod schema;
+mod text;
 mod validate;
 
 pub use grade::{GradeError, Grading, Input, ResultRow, RuleOutcome};
