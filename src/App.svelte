@@ -2,17 +2,41 @@
   import Entry from "./screens/Entry.svelte";
   import Result from "./screens/Result.svelte";
   import List from "./screens/List.svelte";
+  import Saved from "./screens/Saved.svelte";
+  import { getDefinition, grade } from "./lib/api";
   import { installTech } from "./lib/tech.svelte";
-  import type { Graded, Input, OpenedDefinition, SavedRecord } from "./lib/types";
+  import type { Graded, Input, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
 
   type Screen =
     | { name: "list" }
     | { name: "entry"; opened: OpenedDefinition; input: Input }
-    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null }
+    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null }
     | { name: "saved" };
 
   let screen = $state<Screen>({ name: "list" });
   installTech();
+
+  function showSaved(res: OpenedResult, notice: string | null) {
+    const { record, current, outdated } = res;
+    screen = {
+      name: "result", opened: null, record, input: record.input,
+      graded: { grading: record.grading, text: record.text },
+      notice: notice ?? (outdated
+        ? "Dieser Fragebogen wurde seit dem Speichern geändert. Angezeigt wird das gespeicherte Ergebnis."
+        : current ? null : "Dieser Fragebogen ist nicht mehr installiert. Angezeigt wird das gespeicherte Ergebnis."),
+      onregrade: outdated && current ? () => regrade(res) : null,
+    };
+  }
+
+  async function regrade(res: OpenedResult) {
+    try {
+      const opened = await getDefinition(res.current!.file);
+      const graded = await grade(opened.file, opened.hash, res.record.input);
+      screen = { name: "result", opened, record: res.record, input: res.record.input, graded, notice: null };
+    } catch (e) {
+      showSaved(res, String(e));
+    }
+  }
 </script>
 
 <nav>
@@ -37,11 +61,12 @@
       input={r.input}
       graded={r.graded}
       notice={r.notice}
+      onregrade={r.onregrade}
       onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input })}
       onnew={() => (screen = { name: "list" })}
     />
   {:else if screen.name === "saved"}
-    <h1>Gespeicherte Auswertungen</h1>
+    <Saved onopen={(res) => showSaved(res, null)} />
   {/if}
 </main>
 

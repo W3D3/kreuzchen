@@ -4,11 +4,12 @@
   import { localTimestamp } from "../lib/kennung";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
-  let { opened, input, graded, notice, onback, onnew }: {
+  let { opened, input, graded, notice, onregrade, onback, onnew }: {
     opened: OpenedDefinition | null;
     input: Input;
     graded: Graded;
     notice: string | null;
+    onregrade?: (() => void) | null;
     onback: () => void;
     onnew: () => void;
   } = $props();
@@ -105,6 +106,7 @@
 
 <div class="bar">
   {#if opened}<button onclick={onback}>Zurück zu den Antworten</button>{/if}
+  {#if onregrade}<button onclick={onregrade}>Neu auswerten</button>{/if}
   <button onclick={copy}>Als Text kopieren</button>
   {#if opened}<button onclick={save} disabled={saved}>Speichern</button>{/if}
   <button class="primary" onclick={onnew}>Neuer Fragebogen</button>
