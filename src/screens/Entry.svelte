@@ -1,14 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
-  import { grade } from "../lib/api";
+  import { grade, gradeDraft } from "../lib/api";
   import { entryItems } from "../lib/input";
   import { entryKey } from "../lib/keyboard";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
-  let { opened, input, onback, ongraded }: {
+  let { opened, input, preview = null, onback, ongraded }: {
     opened: OpenedDefinition;
     input: Input;
+    /** Draft YAML from the editor; grades it instead of the saved file. */
+    preview?: string | null;
     onback: () => void;
     ongraded: (graded: Graded, input: Input) => void;
   } = $props();
@@ -48,7 +50,7 @@
       answers: { ...answers },
     };
     try {
-      ongraded(await grade(opened.file, opened.hash, finalInput), finalInput);
+      ongraded(await (preview == null ? grade(opened.file, opened.hash, finalInput) : gradeDraft(preview, finalInput)), finalInput);
     } catch (e) {
       banner = String(e);
     } finally {
@@ -94,6 +96,7 @@
 </div>
 
 <h1>{def.title}</h1>
+{#if preview != null}<p class="muted">Test des Entwurfs. Es wird nichts gespeichert.</p>{/if}
 <div class="fields">
   {#each def.fields as f (f.id)}
     <label class:check={f.type === "checkbox"}>

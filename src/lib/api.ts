@@ -15,6 +15,7 @@ export const importResult = (src: string) => invoke<string>("import_result", { s
 export const validateDefinition = (yaml: string) => invoke<Summary>("validate_definition", { yaml });
 export const definitionToYaml = (def: Definition) => invoke<string>("definition_to_yaml", { def });
 export const yamlToDefinition = (yaml: string) => invoke<Definition>("yaml_to_definition", { yaml });
+export const gradeDraft = (yaml: string, input: Input) => invoke<Graded>("grade_draft", { yaml, input });
 export const readDefinitionSource = (file: string) => invoke<string>("read_definition_source", { file });
 export const saveDefinition = (file: string, yaml: string, expectedHash: string | null) =>
   invoke<string>("save_definition", { file, yaml, expectedHash });

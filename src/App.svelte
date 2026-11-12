@@ -8,13 +8,15 @@
   import { ask } from "@tauri-apps/plugin-dialog";
   import { getDefinition, grade } from "./lib/api";
   import { isDirty, type Doc } from "./lib/editor";
+  import { initialInput } from "./lib/input";
   import { installTech } from "./lib/tech.svelte";
-  import type { Graded, Input, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
+  import type { Definition, Graded, Input, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
 
+  // `preview` is the editor's draft YAML while it is being tested.
   type Screen =
     | { name: "list" }
-    | { name: "entry"; opened: OpenedDefinition; input: Input }
-    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null }
+    | { name: "entry"; opened: OpenedDefinition; input: Input; preview?: string }
+    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null; preview?: string }
     | { name: "saved" }
     | { name: "definitions" }
     | { name: "editor" };
@@ -29,6 +31,10 @@
     if (draft && isDirty(draft) && !(await ask("Ungespeicherte Änderungen verwerfen?", { title: "Fragebogen bearbeiten", kind: "warning" }))) return;
     draft = null;
     screen = next;
+  }
+
+  function preview(yaml: string, definition: Definition) {
+    screen = { name: "entry", opened: { file: "", hash: "", definition }, input: initialInput(definition, new Date()), preview: yaml };
   }
 
   function showSaved(res: OpenedResult, notice: string | null) {
@@ -68,8 +74,9 @@
       bind:this={entry}
       opened={e.opened}
       input={e.input}
-      onback={() => (screen = { name: "list" })}
-      ongraded={(graded, input) => (screen = { name: "result", opened: e.opened, record: null, input, graded, notice: null })}
+      preview={e.preview}
+      onback={() => (screen = e.preview == null ? { name: "list" } : { name: "editor" })}
+      ongraded={(graded, input) => (screen = { name: "result", opened: e.opened, record: null, input, graded, notice: null, preview: e.preview })}
     />
   {:else if screen.name === "result"}
     {@const r = screen}
@@ -79,15 +86,16 @@
       graded={r.graded}
       notice={r.notice}
       onregrade={r.onregrade}
-      onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input })}
-      onnew={() => (screen = { name: "list" })}
+      preview={r.preview != null}
+      onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input, preview: r.preview })}
+      onnew={() => (screen = r.preview == null ? { name: "list" } : { name: "editor" })}
     />
   {:else if screen.name === "saved"}
     <Saved onopen={(res) => showSaved(res, null)} />
   {:else if screen.name === "definitions"}
     <Definitions onedit={(doc) => { draft = doc; screen = { name: "editor" }; }} />
   {:else if screen.name === "editor" && draft}
-    <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} />
+    <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} onpreview={preview} />
   {/if}
 </main>
 

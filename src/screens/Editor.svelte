@@ -4,10 +4,12 @@
     errorList, formatDefault, formatKey, formChanged, freshKey, move, numbers, parseDefault, parseItemRef, parseKey,
     renameKey, splitList, type Doc,
   } from "../lib/editor";
+  import type { Definition } from "../lib/types";
 
-  let { doc = $bindable(), onclose }: {
+  let { doc = $bindable(), onclose, onpreview }: {
     doc: Doc;
     onclose: () => void;
+    onpreview: (yaml: string, def: Definition) => void;
   } = $props();
 
   let errors = $state<string[] | null>(null);
@@ -73,6 +75,13 @@
       if (doc.mode === "form") doc.snapshot = JSON.stringify(doc.def);
       status = "Gespeichert.";
     });
+
+  const test = () =>
+    run(async () => {
+      const yaml = await currentYaml();
+      await validateDefinition(yaml);
+      onpreview(yaml, await yamlToDefinition(yaml));
+    });
 </script>
 
 {#snippet tools(list: unknown[], i: number)}
@@ -89,6 +98,7 @@
     <button class:active={doc.mode === "form"} aria-pressed={doc.mode === "form"} onclick={() => switchTo("form")}>Formular</button>
     <button class:active={doc.mode === "yaml"} aria-pressed={doc.mode === "yaml"} onclick={() => switchTo("yaml")}>YAML</button>
   </span>
+  <button onclick={test}>Testen</button>
   <button class="primary" disabled={!!errors?.length} onclick={save}>Speichern</button>
   <button onclick={onclose}>Schließen</button>
   <span aria-live="polite">{status}</span>
