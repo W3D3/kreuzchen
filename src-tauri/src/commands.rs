@@ -1,9 +1,10 @@
 use crate::{
     Paths,
-    definitions::{self, DefinitionEntry, OpenedDefinition},
+    definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
+    editor,
     store::{self, SavedRecord, SavedSummary},
 };
-use kreuzchen_engine::{Grading, Input};
+use kreuzchen_engine::{Grading, Input, schema::Definition};
 use serde::Serialize;
 use std::path::Path;
 use tauri::State;
@@ -106,4 +107,54 @@ pub fn export_result(paths: State<Paths>, name: String, dest: String) -> Result<
 // Paths come from OS dialogs; import only accepts valid records.
 pub fn import_result(paths: State<Paths>, src: String) -> Result<String, String> {
     store::import(&paths.results, Path::new(&src))
+}
+
+#[tauri::command]
+pub fn validate_definition(yaml: String) -> Result<Summary, Vec<String>> {
+    kreuzchen_engine::load(&yaml)
+        .map(|q| definitions::summary(&q))
+        .map_err(|errs| errs.iter().map(|e| e.to_string()).collect())
+}
+
+#[tauri::command]
+pub fn definition_to_yaml(def: Definition) -> String {
+    kreuzchen_engine::to_yaml(&def)
+}
+
+#[tauri::command]
+pub fn yaml_to_definition(yaml: String) -> Result<Definition, String> {
+    kreuzchen_engine::parse_definition(&yaml).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn grade_draft(yaml: String, input: Input) -> Result<Graded, String> {
+    let q = definitions::load_text(&yaml)?;
+    let grading = q.grade(&input).map_err(|e| e.to_string())?;
+    let text = q.plain_text(&input, &grading);
+    Ok(Graded { grading, text })
+}
+
+#[tauri::command]
+pub fn read_definition_source(paths: State<Paths>, file: String) -> Result<String, String> {
+    editor::read_source(&paths.definitions, &file)
+}
+
+#[tauri::command]
+pub fn save_definition(
+    paths: State<Paths>,
+    file: String,
+    yaml: String,
+    expected_hash: Option<String>,
+) -> Result<String, String> {
+    editor::save(&paths.definitions, &file, &yaml, expected_hash.as_deref())
+}
+
+#[tauri::command]
+pub fn delete_definition(paths: State<Paths>, file: String) -> Result<(), String> {
+    editor::delete(&paths.definitions, &file)
+}
+
+#[tauri::command]
+pub fn duplicate_definition(paths: State<Paths>, file: String) -> Result<String, String> {
+    editor::duplicate(&paths.definitions, &file)
 }
