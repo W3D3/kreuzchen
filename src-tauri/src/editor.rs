@@ -1,6 +1,6 @@
-use crate::definitions::{YAML, check_name, hash, load_text};
+use crate::definitions::{YAML, check_name, hash, load_text, scan};
 use crate::store::write_atomic;
-use std::{fs, path::Path};
+use std::{collections::HashSet, fs, path::Path};
 
 pub fn read_source(dir: &Path, file: &str) -> Result<String, String> {
     check_name(file, YAML)?;
@@ -36,20 +36,27 @@ pub fn delete(dir: &Path, file: &str) -> Result<(), String> {
     fs::remove_file(dir.join(file)).map_err(|e| format!("Löschen fehlgeschlagen: {e}"))
 }
 
-/// Copies `file` to `<stem>-kopie.yaml` (or `-kopie-2` …) and returns the new name.
+/// Copies `file` under a fresh id (`{id}_kopie`, `{id}_kopie2` …) as `{id}.yaml`; returns the new name.
+/// Saved results find their definition by id, so two files must never share one.
 pub fn duplicate(dir: &Path, file: &str) -> Result<String, String> {
-    let text = read_source(dir, file)?;
-    let stem = Path::new(file)
-        .file_stem()
-        .unwrap_or_default()
-        .to_string_lossy();
-    let mut name = format!("{stem}-kopie.yaml");
-    let mut n = 1;
-    while dir.join(&name).exists() {
-        n += 1;
-        name = format!("{stem}-kopie-{n}.yaml");
+    let mut def =
+        kreuzchen_engine::parse_definition(&read_source(dir, file)?).map_err(|e| e.to_string())?;
+    let used: HashSet<String> = scan(dir)
+        .into_iter()
+        .filter_map(|e| e.summary.map(|s| s.id))
+        .collect();
+    let base = format!("{}_kopie", def.id);
+    let mut id = base.clone();
+    for n in 2.. {
+        if !used.contains(&id) && !dir.join(format!("{id}.yaml")).exists() {
+            break;
+        }
+        id = format!("{base}{n}");
     }
-    write_atomic(dir, &name, text.as_bytes())?;
+    def.id = id;
+    let name = format!("{}.yaml", def.id);
+    check_name(&name, YAML)?;
+    write_atomic(dir, &name, kreuzchen_engine::to_yaml(&def).as_bytes())?;
     Ok(name)
 }
 
@@ -134,11 +141,37 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_picks_free_name_and_keeps_text() {
+    fn duplicate_gets_fresh_id_and_file() {
         let (d, _) = dir_with_fixture();
-        assert_eq!(duplicate(d.path(), "b.yaml").unwrap(), "b-kopie.yaml");
-        assert_eq!(duplicate(d.path(), "b.yaml").unwrap(), "b-kopie-2.yaml");
-        assert_eq!(read_source(d.path(), "b-kopie-2.yaml").unwrap(), FIXTURE);
+        assert_eq!(
+            duplicate(d.path(), "b.yaml").unwrap(),
+            "beispiel_kopie.yaml"
+        );
+        assert_eq!(
+            duplicate(d.path(), "b.yaml").unwrap(),
+            "beispiel_kopie2.yaml"
+        );
+        let ids: Vec<String> = ["b.yaml", "beispiel_kopie.yaml", "beispiel_kopie2.yaml"]
+            .iter()
+            .map(|f| {
+                load_text(&read_source(d.path(), f).unwrap())
+                    .unwrap()
+                    .def
+                    .id
+            })
+            .collect();
+        assert_eq!(ids, ["beispiel", "beispiel_kopie", "beispiel_kopie2"]);
+    }
+
+    #[test]
+    fn duplicate_skips_ids_used_under_other_file_names() {
+        let (d, _) = dir_with_fixture();
+        let other = FIXTURE.replace("id: beispiel", "id: beispiel_kopie");
+        fs::write(d.path().join("anders.yaml"), other).unwrap();
+        assert_eq!(
+            duplicate(d.path(), "b.yaml").unwrap(),
+            "beispiel_kopie2.yaml"
+        );
     }
 
     #[test]
