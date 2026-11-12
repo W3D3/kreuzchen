@@ -1,3 +1,5 @@
+<img src="docs/logo.svg" alt="" width="96" height="96">
+
 # Kreuzchen
 
 Kreuzchen is a German-only desktop app (Tauri 2 + Svelte 5) that grades paper questionnaires. Questionnaires are defined in YAML; the app scores entered answers and shows a verdict. It makes no network requests at runtime. Builds are unsigned.

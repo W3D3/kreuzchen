@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="1024" height="1024">
+  <title>Kreuzchen</title>
+  <rect x="12" y="24" width="50" height="64" rx="9" fill="#fffdf7" stroke="#7d8d93" stroke-width="4"/>
+  <rect x="20" y="38" width="11" height="4" rx="2" fill="#c3ccd0"/>
+  <rect x="20" y="50" width="11" height="4" rx="2" fill="#c3ccd0"/>
+  <rect x="20" y="62" width="11" height="4" rx="2" fill="#c3ccd0"/>
+  <rect x="36" y="12" width="52" height="64" rx="9" fill="#1f6f78" fill-opacity=".62" stroke="#2a8590" stroke-width="4"/>
+  <path d="M42 42 L56 58 M56 42 L42 58" stroke="#fffdf7" stroke-width="7" stroke-linecap="round"/>
+</svg>
