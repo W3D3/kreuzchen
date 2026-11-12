@@ -35,6 +35,24 @@ pub fn parse_definition(yaml: &str) -> Result<Definition, LoadError> {
     })
 }
 
+/// Serializes a definition back to YAML, leaving out unset optional keys.
+pub fn to_yaml(def: &Definition) -> String {
+    fn strip_nulls(v: &mut serde_norway::Value) {
+        match v {
+            serde_norway::Value::Mapping(m) => {
+                m.retain(|_, v| !v.is_null());
+                m.values_mut().for_each(strip_nulls);
+            }
+            serde_norway::Value::Sequence(s) => s.iter_mut().for_each(strip_nulls),
+            _ => {}
+        }
+    }
+    // Every field is plain data, so serializing cannot fail.
+    let mut v = serde_norway::to_value(def).expect("definition serializes");
+    strip_nulls(&mut v);
+    serde_norway::to_string(&v).expect("value serializes")
+}
+
 /// Parses and validates a definition, collecting every error.
 pub fn load(yaml: &str) -> Result<Questionnaire, Vec<LoadError>> {
     validate::validate(parse_definition(yaml).map_err(|e| vec![e])?)
