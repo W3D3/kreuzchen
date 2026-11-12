@@ -42,8 +42,39 @@ pub fn check_hash(current: &str, expected: &str) -> Result<(), String> {
     }
 }
 
+/// Accepts a bare file name (no path, `..` or drive) ending in one of `exts` (lowercase, no dot).
+pub fn check_name(name: &str, exts: &[&str]) -> Result<(), String> {
+    let path = Path::new(name);
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+    if !name.contains(['/', '\\', ':'])
+        && !name.contains("..")
+        && path.file_name() == Some(std::ffi::OsStr::new(name))
+        && ext.is_some_and(|e| exts.contains(&e.as_str()))
+    {
+        Ok(())
+    } else {
+        Err("Ungültiger Dateiname".into())
+    }
+}
+
+pub const YAML: &[&str] = &["yaml", "yml"];
+
+pub fn summary(q: &Questionnaire) -> Summary {
+    Summary {
+        id: q.def.id.clone(),
+        title: q.def.title.clone(),
+        version: q.def.version.clone(),
+        item_count: q.item_count(),
+        scale_count: q.scale_count(),
+    }
+}
+
 fn parse(bytes: &[u8]) -> Result<Questionnaire, String> {
-    let text = std::str::from_utf8(bytes).map_err(|_| "Datei ist nicht UTF-8".to_string())?;
+    load_text(std::str::from_utf8(bytes).map_err(|_| "Datei ist nicht UTF-8".to_string())?)
+}
+
+/// `load` with the errors joined into one German message, one per line.
+pub fn load_text(text: &str) -> Result<Questionnaire, String> {
     load(text).map_err(|errs| {
         errs.iter()
             .map(|e| e.to_string())
@@ -79,16 +110,7 @@ fn scan_entry(e: std::fs::DirEntry) -> Option<DefinitionEntry> {
         Err(err) => return Some(broken(file, format!("Datei nicht lesbar: {err}"))),
     };
     let (summary, error) = match parse(&bytes) {
-        Ok(q) => (
-            Some(Summary {
-                id: q.def.id.clone(),
-                title: q.def.title.clone(),
-                version: q.def.version.clone(),
-                item_count: q.item_count(),
-                scale_count: q.scale_count(),
-            }),
-            None,
-        ),
+        Ok(q) => (Some(summary(&q)), None),
         Err(e) => (None, Some(e)),
     };
     Some(DefinitionEntry {
@@ -121,12 +143,7 @@ pub fn scan(dir: &Path) -> Vec<DefinitionEntry> {
 }
 
 pub fn open(dir: &Path, file: &str) -> Result<(Questionnaire, String), String> {
-    if file.contains(['/', '\\', ':'])
-        || file.contains("..")
-        || Path::new(file).file_name() != Some(std::ffi::OsStr::new(file))
-    {
-        return Err("Ungültiger Dateiname".into());
-    }
+    check_name(file, YAML)?;
     let bytes = fs::read(dir.join(file)).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
     Ok((parse(&bytes)?, hash(&bytes)))
 }

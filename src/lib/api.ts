@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DefinitionEntry, Graded, Input, OpenedDefinition, OpenedResult, SavedRecord, SavedSummary } from "./types";
+import type { Definition, DefinitionEntry, Graded, Input, OpenedDefinition, OpenedResult, SavedRecord, SavedSummary, Summary } from "./types";
 
 export const listDefinitions = () => invoke<DefinitionEntry[]>("list_definitions");
 export const getDefinition = (file: string) => invoke<OpenedDefinition>("get_definition", { file });
@@ -12,3 +12,12 @@ export const openResult = (name: string) => invoke<OpenedResult>("open_result", 
 export const deleteResult = (name: string) => invoke<void>("delete_result", { name });
 export const exportResult = (name: string, dest: string) => invoke<void>("export_result", { name, dest });
 export const importResult = (src: string) => invoke<string>("import_result", { src });
+export const validateDefinition = (yaml: string) => invoke<Summary>("validate_definition", { yaml });
+export const definitionToYaml = (def: Definition) => invoke<string>("definition_to_yaml", { def });
+export const yamlToDefinition = (yaml: string) => invoke<Definition>("yaml_to_definition", { yaml });
+export const gradeDraft = (yaml: string, input: Input) => invoke<Graded>("grade_draft", { yaml, input });
+export const readDefinitionSource = (file: string) => invoke<string>("read_definition_source", { file });
+export const saveDefinition = (file: string, yaml: string, expectedHash: string | null) =>
+  invoke<string>("save_definition", { file, yaml, expectedHash });
+export const deleteDefinition = (file: string) => invoke<void>("delete_definition", { file });
+export const duplicateDefinition = (file: string) => invoke<string>("duplicate_definition", { file });

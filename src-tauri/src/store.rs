@@ -32,15 +32,18 @@ pub struct SavedSummary {
 const BAD_FILE: &str = "Diese Datei ist keine gültige Kreuzchen-Auswertung.";
 
 fn check_name(name: &str) -> Result<(), String> {
-    if name.ends_with(".json")
-        && !name.contains(['/', '\\', ':'])
-        && !name.contains("..")
-        && Path::new(name).file_name() == Some(std::ffi::OsStr::new(name))
-    {
-        Ok(())
-    } else {
-        Err("Ungültiger Dateiname".into())
-    }
+    crate::definitions::check_name(name, &["json"])
+}
+
+/// Writes `dir/name` via a temporary file and rename, so readers never see half a file.
+pub fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
+    let tmp = dir.join(format!("{name}.tmp"));
+    fs::write(&tmp, bytes)
+        .and_then(|()| fs::rename(&tmp, dir.join(name)))
+        .map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("Speichern fehlgeschlagen: {e}")
+        })
 }
 
 fn sanitize(s: &str) -> String {
@@ -68,13 +71,7 @@ pub fn save(dir: &Path, rec: &SavedRecord) -> Result<String, String> {
         name = format!("{base}-{n}.json");
     }
     let json = serde_json::to_vec_pretty(rec).map_err(|e| e.to_string())?;
-    let tmp = dir.join(format!("{name}.tmp"));
-    fs::write(&tmp, json)
-        .and_then(|()| fs::rename(&tmp, dir.join(&name)))
-        .map_err(|e| {
-            let _ = fs::remove_file(&tmp);
-            format!("Speichern fehlgeschlagen: {e}")
-        })?;
+    write_atomic(dir, &name, &json)?;
     Ok(name)
 }
 
