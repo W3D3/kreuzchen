@@ -3,7 +3,11 @@
   import Result from "./screens/Result.svelte";
   import List from "./screens/List.svelte";
   import Saved from "./screens/Saved.svelte";
+  import Definitions from "./screens/Definitions.svelte";
+  import Editor from "./screens/Editor.svelte";
+  import { ask } from "@tauri-apps/plugin-dialog";
   import { getDefinition, grade } from "./lib/api";
+  import { isDirty, type Doc } from "./lib/editor";
   import { installTech } from "./lib/tech.svelte";
   import type { Graded, Input, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
 
@@ -11,14 +15,19 @@
     | { name: "list" }
     | { name: "entry"; opened: OpenedDefinition; input: Input }
     | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null }
-    | { name: "saved" };
+    | { name: "saved" }
+    | { name: "definitions" }
+    | { name: "editor" };
 
   let screen = $state<Screen>({ name: "list" });
   let entry = $state<Entry>();
+  let draft = $state<Doc | null>(null);
   installTech();
 
   async function go(next: Screen) {
     if (screen.name === "entry" && !(await entry?.confirmDiscard())) return;
+    if (draft && isDirty(draft) && !(await ask("Ungespeicherte Änderungen verwerfen?", { title: "Fragebogen bearbeiten", kind: "warning" }))) return;
+    draft = null;
     screen = next;
   }
 
@@ -48,6 +57,7 @@
 <nav>
   <button class:active={screen.name === "list" || screen.name === "entry"} onclick={() => go({ name: "list" })}>Fragebögen</button>
   <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
+  <button class="tech" class:active={screen.name === "definitions" || screen.name === "editor"} onclick={() => go({ name: "definitions" })}>Fragebögen bearbeiten</button>
 </nav>
 <main>
   {#if screen.name === "list"}
@@ -74,6 +84,10 @@
     />
   {:else if screen.name === "saved"}
     <Saved onopen={(res) => showSaved(res, null)} />
+  {:else if screen.name === "definitions"}
+    <Definitions onedit={(doc) => { draft = doc; screen = { name: "editor" }; }} />
+  {:else if screen.name === "editor" && draft}
+    <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} />
   {/if}
 </main>
 
