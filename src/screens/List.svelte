@@ -3,7 +3,7 @@
   import { initialInput } from "../lib/input";
   import type { DefinitionEntry, Input, OpenedDefinition } from "../lib/types";
 
-  let { onstart }: { onstart: (opened: OpenedDefinition, input: Input) => void } = $props();
+  let { onstart, onregistry }: { onstart: (opened: OpenedDefinition, input: Input) => void; onregistry: () => void } = $props();
 
   let entries = $state<DefinitionEntry[] | null>(null);
   let dir = $state("");
@@ -19,9 +19,9 @@
   }
   load();
 
-  async function start(file: string) {
+  async function start(e: DefinitionEntry) {
     try {
-      const opened = await getDefinition(file);
+      const opened = await getDefinition(e.file, e.locked);
       onstart(opened, initialInput(opened.definition, new Date()));
     } catch (e) {
       banner = String(e);
@@ -29,16 +29,19 @@
   }
 </script>
 
-<h1>Fragebögen</h1>
+<div class="head">
+  <h1>Fragebögen</h1>
+  <button onclick={onregistry}>Fragebögen aus der Registry</button>
+</div>
 {#if banner}<p class="banner" role="alert">{banner}</p>{/if}
 {#if entries?.length === 0}
   <p class="muted">Noch keine Fragebögen installiert. Bitte wenden Sie sich an den Support.</p>
 {/if}
-{#each entries ?? [] as e (e.file + e.hash + (e.error ?? ""))}
+{#each entries ?? [] as e (e.locked + e.file + e.hash + (e.error ?? ""))}
   <div class="card">
     <div>
       {#if e.summary}
-        <strong>{e.summary.title}</strong>
+        <strong>{e.summary.title}</strong>{#if e.locked}<span class="pill">Registry</span>{/if}
         <div class="muted">
           {e.summary.item_count} Fragen · {e.summary.scale_count} Skalen · Version {e.summary.version}<span class="tech"> · {e.file}</span>
         </div>
@@ -48,7 +51,7 @@
         <pre class="tech">{e.file ? e.file + "\n" : ""}{e.error}</pre>
       {/if}
     </div>
-    <button class="primary" disabled={!e.summary} onclick={() => start(e.file)}>Starten</button>
+    <button class="primary" disabled={!e.summary} onclick={() => start(e)}>Starten</button>
   </div>
 {/each}
 <div class="tech footer">
@@ -58,9 +61,11 @@
 </div>
 
 <style>
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
   .card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
   .card strong { font-size: 1.25rem; }
   .muted { color: var(--muted); }
+  .pill { margin-left: .5rem; padding: .1rem .5rem; border: 1px solid var(--line); border-radius: 999px; font-size: .8rem; color: var(--muted); vertical-align: middle; }
   pre { font-family: var(--mono); white-space: pre-wrap; margin: .5rem 0 0; }
   .footer { margin-top: 2rem; color: var(--muted); }
   button { font: inherit; min-height: 48px; padding: 0 1.5rem; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }

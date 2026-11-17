@@ -68,7 +68,7 @@
     run(async () => {
       const yaml = await currentYaml();
       const file = doc.file ?? `${(await yamlToDefinition(yaml)).id}.yaml`;
-      doc.hash = await saveDefinition(file, yaml, doc.hash);
+      doc.hash = await saveDefinition(file, false, yaml, doc.hash);
       doc.file = file;
       doc.yaml = yaml;
       doc.dirty = false;

@@ -2,6 +2,7 @@ use crate::{
     Paths,
     definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
     editor,
+    registry::{self, Connection, InstallOutcome, RowsResult},
     store::{self, SavedRecord, SavedSummary},
 };
 use kreuzchen_engine::{Grading, Input, schema::Definition};
@@ -18,16 +19,21 @@ pub struct Graded {
 
 #[tauri::command]
 pub fn list_definitions(paths: State<Paths>) -> Vec<DefinitionEntry> {
-    definitions::scan(&paths.definitions)
+    definitions::scan_all(&paths.definitions, &paths.registry)
 }
 
 #[tauri::command]
-pub fn get_definition(paths: State<Paths>, file: String) -> Result<OpenedDefinition, String> {
-    let (q, hash) = definitions::open(&paths.definitions, &file)?;
+pub fn get_definition(
+    paths: State<Paths>,
+    file: String,
+    locked: bool,
+) -> Result<OpenedDefinition, String> {
+    let (q, hash) = definitions::open(paths.dir(locked), &file)?;
     Ok(OpenedDefinition {
         file,
         hash,
         definition: q.def,
+        locked,
     })
 }
 
@@ -35,10 +41,11 @@ pub fn get_definition(paths: State<Paths>, file: String) -> Result<OpenedDefinit
 pub fn grade(
     paths: State<Paths>,
     file: String,
+    locked: bool,
     hash: String,
     input: Input,
 ) -> Result<Graded, String> {
-    let (q, current) = definitions::open(&paths.definitions, &file)?;
+    let (q, current) = definitions::open(paths.dir(locked), &file)?;
     definitions::check_hash(&current, &hash)?;
     let grading = q.grade(&input).map_err(|e| e.to_string())?;
     let text = q.plain_text(&input, &grading);
@@ -77,11 +84,9 @@ pub fn list_results(paths: State<Paths>) -> Vec<SavedSummary> {
 #[tauri::command]
 pub fn open_result(paths: State<Paths>, name: String) -> Result<OpenedResult, String> {
     let record = store::load(&paths.results, &name)?;
-    let current = definitions::scan(&paths.definitions).into_iter().find(|e| {
-        e.summary
-            .as_ref()
-            .is_some_and(|s| s.id == record.questionnaire.id)
-    });
+    let q = &record.questionnaire;
+    let current =
+        definitions::find_by_id(&paths.definitions, &paths.registry, &q.id, Some(&q.hash));
     let outdated = current
         .as_ref()
         .is_some_and(|c| c.hash != record.questionnaire.hash);
@@ -135,26 +140,119 @@ pub fn grade_draft(yaml: String, input: Input) -> Result<Graded, String> {
 }
 
 #[tauri::command]
-pub fn read_definition_source(paths: State<Paths>, file: String) -> Result<String, String> {
-    editor::read_source(&paths.definitions, &file)
+pub fn read_definition_source(
+    paths: State<Paths>,
+    file: String,
+    locked: bool,
+) -> Result<String, String> {
+    editor::read_source(paths.dir(locked), &file)
+}
+
+fn refuse_locked(locked: bool) -> Result<(), String> {
+    if locked {
+        Err("Fragebögen aus der Registry können nicht geändert werden.".into())
+    } else {
+        Ok(())
+    }
 }
 
 #[tauri::command]
 pub fn save_definition(
     paths: State<Paths>,
     file: String,
+    locked: bool,
     yaml: String,
     expected_hash: Option<String>,
 ) -> Result<String, String> {
-    editor::save(&paths.definitions, &file, &yaml, expected_hash.as_deref())
+    refuse_locked(locked)?;
+    editor::save(
+        &paths.definitions,
+        &paths.registry,
+        &file,
+        &yaml,
+        expected_hash.as_deref(),
+    )
 }
 
 #[tauri::command]
-pub fn delete_definition(paths: State<Paths>, file: String) -> Result<(), String> {
+pub fn delete_definition(paths: State<Paths>, file: String, locked: bool) -> Result<(), String> {
+    refuse_locked(locked)?;
     editor::delete(&paths.definitions, &file)
 }
 
 #[tauri::command]
-pub fn duplicate_definition(paths: State<Paths>, file: String) -> Result<String, String> {
-    editor::duplicate(&paths.definitions, &file)
+pub fn duplicate_definition(
+    paths: State<Paths>,
+    file: String,
+    locked: bool,
+) -> Result<String, String> {
+    editor::duplicate(&paths.definitions, &paths.registry, locked, &file)
+}
+
+#[derive(Serialize)]
+pub struct ConnectionInfo {
+    pub url: String,
+    pub user: String,
+}
+
+#[tauri::command]
+pub fn registry_connection(paths: State<Paths>) -> Option<ConnectionInfo> {
+    registry::load_connection(&paths.data).map(|c| ConnectionInfo {
+        url: c.url,
+        user: c.user,
+    })
+}
+
+#[tauri::command]
+pub async fn registry_connect(
+    paths: State<'_, Paths>,
+    url: String,
+    user: String,
+    key: String,
+) -> Result<(), String> {
+    let c = Connection::new(&url, &user, &key)?;
+    registry::fetch_list(&c).await?;
+    registry::save_connection(&paths.data, &c)
+}
+
+#[tauri::command]
+pub fn registry_disconnect(paths: State<Paths>) {
+    registry::clear_connection(&paths.data)
+}
+
+#[tauri::command]
+// Tauri requires `Result` from async commands that borrow `State`; remote errors arrive in `error`.
+pub async fn registry_rows(paths: State<'_, Paths>) -> Result<RowsResult, String> {
+    let installed = definitions::scan(&paths.registry);
+    let c = registry::load_connection(&paths.data);
+    Ok(registry::rows_result(c.as_ref(), &installed).await)
+}
+
+#[tauri::command]
+pub async fn registry_install(
+    paths: State<'_, Paths>,
+    id: String,
+    replace_local: bool,
+) -> Result<InstallOutcome, String> {
+    let c = registry::load_connection(&paths.data).ok_or("Keine Registry verbunden.")?;
+    registry::install(&c, &paths, &id, replace_local).await
+}
+
+#[tauri::command]
+pub fn registry_remove(paths: State<Paths>, file: String) -> Result<(), String> {
+    registry::remove(&paths.registry, &file)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::refuse_locked;
+
+    #[test]
+    fn locked_save_and_delete_are_refused() {
+        assert_eq!(
+            refuse_locked(true),
+            Err("Fragebögen aus der Registry können nicht geändert werden.".into())
+        );
+        assert_eq!(refuse_locked(false), Ok(()));
+    }
 }

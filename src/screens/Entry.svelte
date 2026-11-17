@@ -50,7 +50,7 @@
       answers: { ...answers },
     };
     try {
-      ongraded(await (preview == null ? grade(opened.file, opened.hash, finalInput) : gradeDraft(preview, finalInput)), finalInput);
+      ongraded(await (preview == null ? grade(opened.file, opened.locked, opened.hash, finalInput) : gradeDraft(preview, finalInput)), finalInput);
     } catch (e) {
       banner = String(e);
     } finally {

@@ -1,0 +1,11 @@
+services:
+  registry:
+    # Published image; to build locally instead, replace with
+    # build: { context: ../.., dockerfile: crates/registry/Dockerfile }
+    image: ghcr.io/w3d3/kreuzchen-registry:latest
+    restart: unless-stopped
+    read_only: true
+    volumes:
+      - ./example:/data:ro
+    ports:
+      - "127.0.0.1:8080:8080"
