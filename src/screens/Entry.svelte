@@ -137,7 +137,8 @@
           {@const label = f.id === "kennung" ? "Kennung (keine Patientennamen)" : f.label}
           {#if f.type === "checkbox"}
             <div class="flex items-center gap-2.5 self-end py-2.5">
-              <Checkbox id="fld-{f.id}" class="size-6 [&_svg]:size-5!" bind:checked={fields[f.id] as boolean} />
+              <!-- Not bind:checked: the field is undefined until first ticked, which the Checkbox rejects. -->
+              <Checkbox id="fld-{f.id}" class="size-6 [&_svg]:size-5!" checked={fields[f.id] === true} onCheckedChange={(v) => (fields[f.id] = v === true)} />
               <Label for="fld-{f.id}" class="text-[15px] font-bold">{label}</Label>
             </div>
           {:else}
