@@ -57,7 +57,7 @@ Screens, matching the mockups:
      - Number keys pick the answer by position (1 = niemals … 5 = immer; 1 = Nein, 2 = Ja). Points are never typed. Picking an answer moves to the next question.
      - Tab and Enter move to the next question; Shift+Tab goes back. Arrow keys move between answers.
      - Each radio button shows its key number as a small label.
-     - A permanent shortcut bar at the bottom of the entry screen lists the keys in German (e.g. "1–5 Antwort · Enter/Tab nächste Frage · Umschalt+Tab zurück · Strg+Enter Auswerten").
+     - A permanent shortcut bar at the bottom of the entry screen lists the keys in German (e.g. "0–4 Antwort · Enter/Tab nächste Frage · Umschalt+Tab zurück · Strg+Enter Auswerten").
 3. **Ergebnis.**
    - Kennung and header fields.
    - A row per scale and for the total: sum, cut-off, a bar with a cut-off marker, and an "über" pill when over.

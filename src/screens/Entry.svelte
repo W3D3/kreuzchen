@@ -81,7 +81,7 @@
     e.preventDefault();
     if (a.type === "answer") {
       answers[item.key] = a.index;
-      if (/^[1-9]$/.test(e.key)) focusItem(Math.min(focused + 1, items.length - 1));
+      if (/^[0-9]$/.test(e.key)) focusItem(Math.min(focused + 1, items.length - 1));
     } else if (a.type === "clear") delete answers[item.key];
     else if (a.type === "focus") focusItem(a.to);
     else void doGrade();
@@ -143,7 +143,7 @@
             class:sel={answers[it.key] === j}
             onclick={() => { answers[it.key] = j; focusItem(i); }}
           >
-            <span class="num k" aria-hidden="true">{j + 1}</span> {o}
+            <span class="num k" aria-hidden="true">{j}</span> {o}
           </button>
         {/each}
       </div>
@@ -152,7 +152,7 @@
 </div>
 
 <div class="bar bottom">
-  1–{options} Antwort · ←/→ Antwort ändern · Enter/Tab nächste Frage · Umschalt+Tab zurück · Entf löschen · Strg+Enter Auswerten
+  0–{options - 1} Antwort · ←/→ Antwort ändern · Enter/Tab nächste Frage · Umschalt+Tab zurück · Entf löschen · Strg+Enter Auswerten
 </div>
 
 <style>
