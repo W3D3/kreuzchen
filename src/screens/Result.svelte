@@ -18,11 +18,13 @@
   import { compactItems } from "../lib/ranges";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
-  let { opened, input, graded, notice, preview = false, onregrade, onback, onnew }: {
+  let { opened, input, graded, notice, draft = null, preview = false, onregrade, onback, onnew }: {
     opened: OpenedDefinition | null;
     input: Input;
     graded: Graded;
     notice: string | null;
+    /** The entry's autosaved draft; saving the result deletes it. */
+    draft?: string | null;
     preview?: boolean;
     onregrade?: (() => void) | null;
     onback: () => void;
@@ -70,7 +72,7 @@
         input,
         grading: g,
         text: graded.text,
-      });
+      }, draft);
       saved = true;
       status = "Gespeichert.";
     } catch (e) {

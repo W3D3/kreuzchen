@@ -30,3 +30,13 @@ export function entryItems(def: Definition): EntryItem[] {
     }),
   );
 }
+
+/** `input` without answers and fields the (changed) definition no longer has; `dropped` counts them. */
+export function fitInput(def: Definition, input: Input): { input: Input; dropped: number } {
+  const options = new Map(entryItems(def).map((i) => [i.key, i.options.length]));
+  const ids = new Set(def.fields.map((f) => f.id));
+  const answers = Object.entries(input.answers).filter(([k, v]) => v < (options.get(k) ?? 0));
+  const fields = Object.entries(input.fields).filter(([k]) => ids.has(k));
+  const dropped = Object.keys(input.answers).length - answers.length + Object.keys(input.fields).length - fields.length;
+  return { input: { fields: Object.fromEntries(fields), answers: Object.fromEntries(answers) }, dropped };
+}

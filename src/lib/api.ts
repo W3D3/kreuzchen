@@ -1,15 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionInfo, Definition, DefinitionEntry, Graded, InstallOutcome, Input, OpenedDefinition, OpenedResult, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
+import type { ConnectionInfo, Definition, DefinitionEntry, Draft, DraftSummary, Graded, InstallOutcome, Input, Opened, OpenedDefinition, OpenedResult, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
 
 export const listDefinitions = () => invoke<DefinitionEntry[]>("list_definitions");
 export const getDefinition = (file: string, locked: boolean) => invoke<OpenedDefinition>("get_definition", { file, locked });
 export const grade = (file: string, locked: boolean, hash: string, input: Input) => invoke<Graded>("grade", { file, locked, hash, input });
 export const dataDir = () => invoke<string>("data_dir");
 export const openDefinitionsFolder = () => invoke<void>("open_definitions_folder");
-export const saveResult = (record: SavedRecord) => invoke<string>("save_result", { record });
+/** Also deletes `draft`, the entry's autosaved draft. */
+export const saveResult = (record: SavedRecord, draft: string | null) => invoke<string>("save_result", { record, draft });
 export const listResults = () => invoke<SavedSummary[]>("list_results");
 export const openResult = (name: string) => invoke<OpenedResult>("open_result", { name });
 export const deleteResult = (name: string) => invoke<void>("delete_result", { name });
+export const saveDraft = (name: string | null, draft: Draft) => invoke<string>("save_draft", { name, draft });
+export const listDrafts = () => invoke<DraftSummary[]>("list_drafts");
+export const openDraft = (name: string) => invoke<Opened<Draft>>("open_draft", { name });
+export const deleteDraft = (name: string) => invoke<void>("delete_draft", { name });
 export const exportResult = (name: string, dest: string) => invoke<void>("export_result", { name, dest });
 export const importResult = (src: string) => invoke<string>("import_result", { src });
 export const validateDefinition = (yaml: string) => invoke<Summary>("validate_definition", { yaml });

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import Info from "@lucide/svelte/icons/info";
+  import Save from "@lucide/svelte/icons/save";
   import Banner from "$lib/components/Banner.svelte";
   import { confirm } from "$lib/components/confirm.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -7,18 +9,23 @@
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { Input as TextInput } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
-  import { grade, gradeDraft } from "../lib/api";
+  import { deleteDraft, grade, gradeDraft, saveDraft } from "../lib/api";
+  import { createAutosave } from "../lib/autosave";
   import { entryItems } from "../lib/input";
+  import { localTimestamp } from "../lib/kennung";
   import { entryKey } from "../lib/keyboard";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
-  let { opened, input, preview = null, onback, ongraded }: {
+  let { opened, input, draft = null, notice = null, preview = null, onback, ongraded }: {
     opened: OpenedDefinition;
     input: Input;
+    /** File name of the saved draft this entry continues. */
+    draft?: string | null;
+    notice?: string | null;
     /** Draft YAML from the editor; grades it instead of the saved file. */
     preview?: string | null;
     onback: () => void;
-    ongraded: (graded: Graded, input: Input) => void;
+    ongraded: (graded: Graded, input: Input, draft: string | null) => void;
   } = $props();
 
   // svelte-ignore state_referenced_locally
@@ -35,6 +42,36 @@
   let els: HTMLElement[] = [];
   onMount(() => els[0]?.focus());
 
+  // A cleared number field is null, which Rust cannot read as a FieldValue.
+  const currentInput = (): Input => ({
+    fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v != null)),
+    answers: { ...answers },
+  });
+
+  // Editor tests leave no drafts.
+  // svelte-ignore state_referenced_locally
+  const autosave = preview == null
+    ? createAutosave<Input>(
+        // svelte-ignore state_referenced_locally
+        draft,
+        (name, input) => saveDraft(name, {
+          saved_at: localTimestamp(new Date()),
+          questionnaire: { id: def.id, title: def.title, version: def.version, hash: opened.hash },
+          input,
+        }),
+        deleteDraft,
+        (e) => (banner = `Entwurf nicht gespeichert: ${e}`),
+      )
+    : null;
+
+  // Every change after the first run is saved, so a crash loses nothing that was entered.
+  let initial = true;
+  $effect(() => {
+    const input = currentInput();
+    if (initial) initial = false;
+    else autosave?.push(input);
+  });
+
   const scored = items.filter((i) => i.scored);
   const answered = $derived(scored.filter((i) => answers[i.key] !== undefined).length);
   const shortcuts = $derived(items[focused]?.shortcuts.filter(Boolean) ?? []);
@@ -50,13 +87,12 @@
     busy = true;
     tried = true;
     banner = null;
-    // A cleared number field is null, which Rust cannot read as a FieldValue.
-    const finalInput: Input = {
-      fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v != null)),
-      answers: { ...answers },
-    };
+    const finalInput = currentInput();
     try {
-      ongraded(await (preview == null ? grade(opened.file, opened.locked, opened.hash, finalInput) : gradeDraft(preview, finalInput)), finalInput);
+      const graded = await (preview == null ? grade(opened.file, opened.locked, opened.hash, finalInput) : gradeDraft(preview, finalInput));
+      // A failed draft write is already in the banner; it must not block the result.
+      await autosave?.flush().catch(() => {});
+      ongraded(graded, finalInput, autosave?.name ?? null);
     } catch (e) {
       banner = String(e);
     } finally {
@@ -65,12 +101,39 @@
   }
 
   /** True when nothing is entered or the user agrees to discard it. */
-  export async function confirmDiscard(): Promise<boolean> {
-    return Object.keys(answers).length === 0 || (await confirm({ title: "Ungespeicherte Eingaben", message: "Eingaben verwerfen?", confirmLabel: "Verwerfen", destructive: true }));
+  async function confirmDiscard(): Promise<boolean> {
+    return (Object.keys(answers).length === 0 && !autosave?.name) || (await confirm({ title: "Ungespeicherte Eingaben", message: "Eingaben verwerfen?", confirmLabel: "Verwerfen", destructive: true }));
+  }
+
+  /** True when the entry may close: it is stored as a draft, or the user agrees to lose it. */
+  export async function leave(): Promise<boolean> {
+    if (!autosave) return confirmDiscard();
+    try {
+      await autosave.flush();
+      return true;
+    } catch {
+      return confirm({ title: "Entwurf nicht gespeichert", message: "Die Eingaben konnten nicht als Entwurf gespeichert werden. Trotzdem verlassen?", confirmLabel: "Verlassen", destructive: true });
+    }
   }
 
   async function cancel() {
-    if (await confirmDiscard()) onback();
+    if (!(await confirmDiscard())) return;
+    try {
+      await autosave?.discard();
+      onback();
+    } catch (e) {
+      banner = String(e);
+    }
+  }
+
+  async function saveAsDraft() {
+    autosave!.push(currentInput());
+    try {
+      await autosave!.flush();
+      onback();
+    } catch {
+      // The banner already shows why.
+    }
   }
 
   const hints = $derived([
@@ -117,6 +180,7 @@
     </div>
     <div class="flex-1"></div>
     <Button variant="ghost" class="h-11 px-4" onclick={cancel}>Abbrechen</Button>
+    {#if autosave}<Button variant="outline" class="h-11 px-4" onclick={saveAsDraft}><Save />Als Entwurf speichern</Button>{/if}
     <Button class="h-11 px-5 font-bold" onclick={doGrade}>Auswerten</Button>
   </div>
   {#if banner}
@@ -129,6 +193,7 @@
     <h1 class="text-[26px] leading-tight font-bold">{def.title}</h1>
     {#if preview != null}<p class="mt-1 text-[15px] text-muted-foreground">Test des Entwurfs. Es wird nichts gespeichert.</p>{/if}
   </div>
+  {#if notice}<Banner kind="info" icon={Info}>{notice}</Banner>{/if}
 
   {#if def.fields.length}
     <Card.Root class="py-4">
