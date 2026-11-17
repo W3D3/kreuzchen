@@ -1,6 +1,6 @@
 {
   "$schema": "https://shadcn-svelte.com/schema.json",
-  "tailwind": { "css": "src/proto/proto.css", "baseColor": "mist" },
+  "tailwind": { "css": "src/app.css", "baseColor": "mist" },
   "aliases": {
     "components": "$lib/components",
     "utils": "$lib/utils",

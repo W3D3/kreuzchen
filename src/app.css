@@ -28,13 +28,10 @@
 :root[data-theme="light"] { color-scheme: light; }
 
 body {
-  margin: 0;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
 }
-
-.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
 body:not(.tech) .tech { display: none }
 
@@ -113,10 +110,6 @@ body:not(.tech) .tech { display: none }
 
 @layer base {
   *, ::before, ::after { border-color: var(--color-border); }
-  /* Preflight flattens headings; unmigrated screens still rely on the browser sizes. */
-  h1 { font-size: 2em; font-weight: 700; }
-  h2 { font-size: 1.5em; font-weight: 700; }
-  h3 { font-size: 1.17em; font-weight: 700; }
   input[type="number"] { appearance: textfield; }
   input[type="number"]::-webkit-inner-spin-button { appearance: none; }
 }
