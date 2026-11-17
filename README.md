@@ -6,7 +6,7 @@
 
 Type in the crosses from a completed paper questionnaire, and Kreuzchen does the rest: it reverses the right items, adds up every scale, applies cut-offs and norm tables, and shows a clear result you can copy straight into your report. No more counting by hand, no more template sheets, no more arithmetic slips.
 
-![The questionnaire editor](docs/screenshot-editor.png)
+![Entering answers by keyboard](docs/screenshot-entry.png)
 
 ## Why Kreuzchen
 
