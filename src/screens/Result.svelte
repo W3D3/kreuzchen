@@ -33,7 +33,6 @@
   const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false });
   // Index into the --band-N colours; any other label gets a neutral chip.
   const bands = ["unauffällig", "mild", "moderat", "schwer"];
-  const cols = "grid-cols-[minmax(0,1fr)_5.5rem_13rem_5.5rem_7.5rem]";
   const meter = (value: number, cutoff: number) => Math.min(value / (cutoff * 2), 1) * 100;
 
   let banner = $state<string | null>(null);
@@ -131,16 +130,17 @@
   </section>
 
   <Card.Root class="gap-0 py-2">
-    <Card.Content>
-      <div class="grid {cols} items-center gap-x-4 border-b py-2 text-[13px] font-bold text-muted-foreground">
+    <!-- One grid with subgrid rows, so every column sizes to its widest value. -->
+    <Card.Content class="grid grid-cols-[minmax(0,1fr)_repeat(4,auto)] gap-x-4">
+      <div class="col-span-full grid grid-cols-subgrid items-center border-b py-2 text-[13px] font-bold text-muted-foreground">
         <span>Skala</span><span class="text-right">Rohwert</span><span>Cut-off</span><span class="text-right">Normwert</span><span>Einordnung</span>
       </div>
       {#each g.rows as r (r.id)}
-        <div class="grid {cols} min-h-14 items-center gap-x-4 border-b py-2.5 last:border-b-0">
+        <div class="col-span-full grid min-h-14 grid-cols-subgrid items-center border-b py-2.5 last:border-b-0">
           <span class="text-[17px]">{r.label}</span>
           {#if r.kind === "sum"}
-            <span class="text-right font-mono tabular-nums">
-              <span class="text-[17px]! font-bold">{num(r.value)}</span>{#if r.cutoff !== null}<span class="text-muted-foreground">{` / ${r.cutoff}`}</span>{/if}
+            <span class="text-right font-mono text-[17px] whitespace-nowrap tabular-nums">
+              <span class="font-bold">{num(r.value)}</span>{#if r.cutoff !== null}<span class="text-[15px] text-muted-foreground">{` / ${r.cutoff}`}</span>{/if}
             </span>
             {#if r.cutoff}
               <div class="flex items-center gap-2.5">
@@ -169,7 +169,7 @@
     </Card.Content>
   </Card.Root>
 
-  {#each g.caveats as c (c)}
+  {#each g.caveats as c, i (i)}
     <p class="flex items-center gap-2.5 rounded-xl border border-dashed border-muted-foreground/50 px-5 py-3 text-[15px]">
       <Info class="size-4.5 shrink-0 text-muted-foreground" />Hinweis: {c}
     </p>
