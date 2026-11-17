@@ -98,13 +98,18 @@ A multi-stage `Dockerfile` in `crates/registry/` builds a static binary into a m
 
 ### Connecting
 
-A new screen "Registry" in the technical area, next to "Fragebögen bearbeiten", so it is hidden from normal users like the editor. It has fields for URL, username and key, plus **Verbinden** (tests the connection by fetching the list) and **Trennen**.
+The registry is a normal, user-visible feature (decided): installing and updating questionnaires is everyday practice work, and nothing updates on its own, so staff must see it.
 
-The connection is stored in the app data folder as `registry.json` (URL, username, key). The key field is masked after saving.
+- The start screen ("Fragebögen") gets a button **„Fragebögen aus der Registry“** next to the list. It opens the registry screen. It is always visible; without a connection the screen shows the connection form first.
+- The registry screen has a connection section with fields for URL, username and key, plus **Verbinden** (tests the connection by fetching the list) and **Trennen** (asks for confirmation). Once connected, the section collapses to one line ("Registry: user @ host, verbunden") with **Ändern**.
+
+The connection is stored in the app data folder as `registry.json` (URL, username, key). The key field is masked after saving and never shown again in plain text; **Ändern** requires entering it anew.
 
 ### Installed definitions
 
 Registry definitions are installed into a separate folder, `registry/`, next to `definitionen/` in the app data folder, as `<id>.yaml`. Local and registry definitions are listed together on the start screen. Registry entries carry a small "Registry" label.
+
+The editor ("Fragebögen bearbeiten") stays in the technical area as today.
 
 `DefinitionEntry` gains `locked: bool`, true for files in `registry/`. Locked entries:
 - cannot be opened in the editor (**Bearbeiten** disabled), saved or deleted from "Fragebögen bearbeiten";
