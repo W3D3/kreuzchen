@@ -24,7 +24,7 @@ The reference example is [`examples/definitionen/beispiel.yaml`](examples/defini
 - `derived`: computed values with an `id` and a `value` expression (e.g. `X + Y`), optionally with a `cutoff`.
 - `sections`: the questionnaire pages, each with a `title`, optional `intro` and `items`. Items have a number `n` or an `id`, `text`, and optionally `scale`, `key` and `answers`.
 - `result`: the IDs shown in the result table, in order.
-- `norms`: optional norm tables (e.g. T-values). `name` is the label (default `T`), `bands` the severity labels by lower bound (`{ from: 60, label: mild }`, ascending), and `tables` maps a scale or derived ID to `{ raw score: norm value }`. A raw score that is not listed takes the next lower listed one, as with a printed table that skips rows.
+- `norms`: optional norm tables (e.g. T-values). `name` is the label (default `T`), `bands` the severity labels by lower bound (`{ from: 60, label: mild }`, ascending), and `tables` maps a scale or derived ID to `{ raw score: norm value }`. A raw score that is not listed takes the next lower listed one, as with a printed table that skips rows. Example: [`examples/definitionen/beispiel_normen.yaml`](examples/definitionen/beispiel_normen.yaml).
 - `rules`: named boolean expressions (`id`, `label`, `when`) that may reference earlier rules.
 - `caveats`: notes shown when their `when` expression is true.
 - `verdict`: ordered list; the first entry whose `when` is true gives the text; the entry with `else` is the fallback.
