@@ -11,5 +11,5 @@ applyTheme(document.documentElement, loadTheme());
 
 const target = document.getElementById("app")!;
 // shortcut: temporary switch for the shadcn-svelte look-and-feel prototype; drop with src/proto.
-if (location.hash === "#proto") import("./proto/main").then((m) => m.default(target));
+if (location.hash.startsWith("#proto")) import("./proto/main").then((m) => m.default(target));
 else mount(App, { target });
