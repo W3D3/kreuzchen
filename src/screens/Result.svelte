@@ -13,6 +13,7 @@
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { saveResult } from "../lib/api";
   import { localTimestamp } from "../lib/kennung";
+  import { compactItems } from "../lib/ranges";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
   let { opened, input, graded, notice, preview = false, onregrade, onback, onnew }: {
@@ -102,9 +103,19 @@
   <div>
     {#if opened}<p class="text-[15px] text-muted-foreground">{opened.definition.title}</p>{/if}
     <h1 class="text-[26px] leading-tight font-bold">Ergebnis</h1>
-    <p class="mt-1 text-[16px]">
-      {#each g.fields as f, i (f.id)}{#if i > 0}<span class="text-muted-foreground">{" · "}</span>{/if}{#if f.id === "kennung"}<strong class="font-mono">{f.value}</strong>{:else}<span class="text-muted-foreground">{f.label}: {f.value}</span>{/if}{/each}
-    </p>
+    {#each g.fields.filter((f) => f.id === "kennung") as f (f.id)}
+      <p class="mt-1 font-mono text-[16px] font-bold">{f.value}</p>
+    {/each}
+    {#if g.fields.some((f) => f.id !== "kennung")}
+      <dl class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-6 gap-y-2.5 rounded-xl border bg-card px-5 py-3.5">
+        {#each g.fields.filter((f) => f.id !== "kennung") as f (f.id)}
+          <div class="min-w-0">
+            <dt class="text-[13px] text-muted-foreground">{f.label}</dt>
+            <dd class="text-[15px] font-medium break-words {f.value === '–' ? 'text-muted-foreground' : ''}">{f.value}</dd>
+          </div>
+        {/each}
+      </dl>
+    {/if}
   </div>
 
   <section class="flex gap-5 rounded-xl border px-5 py-4 {anyMet ? 'border-over/45 bg-over-soft' : 'bg-card'}">
@@ -122,7 +133,7 @@
         </li>
       {/each}
       <li class="text-[15px] text-muted-foreground {g.rules.length ? 'mt-1' : ''}">
-        Fehlende Antworten: <span class="font-mono text-foreground">{g.missing}</span>{g.missing > 0 ? ` (Fragen ${g.missing_items.join(", ")})` : ""}
+        Fehlende Antworten: <span class="font-mono text-foreground">{g.missing}</span>{g.missing > 0 ? ` (Fragen ${compactItems(g.missing_items)})` : ""}
       </li>
     </ul>
   </section>
