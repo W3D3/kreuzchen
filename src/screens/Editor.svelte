@@ -110,7 +110,7 @@
   ];
   const compares = [{ value: ">=", label: "≥ (größer gleich)" }, { value: ">", label: "> (größer)" }];
   const setOptions = $derived(Object.keys(doc.def?.answer_sets ?? {}).map((n) => ({ value: n, label: n })));
-  const scaleOptions = $derived([{ value: null, label: "(keine Skala)" }, ...(doc.def?.scales ?? []).map((s) => ({ value: s.id, label: s.id }))]);
+  const scaleOptions = $derived([{ value: null, label: "(keine Skala)" }, ...(doc.def?.scales ?? []).filter((s) => s.id.trim()).map((s) => ({ value: s.id, label: s.id }))]);
 
   const lbl = "text-[14px] font-bold";
   // One grid template per table, shared by its header and rows so the columns line up.
@@ -120,7 +120,7 @@
     fields: "grid-cols-[9rem_minmax(0,1fr)_9rem_8rem_7.5rem]",
     scales: "grid-cols-[9rem_minmax(0,1fr)_6rem_7.5rem]",
     derived: "grid-cols-[9rem_minmax(0,1fr)_10rem_6rem_7.5rem]",
-    items: "grid-cols-[4.5rem_minmax(0,1fr)_8.5rem_7rem_8.5rem_7.5rem]",
+    items: "grid-cols-[4.5rem_minmax(0,1fr)_10rem_7rem_8.5rem_7.5rem]",
     result: "grid-cols-[minmax(0,1fr)_7.5rem]",
     rules: "grid-cols-[9rem_minmax(0,1fr)_12rem_7.5rem]",
     cond: "grid-cols-[12rem_minmax(0,1fr)_7.5rem]",
@@ -145,10 +145,10 @@
   <Button variant="ghost" class="-ml-2.5 self-start text-primary hover:text-primary" {onclick}><Plus />{label}</Button>
 {/snippet}
 
-{#snippet card(title: string, description: string | null, body: Snippet)}
-  <Card.Root class="gap-3">
+{#snippet card(id: string, title: string, description: string | null, body: Snippet)}
+  <Card.Root class="gap-3" role="group" aria-labelledby="ed-{id}">
     <Card.Header>
-      <Card.Title class="text-[17px] font-bold">{title}</Card.Title>
+      <Card.Title id="ed-{id}" class="text-[17px] font-bold">{title}</Card.Title>
       {#if description}<Card.Description class="text-[14px]">{description}</Card.Description>{/if}
     </Card.Header>
     <Card.Content class="flex flex-col gap-2">{@render body()}</Card.Content>
@@ -194,6 +194,8 @@
         <strong class="flex items-center gap-2"><CircleAlert class="size-4 shrink-0 text-over" />Fehler (Speichern nicht möglich):</strong>
         <ul class="mt-1 list-disc pl-10 text-over">{#each errors as e, i (i)}<li>{e}</li>{/each}</ul>
       </div>
+    {:else if errors}
+      <span class="sr-only">Keine Fehler.</span>
     {/if}
   </div>
 
@@ -207,8 +209,8 @@
       <Info class="size-4 shrink-0" />Kommentare in der Datei gehen beim Speichern über das Formular verloren.
     </p>
 
-    <Card.Root class="gap-4">
-      <Card.Header><Card.Title class="text-[17px] font-bold">Allgemein</Card.Title></Card.Header>
+    <Card.Root class="gap-4" role="group" aria-labelledby="ed-general">
+      <Card.Header><Card.Title id="ed-general" class="text-[17px] font-bold">Allgemein</Card.Title></Card.Header>
       <Card.Content class="grid grid-cols-[1fr_8rem_12rem] gap-x-4 gap-y-3">
         <div class="grid gap-1.5"><Label for="f-title" class={lbl}>Titel</Label><Input id="f-title" bind:value={d.title} /></div>
         <div class="grid gap-1.5"><Label for="f-version" class={lbl}>Version</Label><Input id="f-version" class="font-mono" bind:value={d.version} /></div>
@@ -249,7 +251,7 @@
         </div>
       </div>
     {/snippet}
-    {@render card("Antwortsätze", "Die Antworten, die bei einer Frage angekreuzt werden können, in dieser Reihenfolge.", sets)}
+    {@render card("sets", "Antwortsätze", "Die Antworten, die bei einer Frage angekreuzt werden können, in dieser Reihenfolge.", sets)}
 
     {#snippet keys()}
       {@render head(cols.keys, ["Name", "Punkte, mit Komma getrennt", ""])}
@@ -262,7 +264,7 @@
       {/each}
       {@render add("Schlüssel", () => (d.keys[freshKey(d.keys, "schluessel")] = [0, 1]))}
     {/snippet}
-    {@render card("Schlüssel (Punkte je Antwort)", null, keys)}
+    {@render card("keys", "Schlüssel (Punkte je Antwort)", null, keys)}
 
     {#snippet fields()}
       {@render head(cols.fields, ["ID", "Beschriftung", "Typ", "Vorgabe", ""])}
@@ -277,7 +279,7 @@
       {/each}
       {@render add("Feld", () => d.fields.push({ id: "", label: "", type: "text", default: null }))}
     {/snippet}
-    {@render card("Kopffelder", "Felder über den Fragen, z. B. Kennung oder Alter.", fields)}
+    {@render card("fields", "Kopffelder", "Felder über den Fragen, z. B. Kennung oder Alter.", fields)}
 
     {#snippet scales()}
       {@render head(cols.scales, ["ID", "Beschriftung", "Cut-off", ""])}
@@ -291,7 +293,7 @@
       {/each}
       {@render add("Skala", () => d.scales.push({ id: "", label: "", cutoff: null }))}
     {/snippet}
-    {@render card("Skalen", "Summen über Fragen. Ab dem Cut-off gilt der Wert als auffällig.", scales)}
+    {@render card("scales", "Skalen", "Summen über Fragen. Ab dem Cut-off gilt der Wert als auffällig.", scales)}
 
     {#snippet derived()}
       {@render head(cols.derived, ["ID", "Beschriftung", "Formel", "Cut-off", ""])}
@@ -306,10 +308,10 @@
       {/each}
       {@render add("Abgeleiteter Wert", () => d.derived.push({ id: "", label: "", value: "", cutoff: null }))}
     {/snippet}
-    {@render card("Abgeleitete Werte", null, derived)}
+    {@render card("derived", "Abgeleitete Werte", null, derived)}
 
-    <Card.Root class="gap-3">
-      <Card.Header><Card.Title class="text-[17px] font-bold">Abschnitte und Fragen</Card.Title></Card.Header>
+    <Card.Root class="gap-3" role="group" aria-labelledby="ed-sections">
+      <Card.Header><Card.Title id="ed-sections" class="text-[17px] font-bold">Abschnitte und Fragen</Card.Title></Card.Header>
       <Card.Content class="flex flex-col gap-4">
         <datalist id="keys">{#each Object.keys(d.keys) as k (k)}<option value={k}></option>{/each}</datalist>
         {#each d.sections as sec, si (sec)}
@@ -350,7 +352,7 @@
       {/each}
       {@render add("Zeile", () => d.result.push(""))}
     {/snippet}
-    {@render card("Ergebnis-Reihenfolge", null, result)}
+    {@render card("result", "Ergebnis-Reihenfolge", null, result)}
 
     {#snippet rules()}
       {@render head(cols.rules, ["ID", "Beschriftung", "Bedingung", ""])}
@@ -364,7 +366,7 @@
       {/each}
       {@render add("Regel", () => d.rules.push({ id: "", label: "", when: "" }))}
     {/snippet}
-    {@render card("Regeln", null, rules)}
+    {@render card("rules", "Regeln", null, rules)}
 
     {#snippet caveats()}
       {@render head(cols.cond, ["Bedingung", "Text", ""])}
@@ -377,7 +379,7 @@
       {/each}
       {@render add("Hinweis", () => d.caveats.push({ when: "", text: "" }))}
     {/snippet}
-    {@render card("Hinweise", null, caveats)}
+    {@render card("caveats", "Hinweise", null, caveats)}
 
     {#snippet verdict()}
       {@render head(cols.cond, ["Bedingung", "Text", ""])}
@@ -398,6 +400,6 @@
         {@render add("Sonst-Befund", () => d.verdict.push({ else: "" }))}
       </div>
     {/snippet}
-    {@render card("Befund (der erste zutreffende gilt)", null, verdict)}
+    {@render card("verdict", "Befund (der erste zutreffende gilt)", null, verdict)}
   {/if}
 </div>
