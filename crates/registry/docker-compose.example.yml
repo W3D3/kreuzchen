@@ -1,0 +1,12 @@
+services:
+  registry:
+    image: kreuzchen-registry
+    build:
+      context: ../..
+      dockerfile: crates/registry/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    volumes:
+      - ./example:/data:ro
+    ports:
+      - "127.0.0.1:8080:8080"

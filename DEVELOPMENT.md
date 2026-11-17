@@ -57,3 +57,27 @@ The reference example is [`examples/definitionen/beispiel.yaml`](examples/defini
 - `verdict`: ordered list; the first entry whose `when` is true gives the text; the entry with `else` is the fallback.
 
 Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, `fehlend` is the number of unanswered items, and `X.fehlend` the unanswered items of scale `X`. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`.
+
+## Registry server
+
+`crates/registry` (`kreuzchen-registry`) serves questionnaire definitions to practices over HTTP: `GET /healthz`, `GET /v1/fragebogen` and `GET /v1/fragebogen/{id}` (HTTP Basic auth, read-only).
+
+Layout of the data directory (`/data` in the container, `--data DIR` otherwise):
+
+```
+config.yaml          # practices: user, key_hash, allowed fragebogen ids
+definitionen/*.yaml  # questionnaire definitions, one file each
+```
+
+A working sample is in [`crates/registry/example/`](crates/registry/example/). Run it with `kreuzchen-registry serve [--data DIR] [--port N]` (defaults `/data` and `8080`, bound to `0.0.0.0`). The server exits non-zero if the config or any definition is invalid. Each request is logged to stderr as `user path status`; keys are never logged.
+
+Add a practice:
+
+1. `kreuzchen-registry key` prints `key:` (give it to the practice, it is shown once) and `key_hash:` (argon2id).
+2. Add an entry to `praxen` in `config.yaml` with a unique `user`, the `key_hash` and the `fragebogen` ids the practice may fetch.
+3. Put new definitions in `definitionen/` if needed.
+4. Restart the server; the data is read only at startup.
+
+Container: `docker build -f crates/registry/Dockerfile -t kreuzchen-registry .` builds a static musl binary into a distroless, non-root image (`EXPOSE 8080`, `VOLUME /data`). [`docker-compose.example.yml`](crates/registry/docker-compose.example.yml) mounts the data directory read-only. `docker compose restart` applies config changes.
+
+The server speaks plain HTTP. Run it behind a Cloudflare tunnel for HTTPS and add a Cloudflare rate-limit rule on `/v1/` to throttle guessing.

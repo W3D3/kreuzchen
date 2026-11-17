@@ -1,0 +1,5 @@
+praxen:
+  - user: praxis_beispiel
+    # Create with: kreuzchen-registry key
+    key_hash: "$argon2id$v=19$m=19456,t=2,p=1$PLATZHALTER$PLATZHALTER"
+    fragebogen: [beispiel]

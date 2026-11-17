@@ -1,0 +1,6 @@
+target
+node_modules
+local
+.superpowers
+src-tauri
+.git
