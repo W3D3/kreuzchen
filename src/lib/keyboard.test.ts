@@ -1,13 +1,15 @@
 import { expect, it } from "vitest";
 import { entryKey } from "./keyboard";
 
-const s = { focused: 2, count: 5, options: 4, current: null };
+const s = { focused: 2, count: 5, shortcuts: ["0", "1", "2", "3"], current: null };
 const k = (key: string, o: { shift?: boolean; ctrl?: boolean } = {}) => ({ key, shift: !!o.shift, ctrl: !!o.ctrl });
 
 it("maps keys to actions", () => {
   expect(entryKey(k("0"), s)).toEqual({ type: "answer", index: 0 });
   expect(entryKey(k("3"), s)).toEqual({ type: "answer", index: 3 });
   expect(entryKey(k("4"), s)).toEqual({ type: "none" });
+  expect(entryKey(k("n"), { ...s, shortcuts: ["j", "n"] })).toEqual({ type: "answer", index: 1 });
+  expect(entryKey(k("0"), { ...s, shortcuts: ["j", "n"] })).toEqual({ type: "none" });
   expect(entryKey(k("ArrowRight"), s)).toEqual({ type: "answer", index: 0 });
   expect(entryKey(k("ArrowLeft"), s)).toEqual({ type: "answer", index: 3 });
   expect(entryKey(k("ArrowRight"), { ...s, current: 3 })).toEqual({ type: "answer", index: 3 });

@@ -15,6 +15,9 @@ pub struct Definition {
     pub cutoff_compare: Compare,
     #[serde(default)]
     pub answer_sets: BTreeMap<String, Vec<String>>,
+    /// Entry keys per answer set, one character per answer. Unset sets use 0, 1, 2, ….
+    #[serde(default)]
+    pub shortcuts: BTreeMap<String, String>,
     #[serde(default)]
     pub keys: BTreeMap<String, Vec<i64>>,
     #[serde(default)]

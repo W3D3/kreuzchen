@@ -171,6 +171,28 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
         }
     }
 
+    for (name, keys) in &def.shortcuts {
+        let wher = format!("Tasten für „{name}“");
+        let Some(set) = def.answer_sets.get(name) else {
+            errors.push(err(format!("{wher}: Antwortset ist nicht definiert")));
+            continue;
+        };
+        let n = keys.chars().count();
+        if n != set.len() {
+            errors.push(err(format!(
+                "{wher}: {n} Tasten, das Antwortset hat {} Antworten",
+                set.len()
+            )));
+        }
+        if keys.chars().any(char::is_whitespace) {
+            errors.push(err(format!("{wher}: Leerzeichen sind nicht erlaubt")));
+        }
+        let mut seen = BTreeSet::new();
+        for c in keys.chars().filter(|c| !seen.insert(*c)) {
+            errors.push(err(format!("{wher}: Taste „{c}“ ist doppelt")));
+        }
+    }
+
     // Items.
     let mut keys_seen = BTreeSet::new();
     for (sec, item) in &items {

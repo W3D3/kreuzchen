@@ -17,6 +17,7 @@ export interface Definition {
   authors: string | null; copyright: string | null;
   cutoff_compare: Compare;
   answer_sets: Record<string, string[]>;
+  shortcuts: Record<string, string>;
   keys: Record<string, number[]>;
   default_answers: string | null;
   fields: Field[]; scales: Scale[]; derived: Derived[]; sections: Section[];

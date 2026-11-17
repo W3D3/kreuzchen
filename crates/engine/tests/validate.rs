@@ -148,3 +148,27 @@ fn rejects_bad_names() {
         assert!(errs(from, to).contains(&msg(bad)), "{bad}");
     }
 }
+
+#[test]
+fn shortcuts_are_valid() {
+    let y = FIXTURE.replacen(
+        "keys:",
+        "shortcuts:\n  haeufigkeit: \"1234\"\n  ja_nein: jn\nkeys:",
+        1,
+    );
+    assert!(load(&y).is_ok());
+}
+
+#[test]
+fn shortcuts_errors() {
+    let e = |s: &str| errs("keys:", &format!("shortcuts:\n  {s}\nkeys:"));
+    assert!(e("haeufigkeit: \"123\"").contains(
+        &"Tasten für „haeufigkeit“: 3 Tasten, das Antwortset hat 4 Antworten".to_string()
+    ));
+    assert!(e("haeufigkeit: \"1231\"")
+        .contains(&"Tasten für „haeufigkeit“: Taste „1“ ist doppelt".to_string()));
+    assert!(e("ja_nein: \"j \"")
+        .contains(&"Tasten für „ja_nein“: Leerzeichen sind nicht erlaubt".to_string()));
+    assert!(e("gibtsnicht: \"12\"")
+        .contains(&"Tasten für „gibtsnicht“: Antwortset ist nicht definiert".to_string()));
+}

@@ -15,3 +15,11 @@ fn omits_unset_optionals() {
     assert!(!out.contains("null"), "{out}");
     assert!(!out.contains("authors"), "{out}");
 }
+
+#[test]
+fn shortcuts_round_trip() {
+    let y = YAML.replacen("keys:", "shortcuts:\n  ja_nein: nj\nkeys:", 1);
+    let def = parse_definition(&y).unwrap();
+    assert_eq!(def.shortcuts["ja_nein"], "nj");
+    assert_eq!(load(&to_yaml(&def)).unwrap().def, def);
+}

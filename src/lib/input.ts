@@ -10,16 +10,23 @@ export function initialInput(def: Definition, now: Date): Input {
   return { fields, answers: {} };
 }
 
-export interface EntryItem { key: string; text: string; options: string[]; section: number; scored: boolean }
+/** `shortcuts[j]` is the key that picks `options[j]`; "" when it has none. */
+export interface EntryItem { key: string; text: string; options: string[]; shortcuts: string[]; section: number; scored: boolean }
 
 export function entryItems(def: Definition): EntryItem[] {
   return def.sections.flatMap((s, section) =>
-    s.items.map((i) => ({
-      key: i.id ?? String(i.n),
-      text: i.text,
-      options: def.answer_sets[i.answers ?? def.default_answers ?? ""] ?? [],
-      section,
-      scored: i.scale != null,
-    })),
+    s.items.map((i) => {
+      const set = i.answers ?? def.default_answers ?? "";
+      const options = def.answer_sets[set] ?? [];
+      const keys = def.shortcuts[set];
+      return {
+        key: i.id ?? String(i.n),
+        text: i.text,
+        options,
+        shortcuts: options.map((_, j) => (keys ? [...keys][j] : j < 10 ? String(j) : "")),
+        section,
+        scored: i.scale != null,
+      };
+    }),
   );
 }
