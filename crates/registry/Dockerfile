@@ -7,6 +7,7 @@ COPY crates/registry crates/registry
 # The workspace also lists the Tauri app, which the server does not need. Without --locked because
 # dropping that member prunes Cargo.lock; existing pins are kept.
 RUN sed -i 's|^members = .*|members = ["crates/engine", "crates/registry"]|' Cargo.toml \
+ && grep -q 'members = \["crates/engine", "crates/registry"\]' Cargo.toml \
  && cargo build --release --target x86_64-unknown-linux-musl -p kreuzchen-registry
 
 FROM gcr.io/distroless/static:nonroot

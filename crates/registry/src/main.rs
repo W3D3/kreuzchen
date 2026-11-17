@@ -80,6 +80,23 @@ async fn log(req: Request, next: Next) -> Response {
         .unwrap_or_else(|| "-".into());
     let path = req.uri().path().to_owned();
     let res = next.run(req).await;
-    eprintln!("{user} {path} {}", res.status().as_u16());
+    eprintln!("{}", log_line(&user, &path, res.status().as_u16()));
     res
+}
+
+/// The user comes from an unauthenticated header: control characters must not forge log lines.
+fn log_line(user: &str, path: &str, status: u16) -> String {
+    let clean = |s: &str| s.replace(|c: char| c.is_control(), "?");
+    format!("{} {} {status}", clean(user), clean(path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::log_line;
+
+    #[test]
+    fn log_line_stays_single_line() {
+        let l = log_line("a\nb\r\u{1b}c", "/x\ny", 401);
+        assert_eq!(l, "a?b??c /x?y 401");
+    }
 }

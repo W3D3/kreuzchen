@@ -69,7 +69,7 @@ config.yaml          # practices: user, key_hash, allowed fragebogen ids
 definitionen/*.yaml  # questionnaire definitions, one file each
 ```
 
-A working sample is in [`crates/registry/example/`](crates/registry/example/). Run it with `kreuzchen-registry serve [--data DIR] [--port N]` (defaults `/data` and `8080`, bound to `0.0.0.0`). The server exits non-zero if the config or any definition is invalid. Each request is logged to stderr as `user path status`; keys are never logged.
+A sample is in [`crates/registry/example/`](crates/registry/example/). Its `config.yaml` ships with a placeholder `key_hash` that the server rejects ("ungültiger key_hash") until you replace it with one from `kreuzchen-registry key`. Run it with `kreuzchen-registry serve [--data DIR] [--port N]` (defaults `/data` and `8080`, bound to `0.0.0.0`). The server exits non-zero if the config or any definition is invalid. Each request is logged to stderr as `user path status`; keys are never logged.
 
 Add a practice:
 
