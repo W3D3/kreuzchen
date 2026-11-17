@@ -12,6 +12,9 @@ pub struct Definition {
     pub authors: Option<String>,
     #[serde(default)]
     pub copyright: Option<String>,
+    /// Oldest Kreuzchen version that can open this file, e.g. "0.4.0".
+    #[serde(default)]
+    pub min_app: Option<String>,
     #[serde(default)]
     pub cutoff_compare: Compare,
     #[serde(default)]

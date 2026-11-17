@@ -1,5 +1,6 @@
 <script lang="ts">
   import CloudDownload from "@lucide/svelte/icons/cloud-download";
+  import Download from "@lucide/svelte/icons/download";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import Play from "@lucide/svelte/icons/play";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
@@ -12,7 +13,7 @@
   import { initialInput } from "../lib/input";
   import type { DefinitionEntry, Input, OpenedDefinition } from "../lib/types";
 
-  let { onstart, onregistry }: { onstart: (opened: OpenedDefinition, input: Input) => void; onregistry: () => void } = $props();
+  let { onstart, onregistry, onupdate }: { onstart: (opened: OpenedDefinition, input: Input) => void; onregistry: () => void; onupdate: () => void } = $props();
 
   let entries = $state<DefinitionEntry[] | null>(null);
   let dir = $state("");
@@ -61,13 +62,21 @@
                 <p class="mt-0.5 text-[15px] text-muted-foreground">
                   {e.summary.item_count} Fragen · {e.summary.scale_count} Skalen · Version {e.summary.version}<span class="tech"> · <span class="font-mono">{e.file}</span></span>
                 </p>
+              {:else if e.needs_app}
+                <p class="flex items-center gap-2 text-[18px] font-bold"><Download class="size-4.5 shrink-0 text-primary" />Update nötig</p>
+                <p class="mt-0.5 text-[15px] text-muted-foreground">Dieser Fragebogen benötigt Kreuzchen {e.needs_app} oder neuer.</p>
+                <pre class="tech mt-2 font-mono whitespace-pre-wrap">{e.file}</pre>
               {:else}
                 <p class="flex items-center gap-2 text-[18px] font-bold"><TriangleAlert class="size-4.5 shrink-0 text-over" />Unbekannter Fragebogen</p>
                 <p class="mt-0.5 text-[15px] text-muted-foreground">Dieser Fragebogen kann nicht geöffnet werden. Bitte wenden Sie sich an den Support.</p>
                 <pre class="tech mt-2 font-mono whitespace-pre-wrap">{e.file ? e.file + "\n" : ""}{e.error}</pre>
               {/if}
             </div>
-            <Button class="h-11 px-5 font-bold" disabled={!e.summary} onclick={() => start(e)}><Play />Starten</Button>
+            {#if e.needs_app}
+              <Button variant="outline" class="h-11 px-5 font-bold" onclick={onupdate}><Download />Zu den Updates</Button>
+            {:else}
+              <Button class="h-11 px-5 font-bold" disabled={!e.summary} onclick={() => start(e)}><Play />Starten</Button>
+            {/if}
           </li>
         {/each}
       </ul>

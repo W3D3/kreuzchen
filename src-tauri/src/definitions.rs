@@ -1,4 +1,4 @@
-use kreuzchen_engine::{Questionnaire, load, schema::Definition};
+use kreuzchen_engine::{Questionnaire, load, needs_newer_app, schema::Definition};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
@@ -18,6 +18,8 @@ pub struct DefinitionEntry {
     pub hash: String,
     pub summary: Option<Summary>,
     pub error: Option<String>,
+    /// Set when the file declares a `min_app` newer than this version.
+    pub needs_app: Option<String>,
     pub locked: bool,
 }
 
@@ -75,8 +77,15 @@ fn parse(bytes: &[u8]) -> Result<Questionnaire, String> {
     load_text(std::str::from_utf8(bytes).map_err(|_| "Datei ist nicht UTF-8".to_string())?)
 }
 
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// `load` with the errors joined into one German message, one per line.
 pub fn load_text(text: &str) -> Result<Questionnaire, String> {
+    if let Some(min) = needs_newer_app(text, APP_VERSION) {
+        return Err(format!(
+            "Dieser Fragebogen benötigt Kreuzchen {min} oder neuer. Bitte unter Einstellungen → Updates aktualisieren."
+        ));
+    }
     load(text).map_err(|errs| {
         errs.iter()
             .map(|e| e.to_string())
@@ -91,6 +100,7 @@ fn broken(file: String, error: String) -> DefinitionEntry {
         hash: String::new(),
         summary: None,
         error: Some(error),
+        needs_app: None,
         locked: false,
     }
 }
@@ -117,6 +127,9 @@ fn scan_entry(e: std::fs::DirEntry) -> Option<DefinitionEntry> {
         Err(e) => (None, Some(e)),
     };
     Some(DefinitionEntry {
+        needs_app: std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|t| needs_newer_app(t, APP_VERSION)),
         hash: hash(&bytes),
         file,
         summary,
@@ -179,6 +192,22 @@ mod tests {
     use std::fs;
 
     const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
+
+    #[test]
+    fn too_new_file_names_the_version_it_needs() {
+        let d = tempfile::tempdir().unwrap();
+        let yaml = FIXTURE.replacen("title:", "min_app: \"99.0.0\"\ntitle:", 1);
+        fs::write(d.path().join("neu.yaml"), &yaml).unwrap();
+        let e = &scan(d.path())[0];
+        assert_eq!(e.needs_app.as_deref(), Some("99.0.0"));
+        assert!(e.summary.is_none());
+        assert!(
+            load_text(&yaml)
+                .err()
+                .unwrap()
+                .contains("99.0.0 oder neuer")
+        );
+    }
 
     #[test]
     fn scan_filters_and_sorts() {

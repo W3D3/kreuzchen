@@ -108,7 +108,7 @@
   </header>
   <main class="mx-auto max-w-[56rem] p-6">
     {#if screen.name === "list"}
-      <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} onregistry={() => (screen = { name: "registry" })} />
+      <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} onregistry={() => (screen = { name: "registry" })} onupdate={() => (screen = { name: "settings" })} />
     {:else if screen.name === "entry"}
       {@const e = screen}
       <Entry

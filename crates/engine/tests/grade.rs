@@ -276,3 +276,18 @@ fn age_rule_works_with_and_without_an_age() {
     let g = grade_with(&yaml, &answers, &[]).unwrap();
     assert_eq!(g.caveats, vec!["Alter fehlt.".to_string()]);
 }
+
+#[test]
+fn min_app_is_checked_before_the_full_load() {
+    use kreuzchen_engine::needs_newer_app;
+    let newer = YAML.replacen("title:", "min_app: \"0.10.0\"\ntitle:", 1);
+    assert_eq!(needs_newer_app(&newer, "0.9.3").as_deref(), Some("0.10.0"));
+    assert_eq!(needs_newer_app(&newer, "0.10.0"), None);
+    assert_eq!(needs_newer_app(YAML, "0.1.0"), None);
+    // A future key the schema rejects does not hide the version hint.
+    let future = format!("{newer}\nkuenftig: 1\n");
+    assert!(load(&future).is_err());
+    assert_eq!(needs_newer_app(&future, "0.9.3").as_deref(), Some("0.10.0"));
+    assert!(load(&newer).is_ok());
+    assert!(load(&YAML.replacen("title:", "min_app: neu\ntitle:", 1)).is_err());
+}
