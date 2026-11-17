@@ -5,6 +5,7 @@
   import Saved from "./screens/Saved.svelte";
   import Definitions from "./screens/Definitions.svelte";
   import Editor from "./screens/Editor.svelte";
+  import { getVersion } from "@tauri-apps/api/app";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -31,8 +32,25 @@
   let update = $state<Update | null>(null);
   let updating = $state(false);
   let updateError = $state<string | null>(null);
-  // Offline or no published release: stay quiet, the next start checks again.
-  check().then((u) => (update = u), () => {});
+  let checking = $state(false);
+  /** Result of a manual check that found nothing to install, shown on the button for a moment. */
+  let updateNote = $state<string | null>(null);
+
+  // The automatic check at start stays quiet when offline; a manual one says what happened.
+  async function findUpdate(manual: boolean) {
+    checking = true;
+    updateNote = null;
+    try {
+      update = await check();
+      if (!update && manual) updateNote = `Aktuell ✓ ${await getVersion()}`;
+    } catch {
+      if (manual) updateNote = "Keine Verbindung";
+    } finally {
+      checking = false;
+    }
+    if (updateNote) setTimeout(() => (updateNote = null), 4000);
+  }
+  findUpdate(false);
 
   /** True when there is no unsaved entry or draft, or the user agrees to discard it. */
   async function mayLeave(): Promise<boolean> {
@@ -90,6 +108,7 @@
   <button class:active={screen.name === "list" || screen.name === "entry"} onclick={() => go({ name: "list" })}>Fragebögen</button>
   <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
   <button class="tech" class:active={screen.name === "definitions" || screen.name === "editor"} onclick={() => go({ name: "definitions" })}>Fragebögen bearbeiten</button>
+  <button class="check" onclick={() => findUpdate(true)} disabled={checking || updating}>{checking ? "Suche Updates …" : updateNote ?? "Nach Updates suchen"}</button>
 </nav>
 {#if update}
   <div class="update" role="status">
@@ -135,6 +154,8 @@
   nav { display: flex; gap: .5rem; padding: .75rem 1.5rem; background: var(--surface); border-bottom: 1px solid var(--line); }
   nav button { font: inherit; min-height: 48px; padding: 0 1.25rem; border-radius: 10px; border: 0; background: none; color: var(--fg); cursor: pointer; }
   nav button.active { background: var(--accent-soft); font-weight: 700; }
+  nav .check { margin-left: auto; color: var(--muted); }
+  nav .check:disabled { cursor: progress; }
   .update { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: .5rem 1.5rem; background: var(--accent-soft); border-bottom: 1px solid var(--line); }
   .update button { font: inherit; min-height: 40px; padding: 0 1.25rem; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 700; cursor: pointer; }
   .update button:disabled { opacity: .5; cursor: progress; }
