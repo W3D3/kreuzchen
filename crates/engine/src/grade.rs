@@ -39,7 +39,7 @@ pub enum ResultRow {
     Sum {
         id: String,
         label: String,
-        value: i64,
+        value: f64,
         cutoff: Option<i64>,
         over: bool,
     },
@@ -113,10 +113,10 @@ impl Questionnaire {
         &e.expect("validated: every rule compiled").1
     }
 
-    fn over(&self, value: i64, cutoff: Option<i64>) -> bool {
+    fn over(&self, value: f64, cutoff: Option<i64>) -> bool {
         cutoff.is_some_and(|c| match self.def.cutoff_compare {
-            Compare::Gt => value > c,
-            Compare::Ge => value >= c,
+            Compare::Gt => value > c as f64,
+            Compare::Ge => value >= c as f64,
         })
     }
 
@@ -168,15 +168,15 @@ impl Questionnaire {
             }
         }
 
-        let scale_vals: BTreeMap<&str, (i64, bool)> = def
+        let scale_vals: BTreeMap<&str, (f64, bool)> = def
             .scales
             .iter()
             .map(|s| {
-                let v = sums[s.id.as_str()];
+                let v = sums[s.id.as_str()] as f64;
                 (s.id.as_str(), (v, self.over(v, s.cutoff)))
             })
             .collect();
-        let mut derived_vals: BTreeMap<String, (i64, bool)> = BTreeMap::new();
+        let mut derived_vals: BTreeMap<String, (f64, bool)> = BTreeMap::new();
         let missing = missing_items.len() as u32;
         let mut rules = Vec::new();
         let env = build_env(
@@ -203,17 +203,16 @@ impl Questionnaire {
                 missing: missing as f64,
                 derived: &mut |d, env| {
                     let n = match eval(self.derived_expr(&d.id), env)? {
-                        Value::Num(n) if n.fract() == 0.0 => n,
+                        Value::Num(n) if n.is_finite() => n,
                         Value::Num(_) => {
                             return Err(GradeError::Eval(format!(
-                                "Abgeleiteter Wert „{}“ ist keine ganze Zahl",
+                                "Abgeleiteter Wert „{}“: Division durch 0",
                                 d.id
                             )))
                         }
                         _ => return Err(GradeError::Eval("Ergebnis muss eine Zahl sein".into())),
                     };
-                    let v = n as i64;
-                    let r = (v, self.over(v, d.cutoff));
+                    let r = (n, self.over(n, d.cutoff));
                     derived_vals.insert(d.id.clone(), r);
                     Ok(r)
                 },

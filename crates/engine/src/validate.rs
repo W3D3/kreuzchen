@@ -71,10 +71,10 @@ fn compile(
 fn add_scored(
     env: &mut BTreeMap<String, Value>,
     id: &str,
-    (value, over): (i64, bool),
+    (value, over): (f64, bool),
     cutoff: Option<i64>,
 ) {
-    env.insert(id.to_string(), Value::Num(value as f64));
+    env.insert(id.to_string(), Value::Num(value));
     if let Some(c) = cutoff {
         env.insert(format!("{id}.cutoff"), Value::Num(c as f64));
         env.insert(format!("{id}.over"), Value::Bool(over));
@@ -84,11 +84,11 @@ fn add_scored(
 /// How the shared environment gets its values: validation passes stand-ins, grading real ones.
 type Env = BTreeMap<String, Value>;
 /// Value and over-cutoff flag.
-type Scored = (i64, bool);
+type Scored = (f64, bool);
 
 pub(crate) struct EnvSource<'a, E> {
     /// Sum and over-cutoff flag of a scale.
-    pub scale: &'a dyn Fn(&Scale) -> (i64, bool),
+    pub scale: &'a dyn Fn(&Scale) -> Scored,
     /// Value of a field; `None` leaves it out of the environment.
     pub field: &'a dyn Fn(&Field) -> Option<Value>,
     /// Answer text of an item with an `id` (empty when unanswered).
@@ -266,7 +266,7 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
     let env = build_env::<()>(
         &def,
         EnvSource {
-            scale: &|_| (0, false),
+            scale: &|_| (0.0, false),
             field: &|f| {
                 Some(match f.kind {
                     FieldKind::Number => Value::Num(0.0),
@@ -280,7 +280,7 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
                 let w = format!("Abgeleiteter Wert „{}“", d.id);
                 let e = compile(&d.value, env, Want::Num, &w, &mut errs.borrow_mut());
                 derived.extend(e.map(|e| (d.clone(), e)));
-                Ok((0, false))
+                Ok((0.0, false))
             },
             rule: &mut |r, env| {
                 let w = format!("Regel „{}“", r.id);

@@ -20,7 +20,7 @@ fn sum(g: &Grading, id: &str) -> i64 {
     g.rows
         .iter()
         .find_map(|r| match r {
-            ResultRow::Sum { id: i, value, .. } if i == id => Some(*value),
+            ResultRow::Sum { id: i, value, .. } if i == id => Some(*value as i64),
             _ => None,
         })
         .unwrap_or_else(|| panic!("no sum row {id}"))

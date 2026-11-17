@@ -28,7 +28,7 @@ fn sum(g: &Grading, id: &str) -> (i64, bool) {
         .find_map(|r| match r {
             ResultRow::Sum {
                 id: i, value, over, ..
-            } if i == id => Some((*value, *over)),
+            } if i == id => Some((*value as i64, *over)),
             _ => None,
         })
         .unwrap()
@@ -208,9 +208,9 @@ fn rows_in_result_order() {
     assert_eq!(
         g.rows,
         vec![
-            sum("gesamt", "Gesamtsumme", 7, 7),
-            sum("X", "Skala X", 4, 4),
-            sum("Y", "Skala Y", 3, 3),
+            sum("gesamt", "Gesamtsumme", 7.0, 7),
+            sum("X", "Skala X", 4.0, 4),
+            sum("Y", "Skala Y", 3.0, 3),
             ResultRow::Answer {
                 id: "zusatz".into(),
                 label: "Zusatzfrage".into(),
@@ -228,4 +228,34 @@ fn unset_number_field_is_eval_error() {
         GradeError::Eval(m) => assert!(m.contains("„alter“ hat keinen Wert"), "{m}"),
         e => panic!("{e:?}"),
     }
+}
+
+#[test]
+fn derived_mean_keeps_decimals() {
+    let yaml = YAML.replacen("value: X + Y", "value: (X + Y) / 2", 1);
+    let answers = [("1", 0), ("2", 0), ("3", 0), ("4", 0), ("zusatz", 0)];
+    let g = grade_with(&yaml, &answers, &[]).unwrap();
+    let mean = g.rows.iter().find_map(|r| match r {
+        ResultRow::Sum { id, value, .. } if id == "gesamt" => Some(*value),
+        _ => None,
+    });
+    assert_eq!(mean, Some(1.5));
+    let q = load(&yaml).unwrap();
+    let input = Input {
+        fields: Default::default(),
+        answers: answers.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+    };
+    assert!(q
+        .plain_text(&input, &g)
+        .contains("Gesamtsumme: 1,5 (Cut-off 7)\n"));
+}
+
+#[test]
+fn division_by_zero_is_an_error() {
+    let yaml = YAML.replacen("value: X + Y", "value: X / Y", 1);
+    let answers = [("1", 0), ("2", 0), ("3", 0), ("4", 0), ("zusatz", 0)];
+    assert!(matches!(
+        grade_with(&yaml, &answers, &[]),
+        Err(GradeError::Eval(m)) if m.contains("Division durch 0")
+    ));
 }

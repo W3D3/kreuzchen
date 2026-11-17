@@ -26,6 +26,7 @@ pub enum Op {
     Gt,
     Lt,
     Add,
+    Div,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -111,6 +112,7 @@ fn tokenize(src: &str) -> Result<Vec<(usize, Tok)>, String> {
                 (_, '>') => (Op::Gt, 1),
                 (_, '<') => (Op::Lt, 1),
                 (_, '+') => (Op::Add, 1),
+                (_, '/') => (Op::Div, 1),
                 (_, '(') => {
                     i += 1;
                     out.push((start, Tok::LParen));
@@ -189,7 +191,11 @@ impl Parser {
     }
 
     fn sum(&mut self) -> Result<Expr, String> {
-        self.binary(Op::Add, Self::atom)
+        self.binary(Op::Add, Self::quotient)
+    }
+
+    fn quotient(&mut self) -> Result<Expr, String> {
+        self.binary(Op::Div, Self::atom)
     }
 
     fn atom(&mut self) -> Result<Expr, String> {
@@ -274,6 +280,8 @@ pub fn eval(e: &Expr, env: &BTreeMap<String, Value>) -> Result<Value, String> {
                     Value::Bool(a || b)
                 }
                 Op::Add => Value::Num(want_num(l)? + want_num(r)?),
+                // x / 0 stays infinite here; grading rejects it, validation's zero stand-ins must not.
+                Op::Div => Value::Num(want_num(l)? / want_num(r)?),
                 Op::Eq | Op::Ne => {
                     if std::mem::discriminant(&l) != std::mem::discriminant(&r) {
                         return Err(format!(
@@ -322,6 +330,12 @@ mod tests {
     #[test]
     fn precedence() {
         assert_eq!(run("1 + 2 >= 3 and not false", &[]), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn division() {
+        assert_eq!(run("7 / 2", &[]), Ok(Value::Num(3.5)));
+        assert_eq!(run("1 + 6 / 3 / 2", &[]), Ok(Value::Num(2.0)));
     }
 
     #[test]
