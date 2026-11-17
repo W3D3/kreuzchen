@@ -83,8 +83,9 @@ mod tests {
 
     const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
 
+    /// A registry folder that does not exist (its temp parent is removed on drop).
     fn empty() -> std::path::PathBuf {
-        std::path::PathBuf::from("/nonexistent-registry")
+        tempfile::tempdir().unwrap().path().join("registry")
     }
 
     fn dir_with_fixture() -> (tempfile::TempDir, String) {

@@ -47,7 +47,7 @@
 {#each entries ?? [] as e (e.locked + e.file + e.hash)}
   <div class="card">
     <div>
-      <strong>{e.summary?.title ?? "Fehlerhafte Datei"}</strong>
+      <strong>{e.summary?.title ?? "Fehlerhafte Datei"}</strong>{#if e.locked}<span class="pill">Registry</span>{/if}
       <div class="muted">{e.file}{e.summary ? ` · Version ${e.summary.version}` : ""}</div>
     </div>
     <div class="actions">
@@ -63,6 +63,7 @@
   .card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.5rem; margin-bottom: 1rem; }
   .card strong { font-size: 1.15rem; }
   .muted { color: var(--muted); font-family: var(--mono); }
+  .pill { margin-left: .5rem; padding: .1rem .5rem; border: 1px solid var(--line); border-radius: 999px; font-size: .8rem; color: var(--muted); vertical-align: middle; }
   .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
   button { font: inherit; min-height: 48px; padding: 0 1.25rem; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
   button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }

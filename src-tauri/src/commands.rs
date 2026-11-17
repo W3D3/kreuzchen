@@ -187,3 +187,17 @@ pub fn duplicate_definition(
 ) -> Result<String, String> {
     editor::duplicate(&paths.definitions, &paths.registry, locked, &file)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::refuse_locked;
+
+    #[test]
+    fn locked_save_and_delete_are_refused() {
+        assert_eq!(
+            refuse_locked(true),
+            Err("Fragebögen aus der Registry können nicht geändert werden.".into())
+        );
+        assert_eq!(refuse_locked(false), Ok(()));
+    }
+}
