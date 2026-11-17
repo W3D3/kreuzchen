@@ -18,16 +18,21 @@ pub struct Graded {
 
 #[tauri::command]
 pub fn list_definitions(paths: State<Paths>) -> Vec<DefinitionEntry> {
-    definitions::scan(&paths.definitions)
+    definitions::scan_all(&paths.definitions, &paths.registry)
 }
 
 #[tauri::command]
-pub fn get_definition(paths: State<Paths>, file: String) -> Result<OpenedDefinition, String> {
-    let (q, hash) = definitions::open(&paths.definitions, &file)?;
+pub fn get_definition(
+    paths: State<Paths>,
+    file: String,
+    locked: bool,
+) -> Result<OpenedDefinition, String> {
+    let (q, hash) = definitions::open(paths.dir(locked), &file)?;
     Ok(OpenedDefinition {
         file,
         hash,
         definition: q.def,
+        locked,
     })
 }
 
@@ -35,10 +40,11 @@ pub fn get_definition(paths: State<Paths>, file: String) -> Result<OpenedDefinit
 pub fn grade(
     paths: State<Paths>,
     file: String,
+    locked: bool,
     hash: String,
     input: Input,
 ) -> Result<Graded, String> {
-    let (q, current) = definitions::open(&paths.definitions, &file)?;
+    let (q, current) = definitions::open(paths.dir(locked), &file)?;
     definitions::check_hash(&current, &hash)?;
     let grading = q.grade(&input).map_err(|e| e.to_string())?;
     let text = q.plain_text(&input, &grading);
@@ -77,11 +83,9 @@ pub fn list_results(paths: State<Paths>) -> Vec<SavedSummary> {
 #[tauri::command]
 pub fn open_result(paths: State<Paths>, name: String) -> Result<OpenedResult, String> {
     let record = store::load(&paths.results, &name)?;
-    let current = definitions::scan(&paths.definitions).into_iter().find(|e| {
-        e.summary
-            .as_ref()
-            .is_some_and(|s| s.id == record.questionnaire.id)
-    });
+    let q = &record.questionnaire;
+    let current =
+        definitions::find_by_id(&paths.definitions, &paths.registry, &q.id, Some(&q.hash));
     let outdated = current
         .as_ref()
         .is_some_and(|c| c.hash != record.questionnaire.hash);
@@ -135,26 +139,51 @@ pub fn grade_draft(yaml: String, input: Input) -> Result<Graded, String> {
 }
 
 #[tauri::command]
-pub fn read_definition_source(paths: State<Paths>, file: String) -> Result<String, String> {
-    editor::read_source(&paths.definitions, &file)
+pub fn read_definition_source(
+    paths: State<Paths>,
+    file: String,
+    locked: bool,
+) -> Result<String, String> {
+    editor::read_source(paths.dir(locked), &file)
+}
+
+fn refuse_locked(locked: bool) -> Result<(), String> {
+    if locked {
+        Err("Fragebögen aus der Registry können nicht geändert werden.".into())
+    } else {
+        Ok(())
+    }
 }
 
 #[tauri::command]
 pub fn save_definition(
     paths: State<Paths>,
     file: String,
+    locked: bool,
     yaml: String,
     expected_hash: Option<String>,
 ) -> Result<String, String> {
-    editor::save(&paths.definitions, &file, &yaml, expected_hash.as_deref())
+    refuse_locked(locked)?;
+    editor::save(
+        &paths.definitions,
+        &paths.registry,
+        &file,
+        &yaml,
+        expected_hash.as_deref(),
+    )
 }
 
 #[tauri::command]
-pub fn delete_definition(paths: State<Paths>, file: String) -> Result<(), String> {
+pub fn delete_definition(paths: State<Paths>, file: String, locked: bool) -> Result<(), String> {
+    refuse_locked(locked)?;
     editor::delete(&paths.definitions, &file)
 }
 
 #[tauri::command]
-pub fn duplicate_definition(paths: State<Paths>, file: String) -> Result<String, String> {
-    editor::duplicate(&paths.definitions, &file)
+pub fn duplicate_definition(
+    paths: State<Paths>,
+    file: String,
+    locked: bool,
+) -> Result<String, String> {
+    editor::duplicate(&paths.definitions, &paths.registry, locked, &file)
 }

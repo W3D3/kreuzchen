@@ -22,14 +22,14 @@
 
   const edit = (e: DefinitionEntry) =>
     run(async () => {
-      const yaml = await readDefinitionSource(e.file);
+      const yaml = await readDefinitionSource(e.file, e.locked);
       const def = await yamlToDefinition(yaml).catch(() => null);
       onedit(openDoc(e.file, e.hash, yaml, def));
     });
 
   const duplicate = (e: DefinitionEntry) =>
     run(async () => {
-      await duplicateDefinition(e.file);
+      await duplicateDefinition(e.file, e.locked);
       entries = await listDefinitions();
     });
 
@@ -37,23 +37,23 @@
     run(async () => {
       const title = e.summary?.title ?? e.file;
       if (!(await ask(`Fragebogen „${title}“ endgültig löschen? Gespeicherte Auswertungen bleiben erhalten.`, { kind: "warning" }))) return;
-      await deleteDefinition(e.file);
+      await deleteDefinition(e.file, e.locked);
       entries = await listDefinitions();
     });
 </script>
 
 <h1>Fragebögen bearbeiten</h1>
 {#if banner}<p class="banner" role="alert">{banner}</p>{/if}
-{#each entries ?? [] as e (e.file + e.hash)}
+{#each entries ?? [] as e (e.locked + e.file + e.hash)}
   <div class="card">
     <div>
       <strong>{e.summary?.title ?? "Fehlerhafte Datei"}</strong>
       <div class="muted">{e.file}{e.summary ? ` · Version ${e.summary.version}` : ""}</div>
     </div>
     <div class="actions">
-      <button class="primary" disabled={!e.file || !e.hash} onclick={() => edit(e)}>Bearbeiten</button>
+      <button class="primary" disabled={e.locked || !e.file || !e.hash} onclick={() => edit(e)}>Bearbeiten</button>
       <button disabled={!e.hash} onclick={() => duplicate(e)}>Duplizieren</button>
-      <button disabled={!e.file} onclick={() => remove(e)}>Löschen</button>
+      <button disabled={e.locked || !e.file} onclick={() => remove(e)}>Löschen</button>
     </div>
   </div>
 {/each}

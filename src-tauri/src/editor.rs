@@ -1,4 +1,4 @@
-use crate::definitions::{YAML, check_name, hash, load_text, scan};
+use crate::definitions::{YAML, check_name, hash, load_text, scan, scan_all};
 use crate::store::write_atomic;
 use std::{collections::HashSet, fs, path::Path};
 
@@ -9,14 +9,24 @@ pub fn read_source(dir: &Path, file: &str) -> Result<String, String> {
 
 /// Validates `yaml` and writes it to `dir/file`, returning the new hash.
 /// With `expected_hash` the file must still match it; without, it must not exist yet.
+/// Refuses an id installed in `registry`: ids must be unique across both folders.
 pub fn save(
     dir: &Path,
+    registry: &Path,
     file: &str,
     yaml: &str,
     expected_hash: Option<&str>,
 ) -> Result<String, String> {
     check_name(file, YAML)?;
-    load_text(yaml)?;
+    let id = load_text(yaml)?.def.id;
+    if scan(registry)
+        .iter()
+        .any(|e| e.summary.as_ref().is_some_and(|s| s.id == id))
+    {
+        return Err(format!(
+            "Die ID „{id}“ gehört zu einem Fragebogen aus der Registry."
+        ));
+    }
     let path = dir.join(file);
     match expected_hash {
         Some(h) if fs::read(&path).map(|b| hash(&b)).ok().as_deref() != Some(h) => {
@@ -36,12 +46,19 @@ pub fn delete(dir: &Path, file: &str) -> Result<(), String> {
     fs::remove_file(dir.join(file)).map_err(|e| format!("Löschen fehlgeschlagen: {e}"))
 }
 
-/// Copies `file` under a fresh id (`{id}_kopie`, `{id}_kopie2` …) as `{id}.yaml`; returns the new name.
-/// Saved results find their definition by id, so two files must never share one.
-pub fn duplicate(dir: &Path, file: &str) -> Result<String, String> {
+/// Copies `file` (from `registry` if `file_locked`, else `dir`) into `dir` under a fresh id
+/// (`{id}_kopie`, `{id}_kopie2` …) as `{id}.yaml`; returns the new name.
+/// Saved results find their definition by id, so no two files in either folder may share one.
+pub fn duplicate(
+    dir: &Path,
+    registry: &Path,
+    file_locked: bool,
+    file: &str,
+) -> Result<String, String> {
+    let src = if file_locked { registry } else { dir };
     let mut def =
-        kreuzchen_engine::parse_definition(&read_source(dir, file)?).map_err(|e| e.to_string())?;
-    let used: HashSet<String> = scan(dir)
+        kreuzchen_engine::parse_definition(&read_source(src, file)?).map_err(|e| e.to_string())?;
+    let used: HashSet<String> = scan_all(dir, registry)
         .into_iter()
         .filter_map(|e| e.summary.map(|s| s.id))
         .collect();
@@ -66,6 +83,10 @@ mod tests {
 
     const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
 
+    fn empty() -> std::path::PathBuf {
+        std::path::PathBuf::from("/nonexistent-registry")
+    }
+
     fn dir_with_fixture() -> (tempfile::TempDir, String) {
         let d = tempfile::tempdir().unwrap();
         fs::write(d.path().join("b.yaml"), FIXTURE).unwrap();
@@ -76,7 +97,7 @@ mod tests {
     fn save_with_current_hash_writes_and_returns_new_hash() {
         let (d, h) = dir_with_fixture();
         let new = FIXTURE.replace("Beispiel-Fragebogen", "Anders");
-        let got = save(d.path(), "b.yaml", &new, Some(&h)).unwrap();
+        let got = save(d.path(), &empty(), "b.yaml", &new, Some(&h)).unwrap();
         assert_eq!(got, hash(new.as_bytes()));
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), new);
         assert!(!d.path().join("b.yaml.tmp").exists());
@@ -86,7 +107,7 @@ mod tests {
     fn save_with_stale_hash_is_refused() {
         let (d, _) = dir_with_fixture();
         assert_eq!(
-            save(d.path(), "b.yaml", FIXTURE, Some("alt")),
+            save(d.path(), &empty(), "b.yaml", FIXTURE, Some("alt")),
             Err("Die Datei wurde inzwischen geändert.".into())
         );
     }
@@ -95,7 +116,7 @@ mod tests {
     fn save_with_hash_of_deleted_file_is_refused() {
         let (d, h) = dir_with_fixture();
         delete(d.path(), "b.yaml").unwrap();
-        assert!(save(d.path(), "b.yaml", FIXTURE, Some(&h)).is_err());
+        assert!(save(d.path(), &empty(), "b.yaml", FIXTURE, Some(&h)).is_err());
         assert!(!d.path().join("b.yaml").exists());
     }
 
@@ -104,7 +125,7 @@ mod tests {
         let (d, _) = dir_with_fixture();
         let new = FIXTURE.replace("Beispiel-Fragebogen", "Anders");
         assert_eq!(
-            save(d.path(), "b.yaml", &new, None),
+            save(d.path(), &empty(), "b.yaml", &new, None),
             Err("Die Datei „b.yaml“ gibt es schon.".into())
         );
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), FIXTURE);
@@ -113,7 +134,7 @@ mod tests {
     #[test]
     fn create_new_file() {
         let d = tempfile::tempdir().unwrap();
-        save(d.path(), "neu.yaml", FIXTURE, None).unwrap();
+        save(d.path(), &empty(), "neu.yaml", FIXTURE, None).unwrap();
         assert_eq!(read_source(d.path(), "neu.yaml").unwrap(), FIXTURE);
     }
 
@@ -121,9 +142,9 @@ mod tests {
     fn invalid_yaml_is_refused_and_file_untouched() {
         let (d, h) = dir_with_fixture();
         let bad = FIXTURE.replace("scale: Y, key: normal", "scale: Z, key: normal");
-        let e = save(d.path(), "b.yaml", &bad, Some(&h)).unwrap_err();
+        let e = save(d.path(), &empty(), "b.yaml", &bad, Some(&h)).unwrap_err();
         assert!(e.contains("Skala „Z“"), "{e}");
-        let e = save(d.path(), "b.yaml", "id: [", Some(&h)).unwrap_err();
+        let e = save(d.path(), &empty(), "b.yaml", "id: [", Some(&h)).unwrap_err();
         assert!(e.starts_with("Zeile"), "{e}");
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), FIXTURE);
     }
@@ -144,11 +165,11 @@ mod tests {
     fn duplicate_gets_fresh_id_and_file() {
         let (d, _) = dir_with_fixture();
         assert_eq!(
-            duplicate(d.path(), "b.yaml").unwrap(),
+            duplicate(d.path(), &empty(), false, "b.yaml").unwrap(),
             "beispiel_kopie.yaml"
         );
         assert_eq!(
-            duplicate(d.path(), "b.yaml").unwrap(),
+            duplicate(d.path(), &empty(), false, "b.yaml").unwrap(),
             "beispiel_kopie2.yaml"
         );
         let ids: Vec<String> = ["b.yaml", "beispiel_kopie.yaml", "beispiel_kopie2.yaml"]
@@ -169,9 +190,34 @@ mod tests {
         let other = FIXTURE.replace("id: beispiel", "id: beispiel_kopie");
         fs::write(d.path().join("anders.yaml"), other).unwrap();
         assert_eq!(
-            duplicate(d.path(), "b.yaml").unwrap(),
+            duplicate(d.path(), &empty(), false, "b.yaml").unwrap(),
             "beispiel_kopie2.yaml"
         );
+    }
+
+    #[test]
+    fn save_refuses_registry_id() {
+        let (registry, _) = dir_with_fixture();
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(
+            save(d.path(), registry.path(), "neu.yaml", FIXTURE, None),
+            Err("Die ID „beispiel“ gehört zu einem Fragebogen aus der Registry.".into())
+        );
+        assert!(!d.path().join("neu.yaml").exists());
+    }
+
+    #[test]
+    fn duplicate_of_registry_file_gets_id_free_in_both() {
+        let (local, registry) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let a = FIXTURE.replace("id: beispiel", "id: fragebogen_a");
+        fs::write(registry.path().join("fragebogen_a.yaml"), &a).unwrap();
+        let kopie = FIXTURE.replace("id: beispiel", "id: fragebogen_a_kopie");
+        fs::write(local.path().join("fragebogen_a_kopie.yaml"), kopie).unwrap();
+        let name = duplicate(local.path(), registry.path(), true, "fragebogen_a.yaml").unwrap();
+        assert_eq!(name, "fragebogen_a_kopie2.yaml");
+        let src = read_source(local.path(), &name).unwrap();
+        assert_eq!(load_text(&src).unwrap().def.id, "fragebogen_a_kopie2");
+        assert!(!registry.path().join(&name).exists());
     }
 
     #[test]
@@ -188,14 +234,18 @@ mod tests {
             ".yaml",
         ] {
             assert_eq!(
-                save(d.path(), name, FIXTURE, None).unwrap_err(),
+                save(d.path(), &empty(), name, FIXTURE, None).unwrap_err(),
                 e,
                 "{name}"
             );
             assert_eq!(read_source(d.path(), name).unwrap_err(), e, "{name}");
             assert_eq!(delete(d.path(), name).unwrap_err(), e, "{name}");
-            assert_eq!(duplicate(d.path(), name).unwrap_err(), e, "{name}");
+            assert_eq!(
+                duplicate(d.path(), &empty(), false, name).unwrap_err(),
+                e,
+                "{name}"
+            );
         }
-        assert!(save(d.path(), "Neu.YML", FIXTURE, None).is_ok());
+        assert!(save(d.path(), &empty(), "Neu.YML", FIXTURE, None).is_ok());
     }
 }

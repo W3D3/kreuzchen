@@ -78,7 +78,7 @@
   }
 
   function preview(yaml: string, definition: Definition) {
-    screen = { name: "entry", opened: { file: "", hash: "", definition }, input: initialInput(definition, new Date()), preview: yaml };
+    screen = { name: "entry", opened: { file: "", hash: "", definition, locked: false }, input: initialInput(definition, new Date()), preview: yaml };
   }
 
   function showSaved(res: OpenedResult, notice: string | null) {
@@ -95,8 +95,8 @@
 
   async function regrade(res: OpenedResult) {
     try {
-      const opened = await getDefinition(res.current!.file);
-      const graded = await grade(opened.file, opened.hash, res.record.input);
+      const opened = await getDefinition(res.current!.file, res.current!.locked);
+      const graded = await grade(opened.file, opened.locked, opened.hash, res.record.input);
       screen = { name: "result", opened, record: res.record, input: res.record.input, graded, notice: null };
     } catch (e) {
       showSaved(res, String(e));

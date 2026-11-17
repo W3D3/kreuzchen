@@ -1,4 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 mod commands;
 mod definitions;
 mod editor;
@@ -9,6 +12,18 @@ use tauri::Manager;
 pub struct Paths {
     pub definitions: PathBuf,
     pub results: PathBuf,
+    pub registry: PathBuf,
+}
+
+impl Paths {
+    /// The registry folder for locked entries, else the local definitions folder.
+    pub fn dir(&self, locked: bool) -> &Path {
+        if locked {
+            &self.registry
+        } else {
+            &self.definitions
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -47,9 +62,11 @@ pub fn run() {
             let paths = Paths {
                 definitions: base.join("definitionen"),
                 results: base.join("auswertungen"),
+                registry: base.join("registry"),
             };
             fs::create_dir_all(&paths.definitions)?;
             fs::create_dir_all(&paths.results)?;
+            fs::create_dir_all(&paths.registry)?;
             app.manage(paths);
             Ok(())
         })

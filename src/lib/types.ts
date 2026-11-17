@@ -42,8 +42,8 @@ export interface Grading {
 }
 
 export interface Summary { id: string; title: string; version: string; item_count: number; scale_count: number }
-export interface DefinitionEntry { file: string; hash: string; summary: Summary | null; error: string | null }
-export interface OpenedDefinition { file: string; hash: string; definition: Definition }
+export interface DefinitionEntry { file: string; hash: string; summary: Summary | null; error: string | null; locked: boolean }
+export interface OpenedDefinition { file: string; hash: string; definition: Definition; locked: boolean }
 export interface Graded { grading: Grading; text: string }
 export interface QRef { id: string; title: string; version: string; hash: string }
 export interface SavedRecord {
