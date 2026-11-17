@@ -165,7 +165,7 @@ mod tests {
             FIXTURE.replace("scale: Y, key: normal", "scale: Z, key: normal"),
         )
         .unwrap();
-        for f in ["README.txt", ".DS_Store", "mbas.yaml.bak"] {
+        for f in ["README.txt", ".DS_Store", "fragebogen.yaml.bak"] {
             fs::write(p.join(f), "x").unwrap();
         }
         fs::create_dir(p.join("x.yaml")).unwrap();
