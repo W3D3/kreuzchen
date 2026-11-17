@@ -1,6 +1,8 @@
 <script lang="ts">
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Check from "@lucide/svelte/icons/check";
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Copy from "@lucide/svelte/icons/copy";
   import FilePlus from "@lucide/svelte/icons/file-plus";
   import Info from "@lucide/svelte/icons/info";
@@ -106,26 +108,21 @@
     {#each g.fields.filter((f) => f.id === "kennung") as f (f.id)}
       <p class="mt-1 font-mono text-[16px] font-bold">{f.value}</p>
     {/each}
-    {#if g.fields.some((f) => f.id !== "kennung")}
-      <dl class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-6 gap-y-2.5 rounded-xl border bg-card px-5 py-3.5">
-        {#each g.fields.filter((f) => f.id !== "kennung") as f (f.id)}
-          <div class="min-w-0">
-            <dt class="text-[13px] text-muted-foreground">{f.label}</dt>
-            <dd class="text-[15px] font-medium break-words {f.value === '–' ? 'text-muted-foreground' : ''}">{f.value}</dd>
-          </div>
-        {/each}
-      </dl>
-    {/if}
   </div>
 
-  <section class="flex gap-5 rounded-xl border px-5 py-4 {anyMet ? 'border-over/45 bg-over-soft' : 'bg-card'}">
+  <section class="flex flex-col gap-4 overflow-hidden rounded-xl border border-l-[6px] px-6 py-5 shadow-sm {anyMet ? 'border-over/50 border-l-over bg-over-soft' : 'border-primary/30 border-l-primary bg-primary/8'}">
     {#if g.verdict}
-      <div class="w-44 shrink-0">
-        <p class="text-[14px] text-muted-foreground">Gesamturteil</p>
-        <p class="text-[26px] leading-tight font-bold">{g.verdict}</p>
+      <div class="flex items-center gap-4">
+        <span class="flex size-11 shrink-0 items-center justify-center rounded-full {anyMet ? 'bg-over text-background' : 'bg-primary text-primary-foreground'}" aria-hidden="true">
+          {#if anyMet}<TriangleAlert class="size-6" />{:else}<CircleCheck class="size-6" />{/if}
+        </span>
+        <div class="min-w-0">
+          <p class="text-[13px] font-bold tracking-wide text-muted-foreground uppercase">Gesamturteil</p>
+          <p class="text-[30px] leading-tight font-bold break-words {anyMet ? 'text-over' : ''}">{g.verdict}</p>
+        </div>
       </div>
     {/if}
-    <ul class="flex flex-1 flex-col gap-1.5 text-[16px] {g.verdict ? 'border-l border-current/15 pl-5' : ''}">
+    <ul class="flex flex-col gap-1.5 text-[16px] {g.verdict ? 'border-t border-current/15 pt-4' : ''}">
       {#each g.rules as r (r.id)}
         <li class="flex items-center gap-2 {r.met ? '' : 'text-muted-foreground'}">
           {#if r.met}<Check class="size-4.5 shrink-0 text-over" strokeWidth={3} aria-label="erfüllt" />{:else}<X class="size-4.5 shrink-0" aria-label="nicht erfüllt" />{/if}
@@ -137,6 +134,17 @@
       </li>
     </ul>
   </section>
+
+  {#if g.fields.some((f) => f.id !== "kennung")}
+      <dl class="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-6 gap-y-2.5 rounded-xl border bg-card px-5 py-3.5">
+        {#each g.fields.filter((f) => f.id !== "kennung") as f (f.id)}
+          <div class="min-w-0">
+            <dt class="text-[13px] text-muted-foreground">{f.label}</dt>
+            <dd class="text-[15px] font-medium break-words {f.value === '–' ? 'text-muted-foreground' : ''}">{f.value}</dd>
+          </div>
+        {/each}
+      </dl>
+  {/if}
 
   <Card.Root class="gap-0 py-2">
     <!-- One grid with subgrid rows, so every column sizes to its widest value. -->
