@@ -31,7 +31,7 @@
 
   const scored = items.filter((i) => i.scored);
   const answered = $derived(scored.filter((i) => answers[i.key] !== undefined).length);
-  const options = $derived(items[focused]?.options.length ?? 0);
+  const shortcuts = $derived(items[focused]?.shortcuts.filter(Boolean) ?? []);
 
   function focusItem(i: number) {
     focused = i;
@@ -73,7 +73,7 @@
     const item = items[focused];
     const a = entryKey(
       { key: e.key, shift: e.shiftKey, ctrl: e.ctrlKey },
-      { focused, count: items.length, options: item.options.length, current: answers[item.key] ?? null },
+      { focused, count: items.length, shortcuts: item.shortcuts, current: answers[item.key] ?? null },
     );
     if (a.type === "none") return;
     // At either end Tab leaves the list, so header fields and buttons stay reachable.
@@ -81,7 +81,7 @@
     e.preventDefault();
     if (a.type === "answer") {
       answers[item.key] = a.index;
-      if (/^[0-9]$/.test(e.key)) focusItem(Math.min(focused + 1, items.length - 1));
+      if (item.shortcuts.includes(e.key)) focusItem(Math.min(focused + 1, items.length - 1));
     } else if (a.type === "clear") delete answers[item.key];
     else if (a.type === "focus") focusItem(a.to);
     else void doGrade();
@@ -143,7 +143,7 @@
             class:sel={answers[it.key] === j}
             onclick={() => { answers[it.key] = j; focusItem(i); }}
           >
-            <span class="num k" aria-hidden="true">{j}</span> {o}
+            <span class="num k" aria-hidden="true">{it.shortcuts[j]}</span> {o}
           </button>
         {/each}
       </div>
@@ -152,7 +152,7 @@
 </div>
 
 <div class="bar bottom">
-  0–{options - 1} Antwort · ←/→ Antwort ändern · Enter/Tab nächste Frage · Umschalt+Tab zurück · Entf löschen · Strg+Enter Auswerten
+  {shortcuts.join(" ")} Antwort · ←/→ Antwort ändern · Enter/Tab nächste Frage · Umschalt+Tab zurück · Entf löschen · Strg+Enter Auswerten
 </div>
 
 <style>

@@ -4,7 +4,7 @@ import type { Definition } from "./types";
 
 const def = {
   schema: 1, id: "beispiel", version: "1", title: "Beispiel-Fragebogen", authors: null, copyright: null,
-  cutoff_compare: ">=", answer_sets: {}, keys: {}, default_answers: null,
+  cutoff_compare: ">=", answer_sets: {}, shortcuts: {}, keys: {}, default_answers: null,
   fields: [
     { id: "kennung", label: "Kennung", type: "text", default: "anonym" },
     { id: "alter", label: "Alter", type: "number", default: null },
@@ -24,6 +24,7 @@ it("lists items in order with their options", () => {
   const d = {
     ...def,
     answer_sets: { haeufigkeit: ["nie", "selten", "oft", "immer"], ja_nein: ["Nein", "Ja"] },
+    shortcuts: { ja_nein: "nj" },
     default_answers: "haeufigkeit",
     sections: [
       { title: "T1", intro: null, items: [1, 2, 3].map((n) => ({ n, id: null, text: `F${n}`, answers: null, scale: "X", key: "normal" })) },
@@ -35,6 +36,6 @@ it("lists items in order with their options", () => {
   } as Definition;
   const items = entryItems(d);
   expect(items.map((i) => i.key)).toEqual(["1", "2", "3", "4", "zusatz"]);
-  expect(items[4].options).toEqual(["Nein", "Ja"]);
-  expect(items[3]).toMatchObject({ options: ["nie", "selten", "oft", "immer"], section: 1 });
+  expect(items[4]).toMatchObject({ options: ["Nein", "Ja"], shortcuts: ["n", "j"] });
+  expect(items[3]).toMatchObject({ options: ["nie", "selten", "oft", "immer"], section: 1, shortcuts: ["0", "1", "2", "3"] });
 });

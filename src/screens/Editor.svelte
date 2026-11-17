@@ -137,9 +137,20 @@
     <legend>Antwortsätze</legend>
     {#each Object.entries(d.answer_sets) as [name, labels] (name)}
       <div class="row">
-        <input class="id" aria-label="Name" value={name} onchange={(e) => (d.answer_sets = renameKey(d.answer_sets, name, val(e).trim()))} />
+        <input class="id" aria-label="Name" value={name} onchange={(e) => {
+          const to = val(e).trim();
+          const sets = renameKey(d.answer_sets, name, to);
+          if (sets === d.answer_sets) return;
+          d.answer_sets = sets;
+          if (name in d.shortcuts) d.shortcuts = renameKey(d.shortcuts, name, to);
+        }} />
         <input aria-label="Antworten, mit Komma getrennt" value={labels.join(", ")} onchange={(e) => (d.answer_sets[name] = splitList(val(e)))} />
-        <button type="button" aria-label="Entfernen" onclick={() => delete d.answer_sets[name]}>✕</button>
+        <input class="id" aria-label="Tasten, ein Zeichen pro Antwort" placeholder={labels.map((_, j) => j).join("")} value={d.shortcuts[name] ?? ""} onchange={(e) => {
+          const s = val(e).trim();
+          if (s) d.shortcuts[name] = s;
+          else delete d.shortcuts[name];
+        }} />
+        <button type="button" aria-label="Entfernen" onclick={() => { delete d.answer_sets[name]; delete d.shortcuts[name]; }}>✕</button>
       </div>
     {/each}
     <button type="button" onclick={() => (d.answer_sets[freshKey(d.answer_sets, "antworten")] = ["Nein", "Ja"])}>+ Antwortsatz</button>

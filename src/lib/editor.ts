@@ -79,6 +79,7 @@ export function template(): Definition {
     schema: 1, id: "neu", version: "1", title: "Neuer Fragebogen", authors: null, copyright: null,
     cutoff_compare: ">=",
     answer_sets: { ja_nein: ["Nein", "Ja"] },
+    shortcuts: {},
     keys: { normal: [0, 1] },
     default_answers: "ja_nein",
     fields: [{ id: "kennung", label: "Kennung", type: "text", default: "anonym" }],
