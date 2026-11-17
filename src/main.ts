@@ -9,4 +9,7 @@ import App from "./App.svelte";
 // Before mounting, so the first paint already has the chosen theme.
 applyTheme(document.documentElement, loadTheme());
 
-export default mount(App, { target: document.getElementById("app")! });
+const target = document.getElementById("app")!;
+// shortcut: temporary switch for the shadcn-svelte look-and-feel prototype; drop with src/proto.
+if (location.hash === "#proto") import("./proto/main").then((m) => m.default(target));
+else mount(App, { target });

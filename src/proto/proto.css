@@ -1,0 +1,59 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* `dark:` follows the app's own switch: system preference unless "Hell", or always with "Dunkel". */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) { @slot; }
+  }
+  &:where([data-theme="dark"] *) { @slot; }
+}
+
+/* Only tokens app.css lacks. Destructive red is kept apart from --over (orange = "über Cut-off"). */
+:root { --danger: #b42318; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --danger: #f2877e; }
+}
+:root[data-theme="dark"] { --danger: #f2877e; }
+
+/* shadcn names mapped onto the app's tokens from app.css. Never redefine --accent here: the app uses it for teal. */
+@theme inline {
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--fg);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-fg);
+  --color-secondary: var(--accent-soft);
+  --color-secondary-foreground: var(--fg);
+  --color-muted: color-mix(in oklab, var(--line) 45%, var(--surface));
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--accent-soft);
+  --color-accent-foreground: var(--fg);
+  --color-destructive: var(--danger);
+  --color-over: var(--over);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+}
+
+/* The bits-ui button uses var(--secondary) directly. */
+:root { --secondary: var(--accent-soft); --foreground: var(--fg); }
+
+@layer base {
+  *, ::before, ::after { border-color: var(--color-border); }
+  input[type="number"] { appearance: textfield; }
+  input[type="number"]::-webkit-inner-spin-button { appearance: none; }
+}
+
+/* IBM Plex Mono runs larger than Atkinson; unlayered so it beats the text-[15px] utility. */
+.font-mono { font-size: 14px; }
