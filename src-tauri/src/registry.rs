@@ -204,6 +204,29 @@ pub async fn try_fetch_list(c: &Connection) -> Result<Option<Vec<RemoteEntry>>, 
         .map_err(|_| "Antwort der Registry ist ungültig".to_string())
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+pub struct RowsResult {
+    pub online: bool,
+    pub rows: Vec<Row>,
+    pub error: Option<String>,
+}
+
+/// The registry screen's rows; remote problems become `error` so installed rows stay listed.
+pub async fn rows_result(c: Option<&Connection>, installed: &[DefinitionEntry]) -> RowsResult {
+    let (remote, error) = match c {
+        None => (None, None),
+        Some(c) => match try_fetch_list(c).await {
+            Ok(r) => (r, None),
+            Err(e) => (None, Some(e)),
+        },
+    };
+    RowsResult {
+        online: remote.is_some(),
+        rows: rows(remote.as_deref(), installed),
+        error,
+    }
+}
+
 pub async fn fetch_list(c: &Connection) -> Result<Vec<RemoteEntry>, String> {
     try_fetch_list(c).await?.ok_or_else(|| UNREACHABLE.into())
 }
@@ -558,6 +581,16 @@ mod tests {
             fetch_list(&conn(&url, "falsch")).await,
             Err(WRONG_KEY.into())
         );
+    }
+
+    #[tokio::test]
+    async fn wrong_key_still_lists_installed_rows() {
+        let (url, _d) = registry().await;
+        let got = rows_result(Some(&conn(&url, "falsch")), &[local("a", "h1")]).await;
+        assert!(!got.online);
+        assert_eq!(got.error, Some(WRONG_KEY.into()));
+        assert_eq!(got.rows.len(), 1);
+        assert_eq!(got.rows[0].file.as_deref(), Some("a.yaml"));
     }
 
     #[tokio::test]

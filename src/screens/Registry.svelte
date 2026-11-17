@@ -22,11 +22,21 @@
       busy = false;
     }
   }
-  const load = () => run(async () => ([conn, result] = await Promise.all([registryConnection(), registryRows()])));
+  // Separate assignments so a failure in one call still shows the other's result.
+  async function refresh() {
+    conn = await registryConnection();
+    result = await registryRows();
+  }
+  const load = () => run(refresh);
   load();
 
-  // The backend stores a normalized http(s) URL, so parsing cannot fail.
-  const host = (url: string) => new URL(url).host;
+  function host(url: string) {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  }
 
   const change = () => {
     form = { url: "", user: "", key: "" };
@@ -39,7 +49,7 @@
       await registryConnect(form.url, form.user, form.key);
       form.key = "";
       editing = false;
-      [conn, result] = await Promise.all([registryConnection(), registryRows()]);
+      await refresh();
     });
   };
 
@@ -95,7 +105,7 @@
 {/if}
 
 {#if conn && result && !result.online}
-  <p class="banner" role="status">Registry nicht erreichbar</p>
+  <p class="banner" role="status">{result.error ?? "Registry nicht erreichbar"}</p>
 {/if}
 
 {#each result?.rows ?? [] as r (r.id + (r.file ?? ""))}

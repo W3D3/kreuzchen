@@ -2,7 +2,7 @@ use crate::{
     Paths,
     definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
     editor,
-    registry::{self, Connection, InstallOutcome, Row},
+    registry::{self, Connection, InstallOutcome, RowsResult},
     store::{self, SavedRecord, SavedSummary},
 };
 use kreuzchen_engine::{Grading, Input, schema::Definition};
@@ -224,23 +224,12 @@ pub fn registry_disconnect(paths: State<Paths>) {
     registry::clear_connection(&paths.data)
 }
 
-#[derive(Serialize)]
-pub struct RowsResult {
-    pub online: bool,
-    pub rows: Vec<Row>,
-}
-
 #[tauri::command]
+// Tauri requires `Result` from async commands that borrow `State`; remote errors arrive in `error`.
 pub async fn registry_rows(paths: State<'_, Paths>) -> Result<RowsResult, String> {
     let installed = definitions::scan(&paths.registry);
-    let remote = match registry::load_connection(&paths.data) {
-        None => None,
-        Some(c) => registry::try_fetch_list(&c).await?,
-    };
-    Ok(RowsResult {
-        online: remote.is_some(),
-        rows: registry::rows(remote.as_deref(), &installed),
-    })
+    let c = registry::load_connection(&paths.data);
+    Ok(registry::rows_result(c.as_ref(), &installed).await)
 }
 
 #[tauri::command]
