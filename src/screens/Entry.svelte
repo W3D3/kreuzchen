@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ask } from "@tauri-apps/plugin-dialog";
+  import { confirm } from "$lib/components/confirm.svelte";
   import { grade, gradeDraft } from "../lib/api";
   import { entryItems } from "../lib/input";
   import { entryKey } from "../lib/keyboard";
@@ -60,7 +60,7 @@
 
   /** True when nothing is entered or the user agrees to discard it. */
   export async function confirmDiscard(): Promise<boolean> {
-    return Object.keys(answers).length === 0 || (await ask("Eingaben verwerfen?", { title: "Abbrechen", kind: "warning" }));
+    return Object.keys(answers).length === 0 || (await confirm({ title: "Ungespeicherte Eingaben", message: "Eingaben verwerfen?", confirmLabel: "Verwerfen", destructive: true }));
   }
 
   async function cancel() {

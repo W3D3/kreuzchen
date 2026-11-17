@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ask } from "@tauri-apps/plugin-dialog";
+  import { confirm } from "$lib/components/confirm.svelte";
   import { deleteDefinition, duplicateDefinition, listDefinitions, readDefinitionSource, yamlToDefinition } from "../lib/api";
   import { newDoc, openDoc, type Doc } from "../lib/editor";
   import type { DefinitionEntry } from "../lib/types";
@@ -36,7 +36,7 @@
   const remove = (e: DefinitionEntry) =>
     run(async () => {
       const title = e.summary?.title ?? e.file;
-      if (!(await ask(`Fragebogen „${title}“ endgültig löschen? Gespeicherte Auswertungen bleiben erhalten.`, { kind: "warning" }))) return;
+      if (!(await confirm({ title: "Fragebogen löschen", message: `Fragebogen „${title}“ endgültig löschen? Gespeicherte Auswertungen bleiben erhalten.`, confirmLabel: "Löschen", destructive: true }))) return;
       await deleteDefinition(e.file);
       entries = await listDefinitions();
     });

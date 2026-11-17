@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ask, open, save } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
+  import { confirm } from "$lib/components/confirm.svelte";
   import { deleteResult, exportResult, importResult, listResults, openResult } from "../lib/api";
   import { formatCreatedAt } from "../lib/kennung";
   import type { OpenedResult, SavedSummary } from "../lib/types";
@@ -39,7 +40,7 @@
 
   const remove = (r: SavedSummary) =>
     run(async () => {
-      if (!(await ask(`Auswertung „${r.kennung}“ endgültig löschen?`))) return;
+      if (!(await confirm({ title: "Auswertung löschen", message: `Auswertung „${r.kennung}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
       await deleteResult(r.name);
       rows = await listResults();
     });

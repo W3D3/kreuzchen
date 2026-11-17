@@ -18,7 +18,7 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import IconBtn from "./IconBtn.svelte";
+  import IconButton from "$lib/components/IconButton.svelte";
   import Sel from "./Sel.svelte";
 
   // Static copy of examples/definitionen/beispiel.yaml, as far as this form shows it. Nothing is saved.
@@ -75,9 +75,9 @@
 
 {#snippet tools(list: unknown[], i: number, what: string)}
   <div class="flex gap-0.5 justify-end">
-    <IconBtn label="Nach oben" icon={ArrowUp} disabled={i === 0} onclick={() => move(list, i, -1)} />
-    <IconBtn label="Nach unten" icon={ArrowDown} disabled={i === list.length - 1} onclick={() => move(list, i, 1)} />
-    <IconBtn label={`${what} entfernen`} icon={Trash2} variant="destructive" onclick={() => list.splice(i, 1)} />
+    <IconButton label="Nach oben" icon={ArrowUp} disabled={i === 0} onclick={() => move(list, i, -1)} />
+    <IconButton label="Nach unten" icon={ArrowDown} disabled={i === list.length - 1} onclick={() => move(list, i, 1)} />
+    <IconButton label={`${what} entfernen`} icon={Trash2} variant="destructive" onclick={() => list.splice(i, 1)} />
   </div>
 {/snippet}
 
@@ -113,7 +113,7 @@
         <Button variant="outline"><Play />Testen</Button>
         <Button><Save />Speichern</Button>
         <Button variant="ghost"><X />Schließen</Button>
-        <IconBtn label="Fragebogen löschen" icon={Trash2} variant="destructive" onclick={() => (confirmDelete = true)} />
+        <IconButton label="Fragebogen löschen" icon={Trash2} variant="destructive" onclick={() => (confirmDelete = true)} />
       </div>
     </header>
 
@@ -148,7 +148,7 @@
               <Input aria-label="Name" class="font-mono" bind:value={s.name} />
               <Input aria-label="Antworten" bind:value={s.labels} />
               <Input aria-label="Tasten" class="font-mono" placeholder={s.labels.split(",").map((_, j) => j).join("")} bind:value={s.keys} />
-              <IconBtn label="Antwortsatz entfernen" icon={Trash2} variant="destructive" onclick={() => d.answer_sets.splice(i, 1)} />
+              <IconButton label="Antwortsatz entfernen" icon={Trash2} variant="destructive" onclick={() => d.answer_sets.splice(i, 1)} />
             </div>
           {/each}
           <div class="mt-1 flex items-center justify-between">

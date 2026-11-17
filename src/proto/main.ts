@@ -1,4 +1,3 @@
-import "./proto.css";
 import { mount } from "svelte";
 import EditorProto from "./EditorProto.svelte";
 import FlowProto from "./FlowProto.svelte";

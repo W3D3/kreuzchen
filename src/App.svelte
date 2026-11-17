@@ -7,7 +7,12 @@
   import Editor from "./screens/Editor.svelte";
   import Settings from "./screens/Settings.svelte";
   import { getVersion } from "@tauri-apps/api/app";
-  import { ask } from "@tauri-apps/plugin-dialog";
+  import Download from "@lucide/svelte/icons/download";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import { confirm } from "$lib/components/confirm.svelte";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import { getDefinition, grade } from "./lib/api";
@@ -57,7 +62,7 @@
   /** True when there is no unsaved entry or draft, or the user agrees to discard it. */
   async function mayLeave(): Promise<boolean> {
     if (screen.name === "entry" && !(await entry?.confirmDiscard())) return false;
-    return !(draft && isDirty(draft)) || (await ask("Ungespeicherte Änderungen verwerfen?", { title: "Fragebogen bearbeiten", kind: "warning" }));
+    return !(draft && isDirty(draft)) || (await confirm({ title: "Fragebogen bearbeiten", message: "Ungespeicherte Änderungen verwerfen?", confirmLabel: "Verwerfen", destructive: true }));
   }
 
   async function go(next: Screen) {
@@ -106,63 +111,63 @@
   }
 </script>
 
-<nav>
-  <button class:active={screen.name === "list" || screen.name === "entry"} onclick={() => go({ name: "list" })}>Fragebögen</button>
-  <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
-  <button class="tech" class:active={screen.name === "definitions" || screen.name === "editor"} onclick={() => go({ name: "definitions" })}>Fragebögen bearbeiten</button>
-  <button class="check" onclick={() => findUpdate(true)} disabled={checking || updating}>{checking ? "Suche Updates …" : updateNote ?? "Nach Updates suchen"}</button>
-  <button class:active={screen.name === "settings"} onclick={() => go({ name: "settings" })}>Einstellungen</button>
-</nav>
-{#if update}
-  <div class="update" role="status">
-    <span>{updateError ?? (updating ? "Update wird installiert …" : `Neue Version ${update.version} verfügbar.`)}</span>
-    <button onclick={installUpdate} disabled={updating}>Jetzt installieren</button>
-  </div>
-{/if}
-<main>
-  {#if screen.name === "list"}
-    <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} />
-  {:else if screen.name === "entry"}
-    {@const e = screen}
-    <Entry
-      bind:this={entry}
-      opened={e.opened}
-      input={e.input}
-      preview={e.preview}
-      onback={() => (screen = e.preview == null ? { name: "list" } : { name: "editor" })}
-      ongraded={(graded, input) => (screen = { name: "result", opened: e.opened, record: null, input, graded, notice: null, preview: e.preview })}
-    />
-  {:else if screen.name === "result"}
-    {@const r = screen}
-    <Result
-      opened={r.opened}
-      input={r.input}
-      graded={r.graded}
-      notice={r.notice}
-      onregrade={r.onregrade}
-      preview={r.preview != null}
-      onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input, preview: r.preview })}
-      onnew={() => (screen = r.preview == null ? { name: "list" } : { name: "editor" })}
-    />
-  {:else if screen.name === "saved"}
-    <Saved onopen={(res) => showSaved(res, null)} />
-  {:else if screen.name === "definitions"}
-    <Definitions onedit={(doc) => { draft = doc; screen = { name: "editor" }; }} />
-  {:else if screen.name === "editor" && draft}
-    <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} onpreview={preview} />
-  {:else if screen.name === "settings"}
-    <Settings />
-  {/if}
-</main>
+<Tooltip.Provider>
+  <header class="border-b border-border bg-card">
+    <nav class="mx-auto flex h-16 max-w-[1040px] items-center gap-1 px-6">
+      {@render tab("Fragebögen", screen.name === "list" || screen.name === "entry", () => go({ name: "list" }))}
+      {@render tab("Gespeicherte Auswertungen", screen.name === "saved" || screen.name === "result", () => go({ name: "saved" }))}
+      {@render tab("Fragebögen bearbeiten", screen.name === "definitions" || screen.name === "editor", () => go({ name: "definitions" }), "tech")}
+      <div class="flex-1"></div>
+      <Button variant="ghost" class="h-11 px-4 text-muted-foreground disabled:cursor-progress" onclick={() => findUpdate(true)} disabled={checking || updating}>
+        <RefreshCw class={checking ? "animate-spin" : ""} />{checking ? "Suche Updates …" : updateNote ?? "Nach Updates suchen"}
+      </Button>
+      {@render tab("Einstellungen", screen.name === "settings", () => go({ name: "settings" }))}
+    </nav>
+    {#if update}
+      <div class="flex items-center justify-center gap-4 border-t border-border bg-secondary px-6 py-2 text-[15px]" role="status">
+        <span>{updateError ?? (updating ? "Update wird installiert …" : `Neue Version ${update.version} verfügbar.`)}</span>
+        <Button class="h-9 px-4 font-bold disabled:cursor-progress" onclick={installUpdate} disabled={updating}><Download />Jetzt installieren</Button>
+      </div>
+    {/if}
+  </header>
+  <main class="mx-auto max-w-[56rem] p-6">
+    {#if screen.name === "list"}
+      <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} />
+    {:else if screen.name === "entry"}
+      {@const e = screen}
+      <Entry
+        bind:this={entry}
+        opened={e.opened}
+        input={e.input}
+        preview={e.preview}
+        onback={() => (screen = e.preview == null ? { name: "list" } : { name: "editor" })}
+        ongraded={(graded, input) => (screen = { name: "result", opened: e.opened, record: null, input, graded, notice: null, preview: e.preview })}
+      />
+    {:else if screen.name === "result"}
+      {@const r = screen}
+      <Result
+        opened={r.opened}
+        input={r.input}
+        graded={r.graded}
+        notice={r.notice}
+        onregrade={r.onregrade}
+        preview={r.preview != null}
+        onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input, preview: r.preview })}
+        onnew={() => (screen = r.preview == null ? { name: "list" } : { name: "editor" })}
+      />
+    {:else if screen.name === "saved"}
+      <Saved onopen={(res) => showSaved(res, null)} />
+    {:else if screen.name === "definitions"}
+      <Definitions onedit={(doc) => { draft = doc; screen = { name: "editor" }; }} />
+    {:else if screen.name === "editor" && draft}
+      <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} onpreview={preview} />
+    {:else if screen.name === "settings"}
+      <Settings />
+    {/if}
+  </main>
+  <ConfirmDialog />
+</Tooltip.Provider>
 
-<style>
-  nav { display: flex; gap: .5rem; padding: .75rem 1.5rem; background: var(--surface); border-bottom: 1px solid var(--line); }
-  nav button { font: inherit; min-height: 48px; padding: 0 1.25rem; border-radius: 10px; border: 0; background: none; color: var(--fg); cursor: pointer; }
-  nav button.active { background: var(--accent-soft); font-weight: 700; }
-  nav .check { margin-left: auto; color: var(--muted); }
-  nav .check:disabled { cursor: progress; }
-  .update { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: .5rem 1.5rem; background: var(--accent-soft); border-bottom: 1px solid var(--line); }
-  .update button { font: inherit; min-height: 40px; padding: 0 1.25rem; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 700; cursor: pointer; }
-  .update button:disabled { opacity: .5; cursor: progress; }
-  main { max-width: 56rem; margin: 0 auto; padding: 1.5rem; }
-</style>
+{#snippet tab(label: string, active: boolean, onclick: () => void, cls = "")}
+  <Button variant="ghost" aria-current={active ? "page" : undefined} class="h-11 px-4 text-[15px] aria-[current=page]:bg-secondary aria-[current=page]:font-bold {cls}" {onclick}>{label}</Button>
+{/snippet}
