@@ -18,6 +18,7 @@ pub struct DefinitionEntry {
     pub hash: String,
     pub summary: Option<Summary>,
     pub error: Option<String>,
+    pub locked: bool,
 }
 
 #[derive(Serialize)]
@@ -25,6 +26,7 @@ pub struct OpenedDefinition {
     pub file: String,
     pub hash: String,
     pub definition: Definition,
+    pub locked: bool,
 }
 
 pub fn hash(bytes: &[u8]) -> String {
@@ -89,6 +91,7 @@ fn broken(file: String, error: String) -> DefinitionEntry {
         hash: String::new(),
         summary: None,
         error: Some(error),
+        locked: false,
     }
 }
 
@@ -118,6 +121,7 @@ fn scan_entry(e: std::fs::DirEntry) -> Option<DefinitionEntry> {
         file,
         summary,
         error,
+        locked: false,
     })
 }
 
@@ -140,6 +144,27 @@ pub fn scan(dir: &Path) -> Vec<DefinitionEntry> {
         (None, None) => a.file.cmp(&b.file),
     });
     entries
+}
+
+/// Local entries, then registry entries (locked), each sorted as by `scan`.
+pub fn scan_all(local: &Path, registry: &Path) -> Vec<DefinitionEntry> {
+    let locked = scan(registry)
+        .into_iter()
+        .map(|e| DefinitionEntry { locked: true, ..e });
+    scan(local).into_iter().chain(locked).collect()
+}
+
+/// The entry with `id` in either folder: the one matching `prefer_hash` first, then the registry one.
+pub fn find_by_id(
+    local: &Path,
+    registry: &Path,
+    id: &str,
+    prefer_hash: Option<&str>,
+) -> Option<DefinitionEntry> {
+    scan_all(local, registry)
+        .into_iter()
+        .filter(|e| e.summary.as_ref().is_some_and(|s| s.id == id))
+        .min_by_key(|e| (Some(e.hash.as_str()) != prefer_hash, !e.locked))
 }
 
 pub fn open(dir: &Path, file: &str) -> Result<(Questionnaire, String), String> {
@@ -229,6 +254,35 @@ mod tests {
         fs::write(d.path().join("a.yaml"), [0xff, 0xfe, 0xfd]).unwrap();
         let e = scan(d.path());
         assert_eq!(e[0].error.as_deref(), Some("Datei ist nicht UTF-8"));
+    }
+
+    #[test]
+    fn scan_all_marks_registry_locked() {
+        let (local, registry) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        fs::write(local.path().join("a.yaml"), FIXTURE).unwrap();
+        let other = FIXTURE.replace("id: beispiel", "id: fragebogen_a");
+        fs::write(registry.path().join("fragebogen_a.yaml"), other).unwrap();
+        let e = scan_all(local.path(), registry.path());
+        let got: Vec<_> = e.iter().map(|e| (e.file.as_str(), e.locked)).collect();
+        assert_eq!(got, [("a.yaml", false), ("fragebogen_a.yaml", true)]);
+    }
+
+    #[test]
+    fn find_by_id_prefers_hash_then_registry() {
+        let (local, registry) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let changed = FIXTURE.replace("Beispiel-Fragebogen", "Anders");
+        fs::write(local.path().join("beispiel.yaml"), FIXTURE).unwrap();
+        fs::write(registry.path().join("beispiel.yaml"), &changed).unwrap();
+        let find = |h: Option<&str>| find_by_id(local.path(), registry.path(), "beispiel", h);
+        let local_hash = hash(FIXTURE.as_bytes());
+        assert!(!find(Some(&local_hash)).unwrap().locked);
+        assert_eq!(
+            find(Some(&hash(changed.as_bytes()))).unwrap().hash,
+            hash(changed.as_bytes())
+        );
+        assert!(find(Some("andere")).unwrap().locked);
+        assert!(find(None).unwrap().locked);
+        assert!(find_by_id(local.path(), registry.path(), "nichts", None).is_none());
     }
 
     #[test]

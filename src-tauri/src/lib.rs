@@ -1,14 +1,32 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 mod commands;
 mod definitions;
 mod editor;
+mod registry;
 mod store;
 
 use tauri::Manager;
 
 pub struct Paths {
+    /// App data folder; holds `registry.json`.
+    pub data: PathBuf,
     pub definitions: PathBuf,
     pub results: PathBuf,
+    pub registry: PathBuf,
+}
+
+impl Paths {
+    /// The registry folder for locked entries, else the local definitions folder.
+    pub fn dir(&self, locked: bool) -> &Path {
+        if locked {
+            &self.registry
+        } else {
+            &self.definitions
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -38,6 +56,12 @@ pub fn run() {
             commands::save_definition,
             commands::delete_definition,
             commands::duplicate_definition,
+            commands::registry_connection,
+            commands::registry_connect,
+            commands::registry_disconnect,
+            commands::registry_rows,
+            commands::registry_install,
+            commands::registry_remove,
         ])
         .setup(|app| {
             #[cfg(desktop)]
@@ -47,9 +71,12 @@ pub fn run() {
             let paths = Paths {
                 definitions: base.join("definitionen"),
                 results: base.join("auswertungen"),
+                registry: base.join("registry"),
+                data: base,
             };
             fs::create_dir_all(&paths.definitions)?;
             fs::create_dir_all(&paths.results)?;
+            fs::create_dir_all(&paths.registry)?;
             app.manage(paths);
             Ok(())
         })

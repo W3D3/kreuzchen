@@ -42,8 +42,8 @@ export interface Grading {
 }
 
 export interface Summary { id: string; title: string; version: string; item_count: number; scale_count: number }
-export interface DefinitionEntry { file: string; hash: string; summary: Summary | null; error: string | null }
-export interface OpenedDefinition { file: string; hash: string; definition: Definition }
+export interface DefinitionEntry { file: string; hash: string; summary: Summary | null; error: string | null; locked: boolean }
+export interface OpenedDefinition { file: string; hash: string; definition: Definition; locked: boolean }
 export interface Graded { grading: Grading; text: string }
 export interface QRef { id: string; title: string; version: string; hash: string }
 export interface SavedRecord {
@@ -52,3 +52,9 @@ export interface SavedRecord {
 }
 export interface SavedSummary { name: string; kennung: string; title: string; created_at: string }
 export interface OpenedResult { record: SavedRecord; current: DefinitionEntry | null; outdated: boolean }
+
+export type RowState = "available" | "current" | "update" | "gone";
+export interface Row { id: string; title: string; state: RowState; file: string | null }
+export interface RowsResult { online: boolean; rows: Row[]; error: string | null }
+export type InstallOutcome = "installed" | "needs_replace_confirm";
+export interface ConnectionInfo { url: string; user: string }
