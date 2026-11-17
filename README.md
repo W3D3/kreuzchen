@@ -2,31 +2,28 @@
 
 # Kreuzchen
 
-Kreuzchen is a German-only desktop app (Tauri 2 + Svelte 5) that grades paper questionnaires. Questionnaires are defined in YAML; the app scores entered answers and shows a verdict. Its only network request is an update check against this repository's GitHub releases at start; it sends no questionnaire or patient data. Updates install only after the user confirms. Builds are not code-signed.
+**Score paper questionnaires in seconds instead of minutes.**
 
-Install instructions for end users (German): [docs/installation.md](docs/installation.md).
-
-Developers: build, test and release notes are in [DEVELOPMENT.md](DEVELOPMENT.md).
+Type in the crosses from a completed paper questionnaire, and Kreuzchen does the rest: it reverses the right items, adds up every scale, applies cut-offs and norm tables, and shows a clear result you can copy straight into your report. No more counting by hand, no more template sheets, no more arithmetic slips.
 
 ![The questionnaire editor](docs/screenshot-editor.png)
 
-## Questionnaire schema
+## Why Kreuzchen
 
-The reference example is [`examples/definitionen/beispiel.yaml`](examples/definitionen/beispiel.yaml). Top-level keys:
+- **Fast entry by keyboard.** One key per answer, and the next question comes up on its own. A full questionnaire takes about as long as reading it.
+- **Scoring you can trust.** Reverse-scored items, subscales, totals, means, T-values and severity levels are calculated the same way every time.
+- **A result that is ready to use.** Cut-offs are marked, missing answers are flagged per scale, and one click copies the whole result as text.
+- **Your questionnaires.** Add the questionnaires your practice uses with the built-in editor, and try them out before you save.
+- **Private by design.** Everything stays on your computer. Kreuzchen needs no account and no internet; it only checks for updates when it starts.
+- **Always up to date.** New versions install with one click.
+- **Windows, macOS and Linux.** The app is in German.
 
-- `schema`, `id`, `version`, `title`: format version (currently `1`), a unique ID, the definition version and the display title.
-- `cutoff_compare`: optional, how scores are compared with cut-offs, `">="` (default) or `">"`.
-- `answer_sets`: named lists of answer labels, in order; the position is the answer value. `default_answers` names the set used by items that do not set `answers`.
-- `shortcuts`: optional entry keys per answer set, one character per answer in order, e.g. `ja_nein: nj`. Sets without an entry use `0`, `1`, `2`, ….
-- `keys`: named scoring tables. An item's `key` is a table name or an inline list mapping answer position to points (reverse-keyed items use e.g. `[3, 2, 1, 0]`).
-- `fields`: patient/session inputs (`text`, `number`, `checkbox`) with an `id` usable in expressions.
-- `scales`: scored groups with an `id`, `label` and optional `cutoff`. Items add their points to their `scale`.
-- `derived`: computed values with an `id` and a `value` expression (e.g. `X + Y`), optionally with a `cutoff`.
-- `sections`: the questionnaire pages, each with a `title`, optional `intro` and `items`. Items have a number `n` or an `id`, `text`, and optionally `scale`, `key` and `answers`.
-- `result`: the IDs shown in the result table, in order.
-- `norms`: optional norm tables (e.g. T-values). `name` is the label (default `T`), `bands` the severity labels by lower bound (`{ from: 60, label: mild }`, ascending), and `tables` maps a scale or derived ID to `{ raw score: norm value }`. A raw score that is not listed takes the next lower listed one, as with a printed table that skips rows. Example: [`examples/definitionen/beispiel_normen.yaml`](examples/definitionen/beispiel_normen.yaml).
-- `rules`: named boolean expressions (`id`, `label`, `when`) that may reference earlier rules.
-- `caveats`: notes shown when their `when` expression is true.
-- `verdict`: ordered list; the first entry whose `when` is true gives the text; the entry with `else` is the fallback.
+## Get Kreuzchen
 
-Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, `fehlend` is the number of unanswered items, and `X.fehlend` the unanswered items of scale `X`. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`.
+Download the installer for your system from the [latest release](https://github.com/W3D3/kreuzchen/releases/latest). The [installation guide](docs/installation.md) (German) walks you through the first start.
+
+Kreuzchen does not include any questionnaires. Many are copyrighted; use the ones your practice is licensed for.
+
+## For developers
+
+Building, testing, releasing and the questionnaire file format are described in [DEVELOPMENT.md](DEVELOPMENT.md).
