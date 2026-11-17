@@ -12,6 +12,8 @@
 				secondary: "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
 				ghost: "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground",
 				destructive: "text-destructive hover:bg-destructive/10 dark:hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 focus-visible:border-destructive/40",
+				// Filled, for the confirming button of a destructive dialog; row delete buttons use `destructive`.
+				destructiveSolid: "bg-destructive text-background hover:bg-destructive/90 focus-visible:border-destructive focus-visible:ring-destructive/40",
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {

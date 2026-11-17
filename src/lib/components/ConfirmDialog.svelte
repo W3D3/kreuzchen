@@ -15,7 +15,7 @@
     </Dialog.Header>
     <Dialog.Footer>
       <Button variant="outline" onclick={() => answer(false)}>Abbrechen</Button>
-      <Button variant={req?.destructive ? "destructive" : "default"} onclick={() => answer(true)}>{req?.confirmLabel}</Button>
+      <Button variant={req?.destructive ? "destructiveSolid" : "default"} onclick={() => answer(true)}>{req?.confirmLabel}</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
