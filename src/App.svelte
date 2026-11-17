@@ -33,7 +33,7 @@
   let updating = $state(false);
   let updateError = $state<string | null>(null);
   let checking = $state(false);
-  /** Result of a manual check that found nothing to install. */
+  /** Result of a manual check that found nothing to install, shown on the button for a moment. */
   let updateNote = $state<string | null>(null);
 
   // The automatic check at start stays quiet when offline; a manual one says what happened.
@@ -42,12 +42,13 @@
     updateNote = null;
     try {
       update = await check();
-      if (!update && manual) updateNote = `Kreuzchen ist aktuell (Version ${await getVersion()}).`;
+      if (!update && manual) updateNote = `Aktuell ✓ ${await getVersion()}`;
     } catch {
-      if (manual) updateNote = "Keine Verbindung zum Update-Server. Bitte später erneut versuchen.";
+      if (manual) updateNote = "Keine Verbindung";
     } finally {
       checking = false;
     }
+    if (updateNote) setTimeout(() => (updateNote = null), 4000);
   }
   findUpdate(false);
 
@@ -107,15 +108,13 @@
   <button class:active={screen.name === "list" || screen.name === "entry"} onclick={() => go({ name: "list" })}>Fragebögen</button>
   <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
   <button class="tech" class:active={screen.name === "definitions" || screen.name === "editor"} onclick={() => go({ name: "definitions" })}>Fragebögen bearbeiten</button>
-  <button class="check" onclick={() => findUpdate(true)} disabled={checking || updating}>{checking ? "Suche Updates …" : "Nach Updates suchen"}</button>
+  <button class="check" onclick={() => findUpdate(true)} disabled={checking || updating}>{checking ? "Suche Updates …" : updateNote ?? "Nach Updates suchen"}</button>
 </nav>
 {#if update}
   <div class="update" role="status">
     <span>{updateError ?? (updating ? "Update wird installiert …" : `Neue Version ${update.version} verfügbar.`)}</span>
     <button onclick={installUpdate} disabled={updating}>Jetzt installieren</button>
   </div>
-{:else if updateNote}
-  <div class="update" role="status">{updateNote}</div>
 {/if}
 <main>
   {#if screen.name === "list"}
