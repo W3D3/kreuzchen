@@ -7,16 +7,26 @@ use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path, sync::OnceLock, time::Duration};
 
-pub const UNREACHABLE: &str = "Registry nicht erreichbar";
+const UNREACHABLE: &str = "Registry nicht erreichbar";
 const WRONG_KEY: &str = "Benutzername oder Schlüssel falsch";
 const BAD_URL: &str = "Ungültige Adresse";
 const FILE: &str = "registry.json";
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct Connection {
     pub url: String,
     pub user: String,
     pub key: String,
+}
+
+impl std::fmt::Debug for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Connection")
+            .field("url", &self.url)
+            .field("user", &self.user)
+            .field("key", &"***")
+            .finish()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -152,20 +162,25 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
-/// GET `<url>/v1/fragebogen[/<id>]` with Basic auth; returns the hash header and body.
-async fn get(c: &Connection, id: Option<&str>) -> Result<(Option<String>, Vec<u8>), String> {
+/// GET `<url>/v1/fragebogen[/<id>]` with Basic auth; the hash header and body, `None` if unreachable.
+async fn get(
+    c: &Connection,
+    id: Option<&str>,
+) -> Result<Option<(Option<String>, Vec<u8>)>, String> {
     let mut url = Url::parse(&c.url).map_err(|_| BAD_URL.to_string())?;
     url.path_segments_mut()
         .map_err(|()| BAD_URL.to_string())?
         .pop_if_empty()
         .extend(["v1", "fragebogen"])
         .extend(id);
-    let resp = client()
+    let Ok(resp) = client()
         .get(url)
         .basic_auth(&c.user, Some(&c.key))
         .send()
         .await
-        .map_err(|_| UNREACHABLE.to_string())?;
+    else {
+        return Ok(None);
+    };
     match resp.status() {
         StatusCode::UNAUTHORIZED => return Err(WRONG_KEY.into()),
         s if !s.is_success() => return Err(format!("Fehler der Registry: {s}")),
@@ -176,13 +191,27 @@ async fn get(c: &Connection, id: Option<&str>) -> Result<(Option<String>, Vec<u8
         .get("x-kreuzchen-hash")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    let bytes = resp.bytes().await.map_err(|_| UNREACHABLE.to_string())?;
-    Ok((header, bytes.to_vec()))
+    Ok(resp.bytes().await.ok().map(|b| (header, b.to_vec())))
+}
+
+/// The server list, or `None` when the registry cannot be reached.
+pub async fn try_fetch_list(c: &Connection) -> Result<Option<Vec<RemoteEntry>>, String> {
+    let Some((_, body)) = get(c, None).await? else {
+        return Ok(None);
+    };
+    serde_json::from_slice(&body)
+        .map(Some)
+        .map_err(|_| "Antwort der Registry ist ungültig".to_string())
 }
 
 pub async fn fetch_list(c: &Connection) -> Result<Vec<RemoteEntry>, String> {
-    let (_, body) = get(c, None).await?;
-    serde_json::from_slice(&body).map_err(|_| "Antwort der Registry ist ungültig".to_string())
+    try_fetch_list(c).await?.ok_or_else(|| UNREACHABLE.into())
+}
+
+/// Deletes `file` from the registry folder only.
+pub fn remove(registry: &Path, file: &str) -> Result<(), String> {
+    check_name(file, YAML)?;
+    fs::remove_file(registry.join(file)).map_err(|e| format!("Löschen fehlgeschlagen: {e}"))
 }
 
 pub async fn install(
@@ -206,7 +235,7 @@ pub async fn install(
         .iter()
         .find(|e| e.id == id)
         .ok_or("Der Fragebogen ist nicht mehr auf dem Server.")?;
-    let (header, bytes) = get(c, Some(id)).await?;
+    let (header, bytes) = get(c, Some(id)).await?.ok_or(UNREACHABLE)?;
     let h = hash(&bytes);
     if header.as_deref() != Some(h.as_str()) || entry.hash != h {
         return Err("Die heruntergeladene Datei ist beschädigt.".into());
@@ -215,12 +244,12 @@ pub async fn install(
     if load_text(text)?.def.id != id {
         return Err("Die heruntergeladene Datei hat eine andere id.".into());
     }
-    // Deleted only once the download is verified, so a failed install keeps the local copy.
+    // Write first: a failed write keeps the local copy, so one of the two always exists.
+    write_atomic(&paths.registry, &file, &bytes)?;
     for f in local {
         fs::remove_file(paths.definitions.join(f))
             .map_err(|e| format!("Löschen fehlgeschlagen: {e}"))?;
     }
-    write_atomic(&paths.registry, &file, &bytes)?;
     Ok(InstallOutcome::Installed)
 }
 
@@ -405,6 +434,11 @@ mod tests {
             Ok(InstallOutcome::NeedsReplaceConfirm)
         );
         assert!(local.exists() && !installed.exists());
+        // A failed write (registry folder missing) keeps the local copy.
+        fs::remove_dir(&e.paths.registry).unwrap();
+        assert!(install(&c, &e.paths, "fragebogen_a", true).await.is_err());
+        assert!(local.exists());
+        fs::create_dir(&e.paths.registry).unwrap();
         assert_eq!(
             install(&c, &e.paths, "fragebogen_a", true).await,
             Ok(InstallOutcome::Installed)
@@ -412,35 +446,99 @@ mod tests {
         assert!(!local.exists() && installed.exists());
     }
 
-    #[tokio::test]
-    async fn install_keeps_old_file_on_bad_hash() {
+    /// A fake registry: `list` as the list, every download serves `bytes` with `header`.
+    async fn fake(list: Vec<RemoteEntry>, header: String, bytes: String) -> Connection {
         use axum::{Json, routing::get};
-        let bytes = def("fragebogen_a");
-        let entry = RemoteEntry {
+        let app = axum::Router::new()
+            .route("/v1/fragebogen", get(move || async move { Json(list) }))
+            .route(
+                "/v1/fragebogen/{id}",
+                get(move || async move { ([("x-kreuzchen-hash", header)], bytes) }),
+            );
+        conn(&serve(app).await, "x")
+    }
+
+    fn entry_a(hash: String) -> RemoteEntry {
+        RemoteEntry {
             id: "fragebogen_a".into(),
             title: "A".into(),
             version: "1".into(),
-            hash: hash(bytes.as_bytes()),
-        };
-        let app = axum::Router::new()
-            .route(
-                "/v1/fragebogen",
-                get(move || async move { Json(vec![entry]) }),
-            )
-            .route(
-                "/v1/fragebogen/{id}",
-                get(move || async move { ([("x-kreuzchen-hash", "falsch")], bytes) }),
-            );
-        let c = conn(&serve(app).await, "x");
+            hash,
+        }
+    }
+
+    /// Installs `fragebogen_a` over an existing "alt" file; returns the error, checks the file kept.
+    async fn install_fails(c: Connection) -> String {
         let e = env();
         let old = e.paths.registry.join("fragebogen_a.yaml");
         fs::write(&old, "alt").unwrap();
-        let err = install(&c, &e.paths, "fragebogen_a", false).await;
-        assert_eq!(
-            err,
-            Err("Die heruntergeladene Datei ist beschädigt.".into())
-        );
+        let err = install(&c, &e.paths, "fragebogen_a", false)
+            .await
+            .unwrap_err();
         assert_eq!(fs::read(&old).unwrap(), b"alt");
+        assert_eq!(fs::read_dir(&e.paths.registry).unwrap().count(), 1);
+        err
+    }
+
+    #[tokio::test]
+    async fn install_keeps_old_file_on_bad_hash() {
+        let bytes = def("fragebogen_a");
+        let h = hash(bytes.as_bytes());
+        let c = fake(vec![entry_a(h)], "falsch".into(), bytes).await;
+        assert_eq!(
+            install_fails(c).await,
+            "Die heruntergeladene Datei ist beschädigt."
+        );
+    }
+
+    #[tokio::test]
+    async fn install_rejects_list_hash_mismatch() {
+        let bytes = def("fragebogen_a");
+        let h = hash(bytes.as_bytes());
+        let c = fake(vec![entry_a("anders".into())], h, bytes).await;
+        assert_eq!(
+            install_fails(c).await,
+            "Die heruntergeladene Datei ist beschädigt."
+        );
+    }
+
+    #[tokio::test]
+    async fn install_rejects_other_def_id() {
+        let bytes = def("fragebogen_b");
+        let h = hash(bytes.as_bytes());
+        let c = fake(vec![entry_a(h.clone())], h, bytes).await;
+        assert_eq!(
+            install_fails(c).await,
+            "Die heruntergeladene Datei hat eine andere id."
+        );
+    }
+
+    #[tokio::test]
+    async fn install_rejects_id_not_in_list() {
+        let bytes = def("fragebogen_a");
+        let h = hash(bytes.as_bytes());
+        let c = fake(vec![], h, bytes).await;
+        assert_eq!(
+            install_fails(c).await,
+            "Der Fragebogen ist nicht mehr auf dem Server."
+        );
+    }
+
+    #[test]
+    fn remove_stays_in_registry_folder() {
+        let e = env();
+        let outside = e.paths.data.join("x.yaml");
+        let local = e.paths.definitions.join("x.yaml");
+        let installed = e.paths.registry.join("x.yaml");
+        for f in [&outside, &local, &installed] {
+            fs::write(f, "x").unwrap();
+        }
+        assert_eq!(
+            remove(&e.paths.registry, "../x.yaml"),
+            Err("Ungültiger Dateiname".into())
+        );
+        remove(&e.paths.registry, "x.yaml").unwrap();
+        assert!(outside.exists() && local.exists() && !installed.exists());
     }
 
     #[tokio::test]

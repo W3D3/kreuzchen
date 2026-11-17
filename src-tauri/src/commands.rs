@@ -235,11 +235,7 @@ pub async fn registry_rows(paths: State<'_, Paths>) -> Result<RowsResult, String
     let installed = definitions::scan(&paths.registry);
     let remote = match registry::load_connection(&paths.data) {
         None => None,
-        Some(c) => match registry::fetch_list(&c).await {
-            Ok(list) => Some(list),
-            Err(e) if e == registry::UNREACHABLE => None,
-            Err(e) => return Err(e),
-        },
+        Some(c) => registry::try_fetch_list(&c).await?,
     };
     Ok(RowsResult {
         online: remote.is_some(),
@@ -259,9 +255,7 @@ pub async fn registry_install(
 
 #[tauri::command]
 pub fn registry_remove(paths: State<Paths>, file: String) -> Result<(), String> {
-    definitions::check_name(&file, definitions::YAML)?;
-    std::fs::remove_file(paths.registry.join(file))
-        .map_err(|e| format!("Löschen fehlgeschlagen: {e}"))
+    registry::remove(&paths.registry, &file)
 }
 
 #[cfg(test)]
