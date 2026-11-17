@@ -42,12 +42,22 @@ pub enum ResultRow {
         value: f64,
         cutoff: Option<i64>,
         over: bool,
+        /// Absent in results saved before norm tables existed.
+        #[serde(default)]
+        norm: Option<NormValue>,
     },
     Answer {
         id: String,
         label: String,
         answer: Option<String>,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct NormValue {
+    pub name: String,
+    pub value: i64,
+    pub band: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -151,10 +161,14 @@ impl Questionnaire {
         // Scale sums and missing answers.
         let mut sums: BTreeMap<&str, i64> = def.scales.iter().map(|s| (s.id.as_str(), 0)).collect();
         let mut missing_items = Vec::new();
+        let mut scale_missing: BTreeMap<&str, f64> = BTreeMap::new();
         for item in self.items() {
             let Some(scale) = &item.scale else { continue };
             match input.answers.get(&item.key_name()) {
-                None => missing_items.push(item.key_name()),
+                None => {
+                    missing_items.push(item.key_name());
+                    *scale_missing.entry(scale).or_default() += 1.0;
+                }
                 Some(&idx) => {
                     let key = match &item.key {
                         Some(KeyRef::Inline(v)) => Some(v),
@@ -183,6 +197,7 @@ impl Questionnaire {
             def,
             EnvSource {
                 scale: &|s| scale_vals[s.id.as_str()],
+                scale_missing: &|s| scale_missing.get(s.id.as_str()).copied().unwrap_or(0.0),
                 field: &|f| match input.fields.get(&f.id).or(f.default.as_ref()) {
                     Some(FieldValue::Bool(b)) => Some(Value::Bool(*b)),
                     Some(FieldValue::Num(n)) => Some(Value::Num(*n)),
@@ -257,12 +272,20 @@ impl Questionnaire {
             .result
             .iter()
             .map(|id| {
-                let sum = |label: &String, cutoff, (value, over)| ResultRow::Sum {
+                let sum = |label: &String, cutoff, (value, over): (f64, bool)| ResultRow::Sum {
                     id: id.clone(),
                     label: label.clone(),
                     value,
                     cutoff,
                     over,
+                    norm: def.norms.as_ref().and_then(|n| {
+                        let (value, band) = n.lookup(id, value)?;
+                        Some(NormValue {
+                            name: n.name.clone(),
+                            value,
+                            band,
+                        })
+                    }),
                 };
                 if let Some(s) = def.scales.iter().find(|s| &s.id == id) {
                     sum(&s.label, s.cutoff, scale_vals[id.as_str()])

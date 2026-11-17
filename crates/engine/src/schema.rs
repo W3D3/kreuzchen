@@ -39,6 +39,47 @@ pub struct Definition {
     pub caveats: Vec<Caveat>,
     #[serde(default)]
     pub verdict: Vec<VerdictEntry>,
+    #[serde(default)]
+    pub norms: Option<Norms>,
+}
+
+/// Norm tables (e.g. T-values) for scales and derived values.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Norms {
+    /// Shown before the value, e.g. "T".
+    #[serde(default = "default_norm_name")]
+    pub name: String,
+    /// Severity labels by lower bound, ascending; a norm value gets the last band it reaches.
+    #[serde(default)]
+    pub bands: Vec<Band>,
+    /// Scale or derived id to raw score → norm value. A raw score that is not listed takes the
+    /// next lower listed one, as with a printed table that skips rows.
+    pub tables: BTreeMap<String, BTreeMap<i64, i64>>,
+}
+
+fn default_norm_name() -> String {
+    "T".into()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Band {
+    pub from: i64,
+    pub label: String,
+}
+
+impl Norms {
+    /// Norm value and band for `raw`, or `None` when `id` has no table or `raw` is below it.
+    pub fn lookup(&self, id: &str, raw: f64) -> Option<(i64, Option<String>)> {
+        let (_, &value) = self
+            .tables
+            .get(id)?
+            .range(..=raw.floor() as i64)
+            .next_back()?;
+        let band = self.bands.iter().rev().find(|b| value >= b.from);
+        Some((value, band.map(|b| b.label.clone())))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

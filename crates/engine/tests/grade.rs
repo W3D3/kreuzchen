@@ -204,6 +204,7 @@ fn rows_in_result_order() {
         value,
         cutoff: Some(cutoff),
         over: true,
+        norm: None,
     };
     assert_eq!(
         g.rows,

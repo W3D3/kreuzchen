@@ -78,6 +78,7 @@
         <div class="line">
           <span class="label">{r.label}</span>
           <span class="num">{num(r.value)}{r.cutoff !== null ? ` / ${r.cutoff}` : ""}</span>
+          {#if r.norm}<span class="num norm">{r.norm.name} = {r.norm.value}</span>{#if r.norm.band}<span class="band">{r.norm.band}</span>{/if}{/if}
           {#if r.over}<span class="pill">über Cut-off</span>{/if}
         </div>
         {#if r.cutoff}
@@ -118,6 +119,8 @@
   .row:last-child { border-bottom: 0; }
   .line { display: flex; align-items: baseline; gap: .75rem; font-size: 1.15rem; }
   .label { flex: 1; }
+  .norm { color: var(--muted); }
+  .band { border: 1px solid var(--line); border-radius: 999px; padding: .1rem .75rem; font-size: .95rem; }
   .pill { background: var(--over-soft); color: var(--over); border: 1px solid var(--over); border-radius: 999px; padding: .1rem .75rem; font-size: .95rem; font-weight: 700; }
   .meter { position: relative; height: .5rem; margin-top: .5rem; background: var(--bg); border-radius: 4px; }
   .fill { height: 100%; background: var(--accent); border-radius: 4px; }
