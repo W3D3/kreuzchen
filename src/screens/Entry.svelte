@@ -157,7 +157,7 @@
 
 <style>
   .bar { background: var(--surface); border: 1px solid var(--line); padding: .5rem 1rem; }
-  .top { flex-wrap: wrap; position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: .75rem; border-radius: 10px; margin-bottom: 1rem; }
+  .top { flex-wrap: wrap; position: sticky; top: .75rem; z-index: 2; box-shadow: 0 0 0 .75rem var(--bg); display: flex; align-items: center; gap: .75rem; border-radius: 10px; margin-bottom: 1rem; }
   .top span { flex: 1; font-size: 1.1rem; }
   .bottom { position: fixed; left: 0; right: 0; bottom: 0; text-align: center; color: var(--muted); border-width: 1px 0 0; }
   .fields { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
@@ -167,7 +167,7 @@
   input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
   .items { padding-bottom: 4rem; }
   .muted { color: var(--muted); }
-  .item { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: .75rem; scroll-margin-block: 5rem; }
+  .item { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: .75rem; scroll-margin-block: 7rem; }
   .item:focus { outline: none; }
   .item:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
   .item.missing { border-left: 6px solid var(--over); }
