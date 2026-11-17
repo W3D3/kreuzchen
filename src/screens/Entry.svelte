@@ -16,16 +16,16 @@
   import { entryKey } from "../lib/keyboard";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
-  let { opened, input, draft = null, notice = null, preview = null, onback, ongraded }: {
+  let { opened, input, draft, notice = null, preview = null, onback, ongraded }: {
     opened: OpenedDefinition;
     input: Input;
     /** File name of the saved draft this entry continues. */
-    draft?: string | null;
+    draft?: string;
     notice?: string | null;
     /** Draft YAML from the editor; grades it instead of the saved file. */
     preview?: string | null;
     onback: () => void;
-    ongraded: (graded: Graded, input: Input, draft: string | null) => void;
+    ongraded: (graded: Graded, input: Input, draft?: string) => void;
   } = $props();
 
   // svelte-ignore state_referenced_locally
@@ -53,7 +53,7 @@
   const autosave = preview == null
     ? createAutosave<Input>(
         // svelte-ignore state_referenced_locally
-        draft,
+        draft ?? null,
         (name, input) => saveDraft(name, {
           saved_at: localTimestamp(new Date()),
           questionnaire: { id: def.id, title: def.title, version: def.version, hash: opened.hash },
@@ -92,7 +92,7 @@
       const graded = await (preview == null ? grade(opened.file, opened.locked, opened.hash, finalInput) : gradeDraft(preview, finalInput));
       // A failed draft write is already in the banner; it must not block the result.
       await autosave?.flush().catch(() => {});
-      ongraded(graded, finalInput, autosave?.name ?? null);
+      ongraded(graded, finalInput, autosave?.name ?? undefined);
     } catch (e) {
       banner = String(e);
     } finally {
@@ -127,9 +127,10 @@
   }
 
   async function saveAsDraft() {
-    autosave!.push(currentInput());
+    if (!autosave) return;
+    autosave.push(currentInput());
     try {
-      await autosave!.flush();
+      await autosave.flush();
       onback();
     } catch {
       // The banner already shows why.

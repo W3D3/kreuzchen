@@ -6,8 +6,8 @@ export const getDefinition = (file: string, locked: boolean) => invoke<OpenedDef
 export const grade = (file: string, locked: boolean, hash: string, input: Input) => invoke<Graded>("grade", { file, locked, hash, input });
 export const dataDir = () => invoke<string>("data_dir");
 export const openDefinitionsFolder = () => invoke<void>("open_definitions_folder");
-/** Also deletes `draft`, the entry's autosaved draft. */
-export const saveResult = (record: SavedRecord, draft: string | null) => invoke<string>("save_result", { record, draft });
+/** Overwrites `name` when given (the entry was saved before), then deletes `draft`, the entry's autosaved draft. */
+export const saveResult = (record: SavedRecord, name: string | null, draft: string | null) => invoke<string>("save_result", { record, name, draft });
 export const listResults = () => invoke<SavedSummary[]>("list_results");
 export const openResult = (name: string) => invoke<OpenedResult>("open_result", { name });
 export const deleteResult = (name: string) => invoke<void>("delete_result", { name });

@@ -18,7 +18,7 @@
 
   let { onstart, onregistry, onupdate }: {
     /** `draft` and `notice` are set when a saved draft is resumed. */
-    onstart: (opened: OpenedDefinition, input: Input, draft?: string, notice?: string | null) => void;
+    onstart: (opened: OpenedDefinition, input: Input, draft?: string, notice?: string) => void;
     onregistry: () => void;
     onupdate: () => void;
   } = $props();
@@ -57,7 +57,7 @@
       }
       const opened = await getDefinition(current.file, current.locked);
       const { input, dropped } = fitInput(opened.definition, record.input);
-      const notice = !outdated ? null
+      const notice = !outdated ? undefined
         : `Der Fragebogen wurde seit dem Entwurf geändert. Bitte die Eingaben prüfen.${dropped ? ` ${dropped} Eingaben passten nicht mehr und wurden entfernt.` : ""}`;
       onstart(opened, input, d.name, notice);
     } catch (e) {
@@ -66,7 +66,7 @@
   }
 
   async function removeDraft(d: DraftSummary) {
-    if (!(await confirm({ title: "Entwurf löschen", message: `Entwurf „${d.kennung}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
+    if (!(await confirm({ title: "Entwurf löschen", message: `Entwurf „${d.kennung || d.title}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
     banner = null;
     try {
       await deleteDraft(d.name);
@@ -93,7 +93,7 @@
           {#each drafts as d (d.name)}
             <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
               <div class="min-w-0 flex-1">
-                <p class="font-mono font-bold">{d.kennung}</p>
+                <p class="font-mono font-bold">{d.kennung || d.title}</p>
                 <p class="text-[15px] text-muted-foreground">{d.title} · {d.answered} beantwortet · zuletzt {formatCreatedAt(d.saved_at)}</p>
                 <p class="tech font-mono text-muted-foreground">{d.name}</p>
               </div>

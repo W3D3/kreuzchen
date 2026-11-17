@@ -20,11 +20,11 @@
   import { installTech } from "./lib/tech.svelte";
   import type { Definition, Graded, Input, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
 
-  // `preview` is the editor's draft YAML while it is being tested.
+  // `preview` is the editor's draft YAML while it is being tested; `draftFile` and `savedFile` name the entry's autosaved draft and its saved result.
   type Screen =
     | { name: "list" }
-    | { name: "entry"; opened: OpenedDefinition; input: Input; draft?: string | null; notice?: string | null; preview?: string }
-    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null; draft?: string | null; preview?: string }
+    | { name: "entry"; opened: OpenedDefinition; input: Input; draftFile?: string; savedFile?: string; notice?: string | null; preview?: string }
+    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null; draftFile?: string; savedFile?: string; preview?: string }
     | { name: "saved" }
     | { name: "definitions" }
     | { name: "editor" }
@@ -108,18 +108,18 @@
   </header>
   <main class="mx-auto max-w-[56rem] p-6">
     {#if screen.name === "list"}
-      <List onstart={(opened, input, draft, notice) => (screen = { name: "entry", opened, input, draft, notice })} onregistry={() => (screen = { name: "registry" })} onupdate={() => (screen = { name: "settings" })} />
+      <List onstart={(opened, input, draftFile, notice) => (screen = { name: "entry", opened, input, draftFile, notice })} onregistry={() => (screen = { name: "registry" })} onupdate={() => (screen = { name: "settings" })} />
     {:else if screen.name === "entry"}
       {@const e = screen}
       <Entry
         bind:this={entry}
         opened={e.opened}
         input={e.input}
-        draft={e.draft}
+        draft={e.draftFile}
         notice={e.notice}
         preview={e.preview}
         onback={() => (screen = e.preview == null ? { name: "list" } : { name: "editor" })}
-        ongraded={(graded, input, draft) => (screen = { name: "result", opened: e.opened, record: null, input, graded, notice: null, draft, preview: e.preview })}
+        ongraded={(graded, input, draftFile) => (screen = { name: "result", opened: e.opened, record: null, input, graded, notice: null, draftFile, savedFile: e.savedFile, preview: e.preview })}
       />
     {:else if screen.name === "result"}
       {@const r = screen}
@@ -129,9 +129,16 @@
         graded={r.graded}
         notice={r.notice}
         onregrade={r.onregrade}
-        draft={r.draft ?? null}
+        fresh={r.record == null}
+        draft={r.draftFile}
+        saved={r.savedFile}
+        onsaved={(name) => {
+          // Saving deleted the draft; later edits start a new one.
+          r.savedFile = name;
+          r.draftFile = undefined;
+        }}
         preview={r.preview != null}
-        onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input, draft: r.draft, preview: r.preview })}
+        onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input, draftFile: r.draftFile, savedFile: r.savedFile, preview: r.preview })}
         onnew={() => (screen = r.preview == null ? { name: "list" } : { name: "editor" })}
       />
     {:else if screen.name === "saved"}

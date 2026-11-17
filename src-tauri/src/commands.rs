@@ -88,9 +88,16 @@ fn with_current<T>(paths: &Paths, record: T, q: &QRef) -> Opened<T> {
 pub fn save_result(
     paths: State<Paths>,
     record: SavedRecord,
+    name: Option<String>,
     draft: Option<String>,
 ) -> Result<String, String> {
-    store::save_finished(&paths.results, &paths.drafts, &record, draft.as_deref())
+    store::save_finished(
+        &paths.results,
+        &paths.drafts,
+        &record,
+        name.as_deref(),
+        draft.as_deref(),
+    )
 }
 
 #[tauri::command]

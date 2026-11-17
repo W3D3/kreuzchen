@@ -99,14 +99,20 @@ pub fn save(dir: &Path, rec: &SavedRecord) -> Result<String, String> {
     Ok(name)
 }
 
-/// Saves the result into `results`, then removes its draft from `drafts`.
+/// Saves the result into `results` (overwriting `name`, the entry's earlier save, if any), then removes its draft from `drafts`.
 pub fn save_finished(
     results: &Path,
     drafts: &Path,
     rec: &SavedRecord,
+    name: Option<&str>,
     draft: Option<&str>,
 ) -> Result<String, String> {
-    let name = save(results, rec)?;
+    let name = match name {
+        Some(n) => check_name(n)
+            .and_then(|()| write_json(results, n, rec))
+            .map(|()| n.to_owned())?,
+        None => save(results, rec)?,
+    };
     if let Some(d) = draft {
         // The result is safe; a draft left behind is only clutter the user can delete.
         let _ = delete(drafts, d);
@@ -407,7 +413,8 @@ mod tests {
         let (results, drafts) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         let mine = save_draft(drafts.path(), None, &draft(T, &[("1", 0)])).unwrap();
         let other = save_draft(drafts.path(), None, &draft(T, &[])).unwrap();
-        let name = save_finished(results.path(), drafts.path(), &rec(T), Some(&mine)).unwrap();
+        let name =
+            save_finished(results.path(), drafts.path(), &rec(T), None, Some(&mine)).unwrap();
         assert_eq!(load::<SavedRecord>(results.path(), &name).unwrap(), rec(T));
         let left: Vec<_> = list_drafts(drafts.path())
             .into_iter()
@@ -415,9 +422,32 @@ mod tests {
             .collect();
         assert_eq!(left, [other]);
         // Already gone (or never autosaved): the result is still saved.
-        assert!(save_finished(results.path(), drafts.path(), &rec(T), Some(&mine)).is_ok());
-        assert!(save_finished(results.path(), drafts.path(), &rec(T), None).is_ok());
+        assert!(save_finished(results.path(), drafts.path(), &rec(T), None, Some(&mine)).is_ok());
+        assert!(save_finished(results.path(), drafts.path(), &rec(T), None, None).is_ok());
         assert_eq!(list(results.path()).len(), 3);
+    }
+
+    #[test]
+    fn regrading_the_same_entry_updates_its_record() {
+        let (results, drafts) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let first = save_finished(results.path(), drafts.path(), &rec(T), None, None).unwrap();
+        let mut again = rec("2026-11-11T22:40:00");
+        again.input.answers.insert("b".into(), 2);
+        let second =
+            save_finished(results.path(), drafts.path(), &again, Some(&first), None).unwrap();
+        assert_eq!(second, first);
+        assert_eq!(list(results.path()).len(), 1);
+        assert_eq!(load::<SavedRecord>(results.path(), &first).unwrap(), again);
+        assert!(
+            save_finished(
+                results.path(),
+                drafts.path(),
+                &again,
+                Some("../x.json"),
+                None
+            )
+            .is_err()
+        );
     }
 
     #[test]

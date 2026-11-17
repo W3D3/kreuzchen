@@ -14,17 +14,23 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { saveResult } from "../lib/api";
+  import { loadAutoSaveResult } from "../lib/settings";
   import { localTimestamp } from "../lib/kennung";
   import { compactItems } from "../lib/ranges";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
-  let { opened, input, graded, notice, draft = null, preview = false, onregrade, onback, onnew }: {
+  let { opened, input, graded, notice, fresh = false, draft, saved: savedName, onsaved, preview = false, onregrade, onback, onnew }: {
     opened: OpenedDefinition | null;
     input: Input;
     graded: Graded;
     notice: string | null;
+    /** Just graded from an entry (not a stored record); saved at once when the setting is on. */
+    fresh?: boolean;
     /** The entry's autosaved draft; saving the result deletes it. */
-    draft?: string | null;
+    draft?: string;
+    /** The record this entry was saved as before; saving again overwrites it. */
+    saved?: string;
+    onsaved?: (name: string) => void;
     preview?: boolean;
     onregrade?: (() => void) | null;
     onback: () => void;
@@ -59,7 +65,7 @@
     if (!opened || saved) return;
     banner = null;
     try {
-      await saveResult({
+      const name = await saveResult({
         format: 1,
         kennung,
         created_at: localTimestamp(new Date()),
@@ -72,13 +78,17 @@
         input,
         grading: g,
         text: graded.text,
-      }, draft);
+      }, savedName ?? null, draft ?? null);
       saved = true;
+      onsaved?.(name);
       status = "Gespeichert.";
     } catch (e) {
       banner = String(e);
     }
   }
+
+  // svelte-ignore state_referenced_locally
+  if (fresh && !preview && loadAutoSaveResult()) void save();
 </script>
 
 <!-- Full-bleed bar inside the centred column, as on the entry screen. -->
