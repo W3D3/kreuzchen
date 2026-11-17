@@ -173,5 +173,8 @@
 </Tooltip.Provider>
 
 {#snippet tab(label: string, active: boolean, onclick: () => void, cls = "")}
-  <Button variant="ghost" aria-current={active ? "page" : undefined} class="h-11 px-4 text-[15px] aria-[current=page]:bg-secondary aria-[current=page]:font-bold {cls}" {onclick}>{label}</Button>
+  <Button variant="ghost" aria-current={active ? "page" : undefined} class="h-11 px-4 text-[15px] aria-[current=page]:bg-secondary aria-[current=page]:font-bold {cls}" {onclick}>
+    <!-- The invisible bold copy reserves the bold width, so selecting a tab does not shift the others. -->
+    <span class="grid justify-items-center"><span class="col-start-1 row-start-1">{label}</span><span class="invisible col-start-1 row-start-1 font-bold">{label}</span></span>
+  </Button>
 {/snippet}

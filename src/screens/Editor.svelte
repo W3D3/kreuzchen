@@ -9,7 +9,7 @@
   import Plus from "@lucide/svelte/icons/plus";
   import Save from "@lucide/svelte/icons/save";
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Banner from "$lib/components/Banner.svelte";
   import X from "@lucide/svelte/icons/x";
   import type { Snippet } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -182,12 +182,10 @@
     <Button disabled={!!errors?.length} onclick={save}><Save />Speichern</Button>
     <Button variant="ghost" onclick={onclose}><X />Schließen</Button>
   </div>
-  {#if banner}
-    <pre role="alert" class="mb-3 flex items-start gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 font-sans text-[15px] whitespace-pre-wrap"><TriangleAlert class="mt-0.5 size-4 shrink-0 text-over" />{banner}</pre>
-  {/if}
 </header>
 
 <div class="flex flex-col gap-4 pb-16">
+  {#if banner}<Banner>{banner}</Banner>{/if}
   <div aria-live="polite">
     {#if errors?.length}
       <div class="rounded-xl border border-over/45 bg-over-soft px-5 py-3 text-[15px]">

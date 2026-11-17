@@ -3,7 +3,7 @@
   import Download from "@lucide/svelte/icons/download";
   import FileInput from "@lucide/svelte/icons/file-input";
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Banner from "$lib/components/Banner.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import { confirm } from "$lib/components/confirm.svelte";
@@ -58,9 +58,7 @@
     <Button variant="outline" class="h-11 px-4" onclick={importOne}><FileInput />Importieren…</Button>
   </div>
   {#if banner}
-    <p role="alert" class="flex items-center gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 text-[15px]">
-      <TriangleAlert class="size-4 shrink-0 text-over" />{banner}
-    </p>
+    <Banner>{banner}</Banner>
   {/if}
   {#if rows?.length === 0}
     <p class="rounded-xl border border-dashed px-6 py-10 text-center text-[16px] text-muted-foreground">Keine gespeicherten Auswertungen.</p>

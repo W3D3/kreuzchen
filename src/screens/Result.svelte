@@ -6,7 +6,7 @@
   import Info from "@lucide/svelte/icons/info";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Save from "@lucide/svelte/icons/save";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Banner from "$lib/components/Banner.svelte";
   import X from "@lucide/svelte/icons/x";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
@@ -87,9 +87,7 @@
     <Button class="h-11 px-4 font-bold" onclick={onnew}><FilePlus />{preview ? "Zurück zum Editor" : "Neuer Fragebogen"}</Button>
   </div>
   {#if banner}
-    <p role="alert" class="mb-3 flex items-center gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 text-[15px]">
-      <TriangleAlert class="size-4 shrink-0 text-over" />{banner}
-    </p>
+    <Banner class="mb-3">{banner}</Banner>
   {/if}
 </header>
 

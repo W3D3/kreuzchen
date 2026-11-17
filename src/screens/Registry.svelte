@@ -3,7 +3,7 @@
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Server from "@lucide/svelte/icons/server";
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Banner from "$lib/components/Banner.svelte";
   import { confirm } from "$lib/components/confirm.svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -12,7 +12,7 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { registryConnect, registryConnection, registryDisconnect, registryInstall, registryRemove, registryRows } from "../lib/api";
   import { rowView } from "../lib/registry";
-  import type { ConnectionInfo, Row, RowsResult } from "../lib/types";
+  import type { ConnectionInfo, Row, RowState, RowsResult } from "../lib/types";
 
   let conn = $state<ConnectionInfo | null>(null);
   let result = $state<RowsResult | null>(null);
@@ -20,6 +20,7 @@
   let form = $state({ url: "", user: "", key: "" });
   let banner = $state<string | null>(null);
   let busy = $state(false);
+  const badgeClass: Partial<Record<RowState, string>> = { gone: "bg-over-soft text-over", current: "text-muted-foreground" };
 
   async function run(fn: () => Promise<unknown>) {
     banner = null;
@@ -94,9 +95,7 @@
     {#if conn}<Button variant="outline" class="h-11 px-4" onclick={load} disabled={busy}><RefreshCw />Nach Änderungen suchen</Button>{/if}
   </div>
   {#if banner}
-    <p role="alert" class="flex items-center gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 text-[15px]">
-      <TriangleAlert class="size-4 shrink-0 text-over" />{banner}
-    </p>
+    <Banner>{banner}</Banner>
   {/if}
 
   {#if conn && !editing}
@@ -134,9 +133,7 @@
   {/if}
 
   {#if conn && result && !result.online}
-    <p role="status" class="flex items-center gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 text-[15px]">
-      <CloudOff class="size-4 shrink-0 text-over" />{result.error ?? "Registry nicht erreichbar"}
-    </p>
+    <Banner kind="info" icon={CloudOff}>{result.error ?? "Registry nicht erreichbar"}</Banner>
   {/if}
 
   {#if result?.rows.length}
@@ -148,7 +145,7 @@
             <p class="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-[17px] font-bold">
               {r.title}
               {#if v.label}
-                <Badge variant={r.state === "current" ? "outline" : "secondary"} class="h-6 px-2 text-[13px] {r.state === 'gone' ? 'bg-over-soft text-over' : r.state === 'current' ? 'text-muted-foreground' : ''}">{v.label}</Badge>
+                <Badge variant={r.state === "current" ? "outline" : "secondary"} class="h-6 px-2 text-[13px] {badgeClass[r.state] ?? ''}">{v.label}</Badge>
               {/if}
             </p>
             <div class="flex gap-2">

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Banner from "$lib/components/Banner.svelte";
   import { confirm } from "$lib/components/confirm.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
@@ -99,8 +99,8 @@
   }
 </script>
 
-{#snippet kbd(k: string, cls = "")}
-  <kbd class="inline-grid h-5 min-w-5 place-items-center rounded-[4px] border border-current/25 px-1 font-mono text-[12px]! leading-none {cls}">{k}</kbd>
+{#snippet kbd(k: string, cls = "", hidden = false)}
+  <kbd aria-hidden={hidden ? "true" : undefined} class="inline-grid h-5 min-w-5 place-items-center rounded-[4px] border border-current/25 px-1 font-mono text-[12px]! leading-none {cls}">{k}</kbd>
 {/snippet}
 
 <!-- Full-bleed bar inside the centred column: the shadows paint the card colour and bottom line out to the window edges. -->
@@ -120,9 +120,7 @@
     <Button class="h-11 px-5 font-bold" onclick={doGrade}>Auswerten</Button>
   </div>
   {#if banner}
-    <p role="alert" class="mb-3 flex items-center gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 text-[15px]">
-      <TriangleAlert class="size-4 shrink-0 text-over" />{banner}
-    </p>
+    <Banner class="mb-3">{banner}</Banner>
   {/if}
 </header>
 
@@ -199,7 +197,7 @@
                   {sel ? 'bg-primary font-bold text-primary-foreground shadow-sm' : 'text-foreground hover:bg-card'}"
                 onclick={() => { answers[it.key] = j; focusItem(i); }}
               >
-                {#if it.shortcuts[j]}{@render kbd(it.shortcuts[j], sel ? "shrink-0" : "shrink-0 text-muted-foreground")}{/if}{o}
+                {#if it.shortcuts[j]}{@render kbd(it.shortcuts[j], sel ? "shrink-0" : "shrink-0 text-muted-foreground", true)}{/if}{o}
               </button>
             {/each}
           </div>
@@ -212,7 +210,7 @@
 <footer class="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card">
   <div class="mx-auto flex min-h-11 max-w-[1040px] flex-wrap items-center justify-center gap-x-5 gap-y-1 px-6 py-2 text-[14px] text-muted-foreground">
     {#each hints as [keys, label] (label)}
-      <span class="flex items-center gap-1">{#each keys as k (k)}{@render kbd(k)}{/each}<span class="ml-0.5">{label}</span></span>
+      <span class="flex items-center gap-1">{#each keys as k, j (j)}{@render kbd(k)}{/each}<span class="ml-0.5">{label}</span></span>
     {/each}
   </div>
 </footer>

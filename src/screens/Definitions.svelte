@@ -3,7 +3,7 @@
   import Pencil from "@lucide/svelte/icons/pencil";
   import Plus from "@lucide/svelte/icons/plus";
   import Trash2 from "@lucide/svelte/icons/trash-2";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Banner from "$lib/components/Banner.svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
@@ -56,9 +56,7 @@
     <Button class="h-11 px-5 font-bold" onclick={() => onedit(newDoc())}><Plus />Neuer Fragebogen</Button>
   </div>
   {#if banner}
-    <p role="alert" class="flex items-center gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 text-[15px]">
-      <TriangleAlert class="size-4 shrink-0 text-over" />{banner}
-    </p>
+    <Banner>{banner}</Banner>
   {/if}
   {#if entries?.length}
     <Card.Root class="gap-0 py-0">
