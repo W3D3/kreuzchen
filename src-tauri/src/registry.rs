@@ -61,7 +61,7 @@ pub enum InstallOutcome {
     NeedsReplaceConfirm,
 }
 
-/// Adds `https://` when no scheme is given and strips trailing `/`; only http and https.
+/// Adds `https://` when no scheme is given and strips trailing `/`; https only (http for loopback).
 pub fn normalize_url(input: &str) -> Result<String, String> {
     let s = input.trim();
     let s = if s.contains("://") {
@@ -70,8 +70,16 @@ pub fn normalize_url(input: &str) -> Result<String, String> {
         format!("https://{s}")
     };
     let u = Url::parse(&s).map_err(|_| BAD_URL.to_string())?;
-    if !matches!(u.scheme(), "http" | "https") || u.host_str().is_none_or(str::is_empty) {
+    if u.host_str().is_none_or(str::is_empty) {
         return Err(BAD_URL.into());
+    }
+    // Basic credentials must not travel in clear text; http only for local testing.
+    let loopback = matches!(u.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+    match u.scheme() {
+        "https" => {}
+        "http" if loopback => {}
+        "http" => return Err("Nur https-Adressen sind erlaubt.".into()),
+        _ => return Err(BAD_URL.into()),
     }
     Ok(s.trim_end_matches('/').to_string())
 }
@@ -80,12 +88,18 @@ pub fn load_connection(app_data: &Path) -> Option<Connection> {
     serde_json::from_slice(&fs::read(app_data.join(FILE)).ok()?).ok()
 }
 
+impl Connection {
+    /// Validated url, whitespace-trimmed credentials (pasted keys often carry a newline).
+    pub fn new(url: &str, user: &str, key: &str) -> Result<Self, String> {
+        Ok(Self {
+            url: normalize_url(url)?,
+            user: user.trim().into(),
+            key: key.trim().into(),
+        })
+    }
+}
+
 pub fn save_connection(app_data: &Path, c: &Connection) -> Result<(), String> {
-    let c = Connection {
-        url: c.url.clone(),
-        user: c.user.trim().to_string(),
-        key: c.key.trim().to_string(),
-    };
     let json = serde_json::to_vec_pretty(&c).map_err(|e| e.to_string())?;
     write_atomic(app_data, FILE, &json)
 }
@@ -98,10 +112,9 @@ pub fn clear_connection(app_data: &Path) {
 fn installed_id(e: &DefinitionEntry) -> String {
     e.summary.as_ref().map_or_else(
         || {
-            e.file
-                .rsplit_once('.')
-                .map_or(&*e.file, |(stem, _)| stem)
-                .to_string()
+            Path::new(&e.file)
+                .file_stem()
+                .map_or_else(String::new, |s| s.to_string_lossy().into_owned())
         },
         |s| s.id.clone(),
     )
@@ -300,17 +313,21 @@ mod tests {
         );
         assert_eq!(normalize_url("https://x.y/").unwrap(), "https://x.y");
         assert!(normalize_url("ftp://x").is_err());
+        assert!(normalize_url("http://kreuzchen.wedenig.dev").is_err());
+        assert_eq!(
+            normalize_url("http://127.0.0.1:8080/").unwrap(),
+            "http://127.0.0.1:8080"
+        );
+        assert!(normalize_url("http://localhost:1").is_ok());
+        assert!(normalize_url("http://[::1]:1").is_ok());
         assert!(normalize_url("https://").is_err());
     }
 
     #[test]
-    fn save_connection_trims() {
+    fn connection_trims_credentials() {
         let d = tempfile::tempdir().unwrap();
-        let c = Connection {
-            url: "https://x.y".into(),
-            user: " praxis \n".into(),
-            key: "abc\n".into(),
-        };
+        let c = Connection::new("x.y", " praxis \n", "abc\n").unwrap();
+        assert_eq!(c.url, "https://x.y");
         save_connection(d.path(), &c).unwrap();
         let got = load_connection(d.path()).unwrap();
         assert_eq!((got.user.as_str(), got.key.as_str()), ("praxis", "abc"));

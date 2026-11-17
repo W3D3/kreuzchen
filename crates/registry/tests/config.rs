@@ -52,6 +52,15 @@ fn loads_valid_registry() {
 }
 
 #[test]
+fn loads_uppercase_extension() {
+    let dir = setup(&config(&[]), &[("A.YAML", def("fragebogen_a"))]);
+    assert!(load(dir.path())
+        .unwrap()
+        .entries
+        .contains_key("fragebogen_a"));
+}
+
+#[test]
 fn refuses_invalid_definition() {
     let dir = setup(&config(&[]), &[("kaputt.yaml", "schema: 1\n".into())]);
     assert!(err(dir.path()).contains("kaputt.yaml"));

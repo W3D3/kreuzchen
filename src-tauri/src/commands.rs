@@ -210,11 +210,7 @@ pub async fn registry_connect(
     user: String,
     key: String,
 ) -> Result<(), String> {
-    let c = Connection {
-        url: registry::normalize_url(&url)?,
-        user: user.trim().into(),
-        key: key.trim().into(),
-    };
+    let c = Connection::new(&url, &user, &key)?;
     registry::fetch_list(&c).await?;
     registry::save_connection(&paths.data, &c)
 }

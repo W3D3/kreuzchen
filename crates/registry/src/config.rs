@@ -84,7 +84,10 @@ pub fn load(data: &Path) -> Result<Registry, String> {
         .map_err(|e| format!("{}: {e}", dir.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
-            p.is_file() && matches!(p.extension().and_then(|e| e.to_str()), Some("yaml" | "yml"))
+            p.is_file()
+                && p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    e.eq_ignore_ascii_case("yaml") || e.eq_ignore_ascii_case("yml")
+                })
         })
         .collect();
     files.sort();
