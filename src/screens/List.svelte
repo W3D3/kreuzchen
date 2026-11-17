@@ -3,7 +3,7 @@
   import { initialInput } from "../lib/input";
   import type { DefinitionEntry, Input, OpenedDefinition } from "../lib/types";
 
-  let { onstart }: { onstart: (opened: OpenedDefinition, input: Input) => void } = $props();
+  let { onstart, onregistry }: { onstart: (opened: OpenedDefinition, input: Input) => void; onregistry: () => void } = $props();
 
   let entries = $state<DefinitionEntry[] | null>(null);
   let dir = $state("");
@@ -29,7 +29,10 @@
   }
 </script>
 
-<h1>Fragebögen</h1>
+<div class="head">
+  <h1>Fragebögen</h1>
+  <button onclick={onregistry}>Fragebögen aus der Registry</button>
+</div>
 {#if banner}<p class="banner" role="alert">{banner}</p>{/if}
 {#if entries?.length === 0}
   <p class="muted">Noch keine Fragebögen installiert. Bitte wenden Sie sich an den Support.</p>
@@ -58,6 +61,7 @@
 </div>
 
 <style>
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
   .card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
   .card strong { font-size: 1.25rem; }
   .muted { color: var(--muted); }

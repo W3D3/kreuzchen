@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Definition, DefinitionEntry, Graded, Input, OpenedDefinition, OpenedResult, SavedRecord, SavedSummary, Summary } from "./types";
+import type { ConnectionInfo, Definition, DefinitionEntry, Graded, InstallOutcome, Input, OpenedDefinition, OpenedResult, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
 
 export const listDefinitions = () => invoke<DefinitionEntry[]>("list_definitions");
 export const getDefinition = (file: string, locked: boolean) => invoke<OpenedDefinition>("get_definition", { file, locked });
@@ -21,3 +21,9 @@ export const saveDefinition = (file: string, locked: boolean, yaml: string, expe
   invoke<string>("save_definition", { file, locked, yaml, expectedHash });
 export const deleteDefinition = (file: string, locked: boolean) => invoke<void>("delete_definition", { file, locked });
 export const duplicateDefinition = (file: string, locked: boolean) => invoke<string>("duplicate_definition", { file, locked });
+export const registryConnection = () => invoke<ConnectionInfo | null>("registry_connection");
+export const registryConnect = (url: string, user: string, key: string) => invoke<void>("registry_connect", { url, user, key });
+export const registryDisconnect = () => invoke<void>("registry_disconnect");
+export const registryRows = () => invoke<RowsResult>("registry_rows");
+export const registryInstall = (id: string, replaceLocal: boolean) => invoke<InstallOutcome>("registry_install", { id, replaceLocal });
+export const registryRemove = (file: string) => invoke<void>("registry_remove", { file });

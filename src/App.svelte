@@ -5,6 +5,7 @@
   import Saved from "./screens/Saved.svelte";
   import Definitions from "./screens/Definitions.svelte";
   import Editor from "./screens/Editor.svelte";
+  import Registry from "./screens/Registry.svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { relaunch } from "@tauri-apps/plugin-process";
@@ -22,7 +23,8 @@
     | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null; preview?: string }
     | { name: "saved" }
     | { name: "definitions" }
-    | { name: "editor" };
+    | { name: "editor" }
+    | { name: "registry" };
 
   let screen = $state<Screen>({ name: "list" });
   let entry = $state<Entry>();
@@ -105,7 +107,7 @@
 </script>
 
 <nav>
-  <button class:active={screen.name === "list" || screen.name === "entry"} onclick={() => go({ name: "list" })}>Fragebögen</button>
+  <button class:active={screen.name === "list" || screen.name === "entry" || screen.name === "registry"} onclick={() => go({ name: "list" })}>Fragebögen</button>
   <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
   <button class="tech" class:active={screen.name === "definitions" || screen.name === "editor"} onclick={() => go({ name: "definitions" })}>Fragebögen bearbeiten</button>
   <button class="check" onclick={() => findUpdate(true)} disabled={checking || updating}>{checking ? "Suche Updates …" : updateNote ?? "Nach Updates suchen"}</button>
@@ -118,7 +120,7 @@
 {/if}
 <main>
   {#if screen.name === "list"}
-    <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} />
+    <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} onregistry={() => (screen = { name: "registry" })} />
   {:else if screen.name === "entry"}
     {@const e = screen}
     <Entry
@@ -145,6 +147,8 @@
     <Saved onopen={(res) => showSaved(res, null)} />
   {:else if screen.name === "definitions"}
     <Definitions onedit={(doc) => { draft = doc; screen = { name: "editor" }; }} />
+  {:else if screen.name === "registry"}
+    <Registry />
   {:else if screen.name === "editor" && draft}
     <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} onpreview={preview} />
   {/if}

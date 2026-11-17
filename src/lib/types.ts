@@ -52,3 +52,9 @@ export interface SavedRecord {
 }
 export interface SavedSummary { name: string; kennung: string; title: string; created_at: string }
 export interface OpenedResult { record: SavedRecord; current: DefinitionEntry | null; outdated: boolean }
+
+export type RowState = "available" | "current" | "update" | "gone";
+export interface Row { id: string; title: string; state: RowState; file: string | null }
+export interface RowsResult { online: boolean; rows: Row[] }
+export type InstallOutcome = "installed" | "needs_replace_confirm";
+export interface ConnectionInfo { url: string; user: string }
