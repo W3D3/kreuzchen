@@ -15,7 +15,7 @@ Developers: build, test and release notes are in [DEVELOPMENT.md](DEVELOPMENT.md
 The reference example is [`examples/definitionen/beispiel.yaml`](examples/definitionen/beispiel.yaml). Top-level keys:
 
 - `schema`, `id`, `version`, `title`: format version (currently `1`), a unique ID, the definition version and the display title.
-- `cutoff_compare`: how scores are compared with cut-offs, `">="` or `">"`.
+- `cutoff_compare`: optional, how scores are compared with cut-offs, `">="` (default) or `">"`.
 - `answer_sets`: named lists of answer labels, in order; the position is the answer value. `default_answers` names the set used by items that do not set `answers`.
 - `shortcuts`: optional entry keys per answer set, one character per answer in order, e.g. `ja_nein: nj`. Sets without an entry use `0`, `1`, `2`, ….
 - `keys`: named scoring tables. An item's `key` is a table name or an inline list mapping answer position to points (reverse-keyed items use e.g. `[3, 2, 1, 0]`).
