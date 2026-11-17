@@ -93,6 +93,7 @@ body:not(.tech) .tech { display: none }
   --color-primary-foreground: var(--accent-fg);
   --color-secondary: var(--accent-soft);
   --color-secondary-foreground: var(--fg);
+  --color-muted: var(--surface);
   --color-muted: color-mix(in oklab, var(--line) 45%, var(--surface));
   --color-muted-foreground: var(--muted);
   --color-accent: var(--accent-soft);
@@ -112,7 +113,6 @@ body:not(.tech) .tech { display: none }
   *, ::before, ::after { border-color: var(--color-border); }
   input[type="number"] { appearance: textfield; }
   input[type="number"]::-webkit-inner-spin-button { appearance: none; }
+  /* IBM Plex Mono runs larger than Atkinson; relative and in base so text-[…] utilities still win. */
+  .font-mono { font-size: 0.93em; }
 }
-
-/* IBM Plex Mono runs larger than Atkinson; unlayered so it beats the text-[15px] utility. */
-.font-mono { font-size: 14px; }

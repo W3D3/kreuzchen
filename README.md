@@ -20,7 +20,7 @@ Type in the crosses from a completed paper questionnaire, and Kreuzchen does the
 
 ## Get Kreuzchen
 
-Download the installer for your system from the [latest release](https://github.com/W3D3/kreuzchen/releases/latest). The [installation guide](docs/installation.md) (German) walks you through the first start.
+Download the installer for your system from the [latest release](https://github.com/W3D3/kreuzchen/releases/latest). The [installation guide](docs/installation.md) (German) walks you through the first start. The Linux build needs WebKitGTK 2.40 or newer.
 
 Kreuzchen does not include any questionnaires. Many are copyrighted; use the ones your practice is licensed for.
 

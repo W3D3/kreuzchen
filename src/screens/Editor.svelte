@@ -185,7 +185,7 @@
 </header>
 
 <div class="flex flex-col gap-4 pb-16">
-  {#if banner}<Banner>{banner}</Banner>{/if}
+  {#if banner}<div class="scroll-mt-24" {@attach (el) => el.scrollIntoView({ block: "nearest" })}><Banner>{banner}</Banner></div>{/if}
   <div aria-live="polite">
     {#if errors?.length}
       <div class="rounded-xl border border-over/45 bg-over-soft px-5 py-3 text-[15px]">
@@ -214,8 +214,8 @@
         <div class="grid gap-1.5"><Label for="f-version" class={lbl}>Version</Label><Input id="f-version" class="font-mono" bind:value={d.version} /></div>
         <div class="grid gap-1.5"><Label for="f-id" class={lbl}>ID</Label><Input id="f-id" class="font-mono" bind:value={d.id} /></div>
         <div class="col-span-2 grid gap-1.5"><Label for="f-authors" class={lbl}>Autoren</Label><Input id="f-authors" value={d.authors ?? ""} onchange={(e) => (d.authors = opt(val(e)))} /></div>
-        <div class="grid gap-1.5"><Label class={lbl}>„über Cut-off“ heißt</Label>
-          <SelectBox label="„über Cut-off“ heißt" bind:value={d.cutoff_compare as string} options={compares} />
+        <div class="grid gap-1.5"><Label for="f-cutoff" class={lbl}>„über Cut-off“ heißt</Label>
+          <SelectBox id="f-cutoff" label="„über Cut-off“ heißt" bind:value={d.cutoff_compare as string} options={compares} />
         </div>
         <div class="col-span-3 grid gap-1.5"><Label for="f-copyright" class={lbl}>Copyright</Label><Input id="f-copyright" value={d.copyright ?? ""} onchange={(e) => (d.copyright = opt(val(e)))} /></div>
       </Card.Content>
@@ -244,8 +244,8 @@
       <div class="mt-1 flex items-center justify-between">
         {@render add("Antwortsatz", () => (d.answer_sets[freshKey(d.answer_sets, "antworten")] = ["Nein", "Ja"]))}
         <div class="flex items-center gap-3">
-          <Label class={lbl}>Standard-Antwortsatz</Label>
-          <SelectBox label="Standard-Antwortsatz" class="w-44" mono bind:value={d.default_answers} options={[{ value: null, label: "(keiner)" }, ...setOptions]} />
+          <Label for="f-defans" class={lbl}>Standard-Antwortsatz</Label>
+          <SelectBox id="f-defans" label="Standard-Antwortsatz" class="w-44" mono bind:value={d.default_answers} options={[{ value: null, label: "(keiner)" }, ...setOptions]} />
         </div>
       </div>
     {/snippet}
