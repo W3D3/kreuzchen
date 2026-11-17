@@ -260,3 +260,19 @@ fn division_by_zero_is_an_error() {
         Err(GradeError::Eval(m)) if m.contains("Division durch 0")
     ));
 }
+
+#[test]
+fn age_rule_works_with_and_without_an_age() {
+    let yaml = YAML.replace(
+        r#"  - { when: erwachsen, text: "Nur für Kinder normiert." }"#,
+        r#"  - { when: alter.gesetzt and alter >= 18, text: "Nur für Kinder normiert." }
+  - { when: not alter.gesetzt, text: "Alter fehlt." }"#,
+    );
+    let answers = [("1", 0), ("2", 0), ("3", 0), ("4", 0), ("zusatz", 0)];
+    let g = grade_with(&yaml, &answers, &[("alter", FieldValue::Num(30.0))]).unwrap();
+    assert_eq!(g.caveats, vec!["Nur für Kinder normiert.".to_string()]);
+    let g = grade_with(&yaml, &answers, &[("alter", FieldValue::Num(12.0))]).unwrap();
+    assert!(g.caveats.is_empty());
+    let g = grade_with(&yaml, &answers, &[]).unwrap();
+    assert_eq!(g.caveats, vec!["Alter fehlt.".to_string()]);
+}

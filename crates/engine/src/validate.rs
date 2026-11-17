@@ -121,7 +121,11 @@ pub(crate) fn build_env<E>(
         add_scored(&mut env, &d.id, v, d.cutoff);
     }
     for f in &def.fields {
-        if let Some(v) = (src.field)(f) {
+        let v = (src.field)(f);
+        if f.kind == FieldKind::Number {
+            env.insert(format!("{}.gesetzt", f.id), Value::Bool(v.is_some()));
+        }
+        if let Some(v) = v {
             env.insert(f.id.clone(), v);
         }
     }

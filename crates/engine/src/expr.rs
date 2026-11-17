@@ -260,16 +260,35 @@ fn want_num(v: Value) -> Result<f64, String> {
     }
 }
 
+/// Evaluates both sides of `and`/`or`, so validation sees every name and type.
 pub fn eval(e: &Expr, env: &BTreeMap<String, Value>) -> Result<Value, String> {
+    run(e, env, false)
+}
+
+/// Skips the right side of `and`/`or` once the left decides, so `alter.gesetzt and alter > 24`
+/// grades when no age is entered.
+pub fn eval_short(e: &Expr, env: &BTreeMap<String, Value>) -> Result<Value, String> {
+    run(e, env, true)
+}
+
+fn run(e: &Expr, env: &BTreeMap<String, Value>, short: bool) -> Result<Value, String> {
+    let eval = |e: &Expr| run(e, env, short);
     match e {
         Expr::Lit(v) => Ok(v.clone()),
         Expr::Name(n) => env
             .get(n)
             .cloned()
             .ok_or_else(|| format!("„{n}“ hat keinen Wert")),
-        Expr::Not(x) => Ok(Value::Bool(!want_bool(eval(x, env)?)?)),
+        Expr::Not(x) => Ok(Value::Bool(!want_bool(eval(x)?)?)),
+        Expr::Bin(op @ (Op::And | Op::Or), l, r) if short => {
+            let l = want_bool(eval(l)?)?;
+            if l == (*op == Op::Or) {
+                return Ok(Value::Bool(l));
+            }
+            Ok(Value::Bool(want_bool(eval(r)?)?))
+        }
         Expr::Bin(op, l, r) => {
-            let (l, r) = (eval(l, env)?, eval(r, env)?);
+            let (l, r) = (eval(l)?, eval(r)?);
             Ok(match op {
                 Op::And => {
                     let (a, b) = (want_bool(l)?, want_bool(r)?);
@@ -325,6 +344,19 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.clone()))
             .collect();
         eval(&parse(src)?, &env)
+    }
+
+    #[test]
+    fn short_circuit_skips_an_unset_name() {
+        let env: BTreeMap<String, Value> = BTreeMap::new();
+        let e = parse("false and x > 1").unwrap();
+        assert_eq!(eval_short(&e, &env), Ok(Value::Bool(false)));
+        assert_eq!(
+            eval_short(&parse("true or x").unwrap(), &env),
+            Ok(Value::Bool(true))
+        );
+        // Validation evaluates both sides, so a wrong name is still reported.
+        assert!(eval(&e, &env).is_err());
     }
 
     #[test]
