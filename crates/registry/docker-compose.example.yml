@@ -1,9 +1,8 @@
 services:
   registry:
-    image: kreuzchen-registry
-    build:
-      context: ../..
-      dockerfile: crates/registry/Dockerfile
+    # Published image; to build locally instead, replace with
+    # build: { context: ../.., dockerfile: crates/registry/Dockerfile }
+    image: ghcr.io/w3d3/kreuzchen-registry:latest
     restart: unless-stopped
     read_only: true
     volumes:

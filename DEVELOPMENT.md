@@ -78,6 +78,8 @@ Add a practice:
 3. Put new definitions in `definitionen/` if needed.
 4. Restart the server; the data is read only at startup.
 
+Published image: `ghcr.io/w3d3/kreuzchen-registry` (amd64). `.github/workflows/registry.yml` builds the image for every change to the engine or the registry and publishes it when a `registry-v*` tag is pushed, e.g. `registry-v0.1.0` → tags `0.1.0`, `0.1` and `latest`. The registry is versioned separately from the app. The image contains only the server, never definitions or keys.
+
 Container: `docker build -f crates/registry/Dockerfile -t kreuzchen-registry .` builds a static musl binary into a distroless, non-root image (`EXPOSE 8080`, `VOLUME /data`). [`docker-compose.example.yml`](crates/registry/docker-compose.example.yml) mounts the data directory read-only. `docker compose restart` applies config changes.
 
 The server speaks plain HTTP. Run it behind a Cloudflare tunnel for HTTPS and add a Cloudflare rate-limit rule on `/v1/` to throttle guessing.
