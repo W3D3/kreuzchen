@@ -93,7 +93,7 @@ impl fmt::Display for GradeError {
 impl std::error::Error for GradeError {}
 
 fn eval(e: &expr::Expr, env: &BTreeMap<String, Value>) -> Result<Value, GradeError> {
-    expr::eval(e, env).map_err(GradeError::Eval)
+    expr::eval_short(e, env).map_err(GradeError::Eval)
 }
 
 fn truth(v: Value) -> Result<bool, GradeError> {
