@@ -35,6 +35,22 @@ pub fn parse_definition(yaml: &str) -> Result<Definition, LoadError> {
     })
 }
 
+/// `"0.4.0"` → `[0, 4, 0]`; anything else is `None`.
+fn app_version(v: &str) -> Option<Vec<u64>> {
+    v.split('.').map(|p| p.parse().ok()).collect()
+}
+
+/// The `min_app` a file asks for when it is newer than `app`, read before the full load,
+/// so a file using features this version lacks still says which version it needs.
+pub fn needs_newer_app(yaml: &str, app: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Peek {
+        min_app: Option<String>,
+    }
+    let min = serde_norway::from_str::<Peek>(yaml).ok()?.min_app?;
+    (app_version(&min)? > app_version(app)?).then_some(min)
+}
+
 /// Serializes a definition back to YAML, leaving out unset optional keys.
 pub fn to_yaml(def: &Definition) -> String {
     fn strip_nulls(v: &mut serde_norway::Value) {

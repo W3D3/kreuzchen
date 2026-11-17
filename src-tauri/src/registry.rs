@@ -356,6 +356,7 @@ mod tests {
                 scale_count: 1,
             }),
             error: None,
+            needs_app: None,
             locked: true,
         }
     }

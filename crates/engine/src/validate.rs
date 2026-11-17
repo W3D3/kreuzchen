@@ -156,6 +156,13 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
     if def.schema != 1 {
         errors.push(err(format!("Unbekannte Schema-Version {}", def.schema)));
     }
+    if let Some(v) = def
+        .min_app
+        .as_deref()
+        .filter(|v| crate::app_version(v).is_none())
+    {
+        errors.push(err(format!("min_app „{v}“ ist keine Version wie 0.4.0")));
+    }
 
     // Names: scales, derived, fields, item ids, rules.
     let items: Vec<(&Section, &Item)> = def
