@@ -10,6 +10,7 @@ use axum::routing::get;
 use axum::{Extension, Json, Router};
 use base64::Engine;
 use serde_json::json;
+use tokio::sync::Semaphore;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::{Practice, Registry};
@@ -19,6 +20,8 @@ struct AppState {
     reg: Arc<Registry>,
     /// Verified against for unknown users so timing matches known ones.
     dummy_hash: Arc<str>,
+    /// Bounds concurrent argon2 verifications (memory-hard).
+    verify_slots: Arc<Semaphore>,
 }
 
 pub fn router(reg: Arc<Registry>) -> Router {
@@ -29,10 +32,12 @@ pub fn router(reg: Arc<Registry>) -> Router {
     let state = AppState {
         reg,
         dummy_hash: dummy_hash.into(),
+        verify_slots: Arc::new(Semaphore::new(4)),
     };
     let v1 = Router::new()
         .route("/fragebogen", get(list))
         .route("/fragebogen/{id}", get(download))
+        .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(from_fn_with_state(state.clone(), auth))
         .with_state(state);
     Router::new()
@@ -62,6 +67,7 @@ async fn auth(State(st): State<AppState>, mut req: Request, next: Next) -> Respo
     let hash = practice
         .as_ref()
         .map_or_else(|| st.dummy_hash.to_string(), |p| p.key_hash.clone());
+    let _slot = st.verify_slots.acquire().await.ok();
     let ok = tokio::task::spawn_blocking(move || {
         PasswordHash::new(&hash)
             .map(|h| {

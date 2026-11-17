@@ -112,13 +112,12 @@ async fn list_shows_only_entitled() {
     let (r, b) = get(&app, "/v1/fragebogen", ok()).await;
     assert_eq!(r.status(), StatusCode::OK);
     no_store(&r);
-    let v: serde_json::Value = serde_json::from_slice(&b).unwrap();
-    let a = v.as_array().unwrap();
-    assert_eq!(a.len(), 1);
-    assert_eq!(a[0]["id"], "fragebogen_a");
-    assert_eq!(a[0]["hash"], hash(&bytes));
-    assert!(a[0]["title"].is_string() && a[0]["version"].is_string());
-    assert_eq!(a[0].as_object().unwrap().len(), 4);
+    let e = &load(d.path()).unwrap().entries["fragebogen_a"];
+    let want = serde_json::json!([{"id": "fragebogen_a", "title": e.title, "version": e.version, "hash": hash(&bytes)}]);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&b).unwrap(),
+        want
+    );
 }
 
 #[tokio::test]
@@ -138,6 +137,20 @@ async fn not_entitled_equals_missing() {
     let (app, _d) = app();
     for id in ["fragebogen_b", "gibtsnicht"] {
         let (r, b) = get(&app, &format!("/v1/fragebogen/{id}"), ok()).await;
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert!(b.is_empty());
+        no_store(&r);
+    }
+}
+
+#[tokio::test]
+async fn unmatched_v1_paths_require_auth() {
+    let (app, _d) = app();
+    for uri in ["/v1/fragebogen/a/b", "/v1/nope"] {
+        let (r, b) = get(&app, uri, None).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        assert!(b.is_empty());
+        let (r, b) = get(&app, uri, ok()).await;
         assert_eq!(r.status(), StatusCode::NOT_FOUND);
         assert!(b.is_empty());
         no_store(&r);
