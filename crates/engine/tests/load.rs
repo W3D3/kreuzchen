@@ -36,3 +36,14 @@ fn unknown_field_rejected() {
     let nested = YAML.replacen("{ n: 1,", "{ bogus: 1, n: 1,", 1);
     assert!(parse_definition(&nested).is_err());
 }
+
+#[test]
+fn cutoff_compare_defaults_to_ge() {
+    let y = include_str!("../../../examples/definitionen/beispiel.yaml").replacen(
+        "cutoff_compare: \">=\"\n",
+        "",
+        1,
+    );
+    let q = kreuzchen_engine::load(&y).unwrap();
+    assert_eq!(q.def.cutoff_compare, kreuzchen_engine::schema::Compare::Ge);
+}

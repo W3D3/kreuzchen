@@ -12,6 +12,7 @@ pub struct Definition {
     pub authors: Option<String>,
     #[serde(default)]
     pub copyright: Option<String>,
+    #[serde(default)]
     pub cutoff_compare: Compare,
     #[serde(default)]
     pub answer_sets: BTreeMap<String, Vec<String>>,
@@ -40,11 +41,12 @@ pub struct Definition {
     pub verdict: Vec<VerdictEntry>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum Compare {
     #[serde(rename = ">")]
     Gt,
     #[serde(rename = ">=")]
+    #[default]
     Ge,
 }
 
