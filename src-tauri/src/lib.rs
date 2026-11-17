@@ -17,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             commands::list_definitions,
             commands::get_definition,
@@ -39,6 +40,9 @@ pub fn run() {
             commands::duplicate_definition,
         ])
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
             let base = app.path().app_data_dir()?;
             let paths = Paths {
                 definitions: base.join("definitionen"),

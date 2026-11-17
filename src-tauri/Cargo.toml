@@ -25,6 +25,10 @@ kreuzchen-engine = { path = "../crates/engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+tauri-plugin-process = "2"
 
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

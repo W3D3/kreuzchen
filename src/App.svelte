@@ -6,6 +6,8 @@
   import Definitions from "./screens/Definitions.svelte";
   import Editor from "./screens/Editor.svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
+  import { relaunch } from "@tauri-apps/plugin-process";
+  import { check, type Update } from "@tauri-apps/plugin-updater";
   import { getDefinition, grade } from "./lib/api";
   import { isDirty, type Doc } from "./lib/editor";
   import { initialInput } from "./lib/input";
@@ -26,11 +28,35 @@
   let draft = $state<Doc | null>(null);
   installTech();
 
+  let update = $state<Update | null>(null);
+  let updating = $state(false);
+  let updateError = $state<string | null>(null);
+  // Offline or no published release: stay quiet, the next start checks again.
+  check().then((u) => (update = u), () => {});
+
+  /** True when there is no unsaved entry or draft, or the user agrees to discard it. */
+  async function mayLeave(): Promise<boolean> {
+    if (screen.name === "entry" && !(await entry?.confirmDiscard())) return false;
+    return !(draft && isDirty(draft)) || (await ask("Ungespeicherte Änderungen verwerfen?", { title: "Fragebogen bearbeiten", kind: "warning" }));
+  }
+
   async function go(next: Screen) {
-    if (screen.name === "entry" && !(await entry?.confirmDiscard())) return;
-    if (draft && isDirty(draft) && !(await ask("Ungespeicherte Änderungen verwerfen?", { title: "Fragebogen bearbeiten", kind: "warning" }))) return;
+    if (!(await mayLeave())) return;
     draft = null;
     screen = next;
+  }
+
+  async function installUpdate() {
+    if (!update || !(await mayLeave())) return;
+    updating = true;
+    updateError = null;
+    try {
+      await update.downloadAndInstall();
+      await relaunch();
+    } catch (e) {
+      updateError = `Update fehlgeschlagen: ${e}`;
+      updating = false;
+    }
   }
 
   function preview(yaml: string, definition: Definition) {
@@ -65,6 +91,12 @@
   <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
   <button class="tech" class:active={screen.name === "definitions" || screen.name === "editor"} onclick={() => go({ name: "definitions" })}>Fragebögen bearbeiten</button>
 </nav>
+{#if update}
+  <div class="update" role="status">
+    <span>{updateError ?? (updating ? "Update wird installiert …" : `Neue Version ${update.version} verfügbar.`)}</span>
+    <button onclick={installUpdate} disabled={updating}>Jetzt installieren</button>
+  </div>
+{/if}
 <main>
   {#if screen.name === "list"}
     <List onstart={(opened, input) => (screen = { name: "entry", opened, input })} />
@@ -103,5 +135,8 @@
   nav { display: flex; gap: .5rem; padding: .75rem 1.5rem; background: var(--surface); border-bottom: 1px solid var(--line); }
   nav button { font: inherit; min-height: 48px; padding: 0 1.25rem; border-radius: 10px; border: 0; background: none; color: var(--fg); cursor: pointer; }
   nav button.active { background: var(--accent-soft); font-weight: 700; }
+  .update { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: .5rem 1.5rem; background: var(--accent-soft); border-bottom: 1px solid var(--line); }
+  .update button { font: inherit; min-height: 40px; padding: 0 1.25rem; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 700; cursor: pointer; }
+  .update button:disabled { opacity: .5; cursor: progress; }
   main { max-width: 56rem; margin: 0 auto; padding: 1.5rem; }
 </style>
