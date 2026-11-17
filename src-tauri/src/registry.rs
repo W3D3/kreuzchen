@@ -396,6 +396,7 @@ mod tests {
             data: p.into(),
             definitions: p.join("definitionen"),
             results: p.join("auswertungen"),
+            drafts: p.join("entwuerfe"),
             registry: p.join("registry"),
         };
         fs::create_dir(&paths.definitions).unwrap();

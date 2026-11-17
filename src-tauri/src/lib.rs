@@ -15,6 +15,7 @@ pub struct Paths {
     pub data: PathBuf,
     pub definitions: PathBuf,
     pub results: PathBuf,
+    pub drafts: PathBuf,
     pub registry: PathBuf,
 }
 
@@ -48,6 +49,10 @@ pub fn run() {
             commands::delete_result,
             commands::export_result,
             commands::import_result,
+            commands::save_draft,
+            commands::list_drafts,
+            commands::open_draft,
+            commands::delete_draft,
             commands::validate_definition,
             commands::definition_to_yaml,
             commands::yaml_to_definition,
@@ -71,11 +76,13 @@ pub fn run() {
             let paths = Paths {
                 definitions: base.join("definitionen"),
                 results: base.join("auswertungen"),
+                drafts: base.join("entwuerfe"),
                 registry: base.join("registry"),
                 data: base,
             };
             fs::create_dir_all(&paths.definitions)?;
             fs::create_dir_all(&paths.results)?;
+            fs::create_dir_all(&paths.drafts)?;
             fs::create_dir_all(&paths.registry)?;
             app.manage(paths);
             Ok(())

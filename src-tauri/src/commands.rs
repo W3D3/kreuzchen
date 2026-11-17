@@ -3,7 +3,7 @@ use crate::{
     definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
     editor,
     registry::{self, Connection, InstallOutcome, RowsResult},
-    store::{self, SavedRecord, SavedSummary},
+    store::{self, Draft, DraftSummary, QRef, SavedRecord, SavedSummary},
 };
 use kreuzchen_engine::{Grading, Input, schema::Definition};
 use serde::Serialize;
@@ -64,16 +64,33 @@ pub fn open_definitions_folder(app: tauri::AppHandle, paths: State<Paths>) -> Re
         .map_err(|e| e.to_string())
 }
 
+/// A stored record with the installed definition it belongs to, if any.
 #[derive(Serialize)]
-pub struct OpenedResult {
-    pub record: SavedRecord,
+pub struct Opened<T> {
+    pub record: T,
     pub current: Option<DefinitionEntry>,
+    /// The installed definition differs from the one the record was made with.
     pub outdated: bool,
 }
 
+fn with_current<T>(paths: &Paths, record: T, q: &QRef) -> Opened<T> {
+    let current =
+        definitions::find_by_id(&paths.definitions, &paths.registry, &q.id, Some(&q.hash));
+    let outdated = current.as_ref().is_some_and(|c| c.hash != q.hash);
+    Opened {
+        record,
+        current,
+        outdated,
+    }
+}
+
 #[tauri::command]
-pub fn save_result(paths: State<Paths>, record: SavedRecord) -> Result<String, String> {
-    store::save(&paths.results, &record)
+pub fn save_result(
+    paths: State<Paths>,
+    record: SavedRecord,
+    draft: Option<String>,
+) -> Result<String, String> {
+    store::save_finished(&paths.results, &paths.drafts, &record, draft.as_deref())
 }
 
 #[tauri::command]
@@ -82,24 +99,41 @@ pub fn list_results(paths: State<Paths>) -> Vec<SavedSummary> {
 }
 
 #[tauri::command]
-pub fn open_result(paths: State<Paths>, name: String) -> Result<OpenedResult, String> {
-    let record = store::load(&paths.results, &name)?;
-    let q = &record.questionnaire;
-    let current =
-        definitions::find_by_id(&paths.definitions, &paths.registry, &q.id, Some(&q.hash));
-    let outdated = current
-        .as_ref()
-        .is_some_and(|c| c.hash != record.questionnaire.hash);
-    Ok(OpenedResult {
-        record,
-        current,
-        outdated,
-    })
+pub fn open_result(paths: State<Paths>, name: String) -> Result<Opened<SavedRecord>, String> {
+    let record: SavedRecord = store::load(&paths.results, &name)?;
+    let q = record.questionnaire.clone();
+    Ok(with_current(&paths, record, &q))
 }
 
 #[tauri::command]
 pub fn delete_result(paths: State<Paths>, name: String) -> Result<(), String> {
     store::delete(&paths.results, &name)
+}
+
+#[tauri::command]
+pub fn save_draft(
+    paths: State<Paths>,
+    name: Option<String>,
+    draft: Draft,
+) -> Result<String, String> {
+    store::save_draft(&paths.drafts, name.as_deref(), &draft)
+}
+
+#[tauri::command]
+pub fn list_drafts(paths: State<Paths>) -> Vec<DraftSummary> {
+    store::list_drafts(&paths.drafts)
+}
+
+#[tauri::command]
+pub fn open_draft(paths: State<Paths>, name: String) -> Result<Opened<Draft>, String> {
+    let draft: Draft = store::load(&paths.drafts, &name)?;
+    let q = draft.questionnaire.clone();
+    Ok(with_current(&paths, draft, &q))
+}
+
+#[tauri::command]
+pub fn delete_draft(paths: State<Paths>, name: String) -> Result<(), String> {
+    store::delete(&paths.drafts, &name)
 }
 
 #[tauri::command]
@@ -245,7 +279,45 @@ pub fn registry_remove(paths: State<Paths>, file: String) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
-    use super::refuse_locked;
+    use super::{refuse_locked, with_current};
+    use crate::{Paths, store::QRef};
+    use std::fs;
+
+    #[test]
+    fn opened_draft_tracks_changed_and_removed_definition() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path();
+        let paths = Paths {
+            data: p.into(),
+            definitions: p.join("definitionen"),
+            results: p.join("auswertungen"),
+            drafts: p.join("entwuerfe"),
+            registry: p.join("registry"),
+        };
+        fs::create_dir(&paths.definitions).unwrap();
+        fs::create_dir(&paths.registry).unwrap();
+        let yaml = include_str!("../../examples/definitionen/beispiel.yaml");
+        let file = paths.definitions.join("beispiel.yaml");
+        fs::write(&file, yaml).unwrap();
+        let hash = crate::definitions::scan(&paths.definitions)[0].hash.clone();
+        let q = |hash: &str| QRef {
+            id: "beispiel".into(),
+            title: "Beispiel".into(),
+            version: "1".into(),
+            hash: hash.into(),
+        };
+
+        let same = with_current(&paths, (), &q(&hash));
+        assert_eq!(same.current.unwrap().file, "beispiel.yaml");
+        assert!(!same.outdated);
+
+        let changed = with_current(&paths, (), &q("alt"));
+        assert!(changed.current.is_some() && changed.outdated);
+
+        fs::remove_file(&file).unwrap();
+        let gone = with_current(&paths, (), &q(&hash));
+        assert!(gone.current.is_none() && !gone.outdated);
+    }
 
     #[test]
     fn locked_save_and_delete_are_refused() {
