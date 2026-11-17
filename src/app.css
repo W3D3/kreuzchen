@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light dark; /* native controls (selects, spinners) follow the theme */
   --bg: #eef1f2; --surface: #ffffff; --fg: #1d2a2f; --muted: #5f6f75;
   --line: #d3dbde; --accent: #1f6f78; --accent-fg: #ffffff;
   --accent-soft: #dcefef; --over: #b4531a; --over-soft: #fbe9dc;

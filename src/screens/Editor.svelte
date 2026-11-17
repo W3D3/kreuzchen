@@ -318,7 +318,7 @@
   .ok { color: var(--muted); }
   .note { color: var(--muted); }
   .yaml { box-sizing: border-box; width: 100%; min-height: 70vh; font-family: var(--mono); font-size: .95rem; padding: .75rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); }
-  fieldset { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 1rem 1.25rem; margin: 0 0 1rem; }
+  fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 1rem 1.25rem; margin: 0 0 1rem; }
   legend { font-weight: 700; padding: 0 .5rem; }
   .grid { display: flex; flex-wrap: wrap; gap: .75rem; }
   .grid label { display: flex; flex-direction: column; gap: .25rem; flex: 1 1 10rem; }
@@ -327,6 +327,7 @@
   .row { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
   .row > input { flex: 1 1 8rem; min-width: 0; }
   .row > input.id { flex: 0 1 9rem; }
+  .row > select { flex: 0 1 9rem; min-width: 0; }
   .row > input.ref, .row > input.cut { flex: 0 0 5.5rem; }
   .row > input.num { font-family: var(--mono); }
   .tools { display: flex; gap: .25rem; }
