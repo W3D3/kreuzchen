@@ -89,6 +89,8 @@ type Scored = (f64, bool);
 pub(crate) struct EnvSource<'a, E> {
     /// Sum and over-cutoff flag of a scale.
     pub scale: &'a dyn Fn(&Scale) -> Scored,
+    /// Unanswered items of a scale, exposed as `id.fehlend`.
+    pub scale_missing: &'a dyn Fn(&Scale) -> f64,
     /// Value of a field; `None` leaves it out of the environment.
     pub field: &'a dyn Fn(&Field) -> Option<Value>,
     /// Answer text of an item with an `id` (empty when unanswered).
@@ -109,6 +111,10 @@ pub(crate) fn build_env<E>(
     let mut env = BTreeMap::new();
     for s in &def.scales {
         add_scored(&mut env, &s.id, (src.scale)(s), s.cutoff);
+        env.insert(
+            format!("{}.fehlend", s.id),
+            Value::Num((src.scale_missing)(s)),
+        );
     }
     for d in &def.derived {
         let v = (src.derived)(d, &env)?;
@@ -267,6 +273,7 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
         &def,
         EnvSource {
             scale: &|_| (0.0, false),
+            scale_missing: &|_| 0.0,
             field: &|f| {
                 Some(match f.kind {
                     FieldKind::Number => Value::Num(0.0),
@@ -317,6 +324,21 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
             || items.iter().any(|(_, i)| i.id.as_ref() == Some(r));
         if !known {
             errors.push(err(format!("Ergebnis: „{r}“ ist nicht definiert")));
+        }
+    }
+
+    if let Some(n) = &def.norms {
+        for id in n.tables.keys() {
+            if !def.scales.iter().any(|s| &s.id == id) && !def.derived.iter().any(|d| &d.id == id) {
+                errors.push(err(format!(
+                    "Normtabelle „{id}“: keine Skala und kein abgeleiteter Wert"
+                )));
+            }
+        }
+        if n.bands.windows(2).any(|w| w[0].from >= w[1].from) {
+            errors.push(err(
+                "Ausprägungsgrade müssen nach „from“ aufsteigend sortiert sein".to_string(),
+            ));
         }
     }
 

@@ -22,12 +22,16 @@ export interface Definition {
   default_answers: string | null;
   fields: Field[]; scales: Scale[]; derived: Derived[]; sections: Section[];
   result: string[]; rules: Rule[]; caveats: Caveat[]; verdict: VerdictEntry[];
+  norms?: Norms | null;
 }
 
 export interface Input { fields: Record<string, FieldValue>; answers: Record<string, number> }
 
+/** Raw score → norm value per scale or derived id; JSON object keys are the raw scores. */
+export interface Norms { name: string; bands: { from: number; label: string }[]; tables: Record<string, Record<string, number>> }
+export interface NormValue { name: string; value: number; band: string | null }
 export type ResultRow =
-  | { kind: "sum"; id: string; label: string; value: number; cutoff: number | null; over: boolean }
+  | { kind: "sum"; id: string; label: string; value: number; cutoff: number | null; over: boolean; norm?: NormValue | null }
   | { kind: "answer"; id: string; label: string; answer: string | null };
 export interface RuleOutcome { id: string; label: string; met: boolean }
 export interface FieldLine { id: string; label: string; value: string }

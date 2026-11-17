@@ -15,9 +15,17 @@ impl Questionnaire {
                     value,
                     cutoff,
                     over,
+                    norm,
                     ..
                 } => {
                     let mut s = format!("{label}: {}", number(*value));
+                    if let Some(n) = norm {
+                        write!(s, " ({} = {}", n.name, n.value).unwrap();
+                        if let Some(b) = &n.band {
+                            write!(s, ", {b}").unwrap();
+                        }
+                        s.push(')');
+                    }
                     if let Some(c) = cutoff {
                         write!(s, " (Cut-off {c})").unwrap();
                         if *over {
