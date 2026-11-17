@@ -19,7 +19,7 @@
   import { compactItems } from "../lib/ranges";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
-  let { opened, input, graded, notice, fresh = false, draft, saved: savedName, onsaved, preview = false, onregrade, onback, onnew }: {
+  let { opened, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, onnew }: {
     opened: OpenedDefinition | null;
     input: Input;
     graded: Graded;
@@ -29,7 +29,7 @@
     /** The entry's autosaved draft; saving the result deletes it. */
     draft?: string;
     /** The record this entry was saved as before; saving again overwrites it. */
-    saved?: string;
+    savedFile?: string;
     onsaved?: (name: string) => void;
     preview?: boolean;
     onregrade?: (() => void) | null;
@@ -78,7 +78,7 @@
         input,
         grading: g,
         text: graded.text,
-      }, savedName ?? null, draft ?? null);
+      }, savedFile ?? null, draft ?? null);
       saved = true;
       onsaved?.(name);
       status = "Gespeichert.";
@@ -88,13 +88,19 @@
   }
 
   // svelte-ignore state_referenced_locally
-  if (fresh && !preview && loadAutoSaveResult()) void save();
+  const autoSaving = fresh && !preview && loadAutoSaveResult() ? save() : null;
+
+  // The entry must learn the saved record's name before it reopens, or the next save adds a duplicate.
+  async function back() {
+    await autoSaving;
+    onback();
+  }
 </script>
 
 <!-- Full-bleed bar inside the centred column, as on the entry screen. -->
 <header class="sticky top-0 z-20 -mx-6 -mt-6 mb-6 bg-card px-6 [clip-path:inset(0_-100vmax_-1px)] shadow-[0_0_0_100vmax_var(--surface),0_1px_0_100vmax_var(--line)]">
   <div class="flex min-h-16 flex-wrap items-center gap-2 py-2.5">
-    {#if opened}<Button variant="ghost" class="-ml-2.5 h-11 px-3" onclick={onback}><ArrowLeft />Zurück zu den Antworten</Button>{/if}
+    {#if opened}<Button variant="ghost" class="-ml-2.5 h-11 px-3" onclick={back}><ArrowLeft />Zurück zu den Antworten</Button>{/if}
     <div class="flex-1"></div>
     <span aria-live="polite" class="mr-2 text-[14px] text-muted-foreground">{status}</span>
     <Button variant="outline" class="h-11 px-4" onclick={copy}><Copy />Als Text kopieren</Button>

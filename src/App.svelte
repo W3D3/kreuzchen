@@ -131,7 +131,7 @@
         onregrade={r.onregrade}
         fresh={r.record == null}
         draft={r.draftFile}
-        saved={r.savedFile}
+        savedFile={r.savedFile}
         onsaved={(name) => {
           // Saving deleted the draft; later edits start a new one.
           r.savedFile = name;
