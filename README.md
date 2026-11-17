@@ -48,4 +48,4 @@ The reference example is [`examples/definitionen/beispiel.yaml`](examples/defini
 - `caveats`: notes shown when their `when` expression is true.
 - `verdict`: ordered list; the first entry whose `when` is true gives the text; the entry with `else` is the fallback.
 
-Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, and `fehlend` is the number of unanswered items. Expressions support arithmetic, comparisons, `and`, `or` and `not`.
+Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, and `fehlend` is the number of unanswered items. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`.

@@ -17,7 +17,7 @@ impl Questionnaire {
                     over,
                     ..
                 } => {
-                    let mut s = format!("{label}: {value}");
+                    let mut s = format!("{label}: {}", number(*value));
                     if let Some(c) = cutoff {
                         write!(s, " (Cut-off {c})").unwrap();
                         if *over {
@@ -45,4 +45,12 @@ impl Questionnaire {
         lines.extend(g.verdict.iter().map(|v| format!("Ergebnis: {v}")));
         lines.join("\n")
     }
+}
+
+/// German notation with at most two decimals: `55`, `3,5`, `3,67`.
+fn number(v: f64) -> String {
+    let s = format!("{v:.2}");
+    s.trim_end_matches('0')
+        .trim_end_matches('.')
+        .replace('.', ",")
 }

@@ -18,6 +18,8 @@
   const g = $derived(graded.grading);
   const kennung = $derived(String(input.fields.kennung ?? ""));
   const anyMet = $derived(g.rules.some((r) => r.met));
+  // Same notation as the engine's copy text: `55`, `3,5`, `3,67`.
+  const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false });
   const meter = (value: number, cutoff: number) => Math.min(value / (cutoff * 2), 1) * 100;
 
   let banner = $state<string | null>(null);
@@ -75,7 +77,7 @@
       {#if r.kind === "sum"}
         <div class="line">
           <span class="label">{r.label}</span>
-          <span class="num">{r.value}{r.cutoff !== null ? ` / ${r.cutoff}` : ""}</span>
+          <span class="num">{num(r.value)}{r.cutoff !== null ? ` / ${r.cutoff}` : ""}</span>
           {#if r.over}<span class="pill">über Cut-off</span>{/if}
         </div>
         {#if r.cutoff}
