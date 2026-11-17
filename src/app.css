@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light dark; /* native controls (selects, spinners) follow the theme */
   --bg: #eef1f2; --surface: #ffffff; --fg: #1d2a2f; --muted: #5f6f75;
   --line: #d3dbde; --accent: #1f6f78; --accent-fg: #ffffff;
   --accent-soft: #dcefef; --over: #b4531a; --over-soft: #fbe9dc;
@@ -6,13 +7,22 @@
   --mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+/* Dark tokens: by system preference unless the user picked "Hell", or always with "Dunkel". */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #12191c; --surface: #1b2428; --fg: #e4ecee; --muted: #93a4aa;
     --line: #2d3a3f; --accent: #5cbcc6; --accent-fg: #0c1a1d;
     --accent-soft: #1f3a3e; --over: #f0975c; --over-soft: #3a2a1e;
   }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12191c; --surface: #1b2428; --fg: #e4ecee; --muted: #93a4aa;
+  --line: #2d3a3f; --accent: #5cbcc6; --accent-fg: #0c1a1d;
+  --accent-soft: #1f3a3e; --over: #f0975c; --over-soft: #3a2a1e;
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 body {
   margin: 0;

@@ -6,6 +6,7 @@
   import Definitions from "./screens/Definitions.svelte";
   import Editor from "./screens/Editor.svelte";
   import Registry from "./screens/Registry.svelte";
+  import Settings from "./screens/Settings.svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { relaunch } from "@tauri-apps/plugin-process";
@@ -24,7 +25,8 @@
     | { name: "saved" }
     | { name: "definitions" }
     | { name: "editor" }
-    | { name: "registry" };
+    | { name: "registry" }
+    | { name: "settings" };
 
   let screen = $state<Screen>({ name: "list" });
   let entry = $state<Entry>();
@@ -111,6 +113,7 @@
   <button class:active={screen.name === "saved" || screen.name === "result"} onclick={() => go({ name: "saved" })}>Gespeicherte Auswertungen</button>
   <button class="tech" class:active={screen.name === "definitions" || screen.name === "editor"} onclick={() => go({ name: "definitions" })}>Fragebögen bearbeiten</button>
   <button class="check" onclick={() => findUpdate(true)} disabled={checking || updating}>{checking ? "Suche Updates …" : updateNote ?? "Nach Updates suchen"}</button>
+  <button class:active={screen.name === "settings"} onclick={() => go({ name: "settings" })}>Einstellungen</button>
 </nav>
 {#if update}
   <div class="update" role="status">
@@ -151,6 +154,8 @@
     <Registry />
   {:else if screen.name === "editor" && draft}
     <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} onpreview={preview} />
+  {:else if screen.name === "settings"}
+    <Settings />
   {/if}
 </main>
 
