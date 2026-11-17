@@ -1,10 +1,10 @@
 # Kreuzchen installieren
 
-Kreuzchen läuft ohne Internetverbindung. Die Installationsdateien finden Sie auf der Seite „Releases" des Projekts. Die Programme sind nicht signiert, deshalb zeigen Windows und macOS beim ersten Start eine Warnung. Das ist normal.
+Kreuzchen braucht für die Arbeit kein Internet. Nur beim Start prüft es, ob es eine neue Version gibt (siehe „Updates“). Die Installationsdateien finden Sie auf der Seite „Releases" des Projekts. Die Programme sind nicht signiert, deshalb zeigen Windows und macOS beim ersten Start eine Warnung. Das ist normal.
 
 ## Windows
 
-1. Laden Sie die Datei mit der Endung `.msi` herunter.
+1. Laden Sie die Datei mit der Endung `-setup.exe` herunter (alternativ `.msi`).
 2. Doppelklicken Sie auf die Datei.
 3. Erscheint die blaue Meldung „Der Computer wurde durch Windows geschützt" (SmartScreen), klicken Sie auf **Weitere Informationen**.
 4. Klicken Sie auf **Trotzdem ausführen**.
@@ -37,6 +37,19 @@ Variante Debian/Ubuntu:
 
 1. Laden Sie die Datei mit der Endung `.deb` herunter.
 2. Installieren Sie sie mit `sudo apt install ./Kreuzchen*.deb`.
+
+Variante Fedora/openSUSE:
+
+1. Laden Sie die Datei mit der Endung `.rpm` herunter.
+2. Installieren Sie sie mit `sudo dnf install ./Kreuzchen*.rpm`.
+
+## Updates
+
+Ab Version 0.2.0 prüft Kreuzchen beim Start, ob es eine neue Version gibt. Gibt es eine, erscheint eine Leiste mit **Jetzt installieren**. Erst nach diesem Klick wird das Update geladen und installiert; danach startet Kreuzchen neu. Über **Nach Updates suchen** rechts in der Navigation können Sie auch selbst prüfen.
+
+Unter Linux aktualisiert sich nur die AppImage-Variante selbst. Bei `.deb` und `.rpm` installieren Sie neue Versionen von Hand.
+
+Version 0.1.0 hat noch keine Update-Funktion. Installieren Sie 0.2.0 einmal von Hand darüber. Ihre Fragebögen und gespeicherten Auswertungen bleiben erhalten.
 
 ## Fragebögen hinzufügen (für Entwicklung und Support)
 
