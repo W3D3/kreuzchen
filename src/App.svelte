@@ -7,15 +7,13 @@
   import Editor from "./screens/Editor.svelte";
   import Registry from "./screens/Registry.svelte";
   import Settings from "./screens/Settings.svelte";
-  import { getVersion } from "@tauri-apps/api/app";
   import Download from "@lucide/svelte/icons/download";
-  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { confirm } from "$lib/components/confirm.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { relaunch } from "@tauri-apps/plugin-process";
-  import { check, type Update } from "@tauri-apps/plugin-updater";
+  import { findUpdate, updates } from "./lib/updates.svelte";
   import { getDefinition, grade } from "./lib/api";
   import { isDirty, type Doc } from "./lib/editor";
   import { initialInput } from "./lib/input";
@@ -38,28 +36,8 @@
   let draft = $state<Doc | null>(null);
   installTech();
 
-  let update = $state<Update | null>(null);
-  let updating = $state(false);
-  let updateError = $state<string | null>(null);
-  let checking = $state(false);
-  /** Result of a manual check that found nothing to install, shown on the button for a moment. */
-  let updateNote = $state<string | null>(null);
-
-  // The automatic check at start stays quiet when offline; a manual one says what happened.
-  async function findUpdate(manual: boolean) {
-    checking = true;
-    updateNote = null;
-    try {
-      update = await check();
-      if (!update && manual) updateNote = `Aktuell ✓ ${await getVersion()}`;
-    } catch {
-      if (manual) updateNote = "Keine Verbindung";
-    } finally {
-      checking = false;
-    }
-    if (updateNote) setTimeout(() => (updateNote = null), 4000);
-  }
-  findUpdate(false);
+  // Quiet check at start; the button in the bar appears only when an update exists.
+  findUpdate();
 
   /** True when there is no unsaved entry or draft, or the user agrees to discard it. */
   async function mayLeave(): Promise<boolean> {
@@ -74,15 +52,15 @@
   }
 
   async function installUpdate() {
-    if (!update || !(await mayLeave())) return;
-    updating = true;
-    updateError = null;
+    if (!updates.available || !(await mayLeave())) return;
+    updates.installing = true;
+    updates.error = null;
     try {
-      await update.downloadAndInstall();
+      await updates.available.downloadAndInstall();
       await relaunch();
     } catch (e) {
-      updateError = `Update fehlgeschlagen: ${e}`;
-      updating = false;
+      updates.error = `Update fehlgeschlagen: ${e}`;
+      updates.installing = false;
     }
   }
 
@@ -120,17 +98,13 @@
       {@render tab("Gespeicherte Auswertungen", screen.name === "saved" || screen.name === "result", () => go({ name: "saved" }))}
       {@render tab("Fragebögen bearbeiten", screen.name === "definitions" || screen.name === "editor", () => go({ name: "definitions" }), "tech")}
       <div class="flex-1"></div>
-      <Button variant="ghost" class="h-11 px-4 text-muted-foreground disabled:cursor-progress" onclick={() => findUpdate(true)} disabled={checking || updating}>
-        <RefreshCw class={checking ? "animate-spin" : ""} />{checking ? "Suche Updates …" : updateNote ?? "Nach Updates suchen"}
-      </Button>
+      {#if updates.available}
+        <Button class="h-10 px-4 font-bold disabled:cursor-progress" title={updates.error ?? undefined} onclick={installUpdate} disabled={updates.installing}>
+          <Download />{updates.installing ? "Update wird installiert …" : updates.error ? "Update erneut versuchen" : `Update auf ${updates.available.version}`}
+        </Button>
+      {/if}
       {@render tab("Einstellungen", screen.name === "settings", () => go({ name: "settings" }))}
     </nav>
-    {#if update}
-      <div class="flex items-center justify-center gap-4 border-t border-border bg-secondary px-6 py-2 text-[15px]" role="status">
-        <span>{updateError ?? (updating ? "Update wird installiert …" : `Neue Version ${update.version} verfügbar.`)}</span>
-        <Button class="h-9 px-4 font-bold disabled:cursor-progress" onclick={installUpdate} disabled={updating}><Download />Jetzt installieren</Button>
-      </div>
-    {/if}
   </header>
   <main class="mx-auto max-w-[56rem] p-6">
     {#if screen.name === "list"}
@@ -166,7 +140,7 @@
     {:else if screen.name === "editor" && draft}
       <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} onpreview={preview} />
     {:else if screen.name === "settings"}
-      <Settings />
+      <Settings oninstall={installUpdate} />
     {/if}
   </main>
   <ConfirmDialog />

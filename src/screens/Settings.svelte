@@ -2,7 +2,16 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { getVersion } from "@tauri-apps/api/app";
+  import Download from "@lucide/svelte/icons/download";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { loadTheme, saveTheme, type Theme } from "../lib/theme";
+  import { findUpdate, updates } from "../lib/updates.svelte";
+
+  let { oninstall }: { oninstall: () => void } = $props();
+  let version = $state<string | null>(null);
+  getVersion().then((v) => (version = v), () => {});
 
   let theme = $state<Theme>(loadTheme());
   const choices: [Theme, string][] = [["system", "Wie das System"], ["light", "Hell"], ["dark", "Dunkel"]];
@@ -26,6 +35,33 @@
           </div>
         {/each}
       </RadioGroup.Root>
+    </Card.Content>
+  </Card.Root>
+
+  <Card.Root class="gap-4">
+    <Card.Header><Card.Title class="text-[17px] font-bold">Updates</Card.Title></Card.Header>
+    <Card.Content class="flex flex-col gap-3 text-[15px]">
+      {#if version}<p>Installierte Version: <span class="font-mono">{version}</span></p>{/if}
+      <div class="flex flex-wrap items-center gap-3">
+        <Button variant="outline" class="h-10 px-4 disabled:cursor-progress" onclick={findUpdate} disabled={updates.checking || updates.installing}>
+          <RefreshCw class={updates.checking ? "animate-spin" : ""} />{updates.checking ? "Suche Updates …" : "Nach Updates suchen"}
+        </Button>
+        <span role="status" class="text-muted-foreground">
+          {#if updates.available}
+            Version {updates.available.version} ist verfügbar.
+          {:else if updates.result === "current"}
+            Kreuzchen ist aktuell.
+          {:else if updates.result === "offline"}
+            Keine Verbindung zum Update-Server.
+          {/if}
+        </span>
+        {#if updates.available}
+          <Button class="h-10 px-4 font-bold disabled:cursor-progress" onclick={oninstall} disabled={updates.installing}>
+            <Download />{updates.installing ? "Update wird installiert …" : "Jetzt installieren"}
+          </Button>
+        {/if}
+      </div>
+      {#if updates.error}<p role="alert" class="text-destructive">{updates.error}</p>{/if}
     </Card.Content>
   </Card.Root>
 </div>
