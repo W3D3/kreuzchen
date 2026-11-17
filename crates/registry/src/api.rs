@@ -67,18 +67,20 @@ async fn auth(State(st): State<AppState>, mut req: Request, next: Next) -> Respo
     let hash = practice
         .as_ref()
         .map_or_else(|| st.dummy_hash.to_string(), |p| p.key_hash.clone());
-    let _slot = st.verify_slots.acquire().await.ok();
-    let ok = tokio::task::spawn_blocking(move || {
-        PasswordHash::new(&hash)
-            .map(|h| {
-                Argon2::default()
-                    .verify_password(key.as_bytes(), &h)
-                    .is_ok()
-            })
-            .unwrap_or(false)
-    })
-    .await
-    .unwrap_or(false);
+    let ok = {
+        let _slot = st.verify_slots.acquire().await.ok();
+        tokio::task::spawn_blocking(move || {
+            PasswordHash::new(&hash)
+                .map(|h| {
+                    Argon2::default()
+                        .verify_password(key.as_bytes(), &h)
+                        .is_ok()
+                })
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false)
+    };
     match practice {
         Some(p) if ok => {
             req.extensions_mut().insert(p);
