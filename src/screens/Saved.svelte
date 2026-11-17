@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { ask, open, save } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
+  import Download from "@lucide/svelte/icons/download";
+  import FileInput from "@lucide/svelte/icons/file-input";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Banner from "$lib/components/Banner.svelte";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import { confirm } from "$lib/components/confirm.svelte";
   import { deleteResult, exportResult, importResult, listResults, openResult } from "../lib/api";
   import { formatCreatedAt } from "../lib/kennung";
   import type { OpenedResult, SavedSummary } from "../lib/types";
@@ -39,51 +46,40 @@
 
   const remove = (r: SavedSummary) =>
     run(async () => {
-      if (!(await ask(`Auswertung „${r.kennung}“ endgültig löschen?`))) return;
+      if (!(await confirm({ title: "Auswertung löschen", message: `Auswertung „${r.kennung}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
       await deleteResult(r.name);
       rows = await listResults();
     });
 </script>
 
-<h1>Gespeicherte Auswertungen</h1>
-{#if banner}<p class="banner" role="alert">{banner}</p>{/if}
-{#if rows?.length === 0}<p class="muted">Keine gespeicherten Auswertungen.</p>{/if}
-{#if rows?.length}
-  <table>
-    <thead><tr><th>Kennung</th><th>Fragebogen</th><th>Datum</th><th><span class="sr">Aktionen</span></th></tr></thead>
-    <tbody>
-      {#each rows as r (r.name)}
-        <tr>
-          <td><strong>{r.kennung}</strong><div class="tech">{r.name}</div></td>
-          <td>{r.title}</td>
-          <td>{formatCreatedAt(r.created_at)}</td>
-          <td class="actions">
-            <button class="primary" onclick={() => openRow(r.name)}>Öffnen</button>
-            <button onclick={() => exportRow(r.name)}>Exportieren</button>
-            <button onclick={() => remove(r)}>Löschen</button>
-          </td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-{/if}
-<div class="bar"><button onclick={importOne}>Importieren…</button></div>
-
-<style>
-  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-  th, td { text-align: left; padding: .75rem 1rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  tr:last-child td { border-bottom: 0; }
-  .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .muted { color: var(--muted); }
-  .bar { margin-top: 1.5rem; }
-  button { font: inherit; min-height: 48px; padding: 0 1.25rem; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
-  .banner { background: var(--over-soft); border-left: 4px solid var(--over); padding: .75rem 1rem; }
-  @media (max-width: 40rem) {
-    thead { display: none; }
-    table, tbody, tr, td { display: block; }
-    tr { border-bottom: 1px solid var(--line); padding: .5rem 0; }
-    td { border: 0; padding: .25rem 1rem; }
-  }
-</style>
+<div class="flex flex-col gap-5 pb-16">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <h1 class="text-[26px] leading-tight font-bold">Gespeicherte Auswertungen</h1>
+    <Button variant="outline" class="h-11 px-4" onclick={importOne}><FileInput />Importieren…</Button>
+  </div>
+  {#if banner}
+    <Banner>{banner}</Banner>
+  {/if}
+  {#if rows?.length === 0}
+    <p class="rounded-xl border border-dashed px-6 py-10 text-center text-[16px] text-muted-foreground">Keine gespeicherten Auswertungen.</p>
+  {:else if rows}
+    <Card.Root class="gap-0 py-0">
+      <ul class="divide-y">
+        {#each rows as r (r.name)}
+          <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+            <div class="min-w-0 flex-1">
+              <p class="font-mono font-bold">{r.kennung}</p>
+              <p class="text-[15px] text-muted-foreground">{r.title} · {formatCreatedAt(r.created_at)}</p>
+              <p class="tech font-mono text-muted-foreground">{r.name}</p>
+            </div>
+            <div class="flex gap-2">
+              <Button class="h-11 px-5 font-bold" onclick={() => openRow(r.name)}>Öffnen</Button>
+              <Button variant="outline" class="h-11 px-4" onclick={() => exportRow(r.name)}><Download />Exportieren</Button>
+              <Button variant="destructive" class="h-11 px-4" onclick={() => remove(r)}><Trash2 />Löschen</Button>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    </Card.Root>
+  {/if}
+</div>

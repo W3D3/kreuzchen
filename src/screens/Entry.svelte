@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ask } from "@tauri-apps/plugin-dialog";
+  import Banner from "$lib/components/Banner.svelte";
+  import { confirm } from "$lib/components/confirm.svelte";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import { Input as TextInput } from "$lib/components/ui/input/index.js";
+  import { Label } from "$lib/components/ui/label/index.js";
   import { grade, gradeDraft } from "../lib/api";
   import { entryItems } from "../lib/input";
   import { entryKey } from "../lib/keyboard";
@@ -60,12 +66,17 @@
 
   /** True when nothing is entered or the user agrees to discard it. */
   export async function confirmDiscard(): Promise<boolean> {
-    return Object.keys(answers).length === 0 || (await ask("Eingaben verwerfen?", { title: "Abbrechen", kind: "warning" }));
+    return Object.keys(answers).length === 0 || (await confirm({ title: "Ungespeicherte Eingaben", message: "Eingaben verwerfen?", confirmLabel: "Verwerfen", destructive: true }));
   }
 
   async function cancel() {
     if (await confirmDiscard()) onback();
   }
+
+  const hints = $derived([
+    [shortcuts, "Antwort"], [["←", "→"], "Antwort ändern"], [["Enter", "Tab"], "nächste Frage"],
+    [["⇧", "Tab"], "zurück"], [["Entf"], "löschen"], [["Strg", "Enter"], "Auswerten"],
+  ] as [string[], string][]);
 
   function onkeydown(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.altKey || e.metaKey) return;
@@ -88,96 +99,119 @@
   }
 </script>
 
-<div class="bar top">
-  <span class="num">{answered} / {scored.length} beantwortet</span>
-  <button onclick={cancel}>Abbrechen</button>
-  <button class="primary" onclick={doGrade}>Auswerten</button>
-  {#if banner}<p class="banner" role="alert">{banner}</p>{/if}
-</div>
+{#snippet kbd(k: string, cls = "", hidden = false)}
+  <kbd aria-hidden={hidden ? "true" : undefined} class="inline-grid h-5 min-w-5 place-items-center rounded-[4px] border border-current/25 px-1 font-mono text-[12px]! leading-none {cls}">{k}</kbd>
+{/snippet}
 
-<h1>{def.title}</h1>
-{#if preview != null}<p class="muted">Test des Entwurfs. Es wird nichts gespeichert.</p>{/if}
-<div class="fields">
-  {#each def.fields as f (f.id)}
-    <label class:check={f.type === "checkbox"}>
-      <span>{f.id === "kennung" ? "Kennung (keine Patientennamen)" : f.label}</span>
-      {#if f.type === "checkbox"}
-        <input type="checkbox" bind:checked={fields[f.id] as boolean} />
-      {:else if f.type === "number"}
-        <input type="number" bind:value={fields[f.id] as number} />
-      {:else if f.type === "date"}
-        <input type="date" bind:value={fields[f.id] as string} />
-      {:else}
-        <input type="text" bind:value={fields[f.id] as string} />
-      {/if}
-    </label>
-  {/each}
-</div>
-
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="items" {onkeydown}>
-  {#each items as it, i (it.key)}
-    {#if i === 0 || it.section !== items[i - 1].section}
-      {@const sec = def.sections[it.section]}
-      <h2>{sec.title}</h2>
-      {#if sec.intro}<p class="muted">{sec.intro}</p>{/if}
-    {/if}
-    <div
-      class="item"
-      class:missing={tried && it.scored && answers[it.key] === undefined}
-      role="radiogroup"
-      aria-invalid={tried && it.scored && answers[it.key] === undefined ? "true" : undefined}
-      aria-label={it.text}
-      tabindex={i === focused ? 0 : -1}
-      bind:this={els[i]}
-      onfocus={() => (focused = i)}
-    >
-      <div class="q"><span class="num n">{it.key}</span> {it.text}</div>
-      <div class="opts">
-        {#each it.options as o, j (j)}
-          <button
-            type="button"
-            role="radio"
-            aria-checked={answers[it.key] === j}
-            tabindex="-1"
-            class:sel={answers[it.key] === j}
-            onclick={() => { answers[it.key] = j; focusItem(i); }}
-          >
-            <span class="num k" aria-hidden="true">{it.shortcuts[j]}</span> {o}
-          </button>
+<!-- Full-bleed bar inside the centred column: the shadows paint the card colour and bottom line out to the window edges. -->
+<header class="sticky top-0 z-20 -mx-6 -mt-6 mb-6 bg-card px-6 [clip-path:inset(0_-100vmax_-1px)] shadow-[0_0_0_100vmax_var(--surface),0_1px_0_100vmax_var(--line)]">
+  <div class="flex min-h-16 items-center gap-4">
+    <div class="flex flex-col gap-1.5">
+      <span class="text-[17px]"><span class="font-mono font-bold tabular-nums">{answered} / {scored.length}</span> beantwortet</span>
+      <div class="flex flex-wrap gap-1" aria-hidden="true">
+        {#each scored as s (s.key)}
+          {@const gap = answers[s.key] === undefined}
+          <span class="h-1.5 w-7 rounded-full {gap ? (tried ? 'bg-over/70' : 'bg-border') : 'bg-primary'}"></span>
         {/each}
       </div>
     </div>
-  {/each}
+    <div class="flex-1"></div>
+    <Button variant="ghost" class="h-11 px-4" onclick={cancel}>Abbrechen</Button>
+    <Button class="h-11 px-5 font-bold" onclick={doGrade}>Auswerten</Button>
+  </div>
+  {#if banner}
+    <Banner class="mb-3">{banner}</Banner>
+  {/if}
+</header>
+
+<div class="flex flex-col gap-5 pb-16">
+  <div>
+    <h1 class="text-[26px] leading-tight font-bold">{def.title}</h1>
+    {#if preview != null}<p class="mt-1 text-[15px] text-muted-foreground">Test des Entwurfs. Es wird nichts gespeichert.</p>{/if}
+  </div>
+
+  {#if def.fields.length}
+    <Card.Root class="py-4">
+      <Card.Content class="flex flex-wrap gap-4">
+        {#each def.fields as f (f.id)}
+          {@const label = f.id === "kennung" ? "Kennung (keine Patientennamen)" : f.label}
+          {#if f.type === "checkbox"}
+            <div class="flex items-center gap-2.5 self-end py-2.5">
+              <!-- Not bind:checked: the field is undefined until first ticked, which the Checkbox rejects. -->
+              <Checkbox id="fld-{f.id}" class="size-6 [&_svg]:size-5!" checked={fields[f.id] === true} onCheckedChange={(v) => (fields[f.id] = v === true)} />
+              <Label for="fld-{f.id}" class="text-[15px] font-bold">{label}</Label>
+            </div>
+          {:else}
+            <div class="grid flex-[1_1_14rem] gap-1.5">
+              <Label for="fld-{f.id}" class="text-[14px] font-bold">{label}</Label>
+              {#if f.type === "number"}
+                <TextInput id="fld-{f.id}" type="number" class="h-11 font-mono" bind:value={fields[f.id] as number} />
+              {:else if f.type === "date"}
+                <TextInput id="fld-{f.id}" type="date" class="h-11 font-mono" bind:value={fields[f.id] as string} />
+              {:else}
+                <TextInput id="fld-{f.id}" class="h-11 font-mono" bind:value={fields[f.id] as string} />
+              {/if}
+            </div>
+          {/if}
+        {/each}
+      </Card.Content>
+    </Card.Root>
+  {/if}
+
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="flex flex-col gap-2.5" {onkeydown}>
+    {#each items as it, i (it.key)}
+      {#if i === 0 || it.section !== items[i - 1].section}
+        {@const sec = def.sections[it.section]}
+        <div class="mt-3 mb-0.5">
+          <h2 class="text-[19px] font-bold">{sec.title}</h2>
+          {#if sec.intro}<p class="text-[15px] text-muted-foreground">{sec.intro}</p>{/if}
+        </div>
+      {/if}
+      {@const missing = tried && it.scored && answers[it.key] === undefined}
+      <!-- scroll-my-28 keeps a focused question clear of the sticky top bar and the fixed shortcut bar. -->
+      <div
+        class="flex scroll-my-28 gap-3 rounded-xl border bg-card px-5 py-4 outline-none focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary focus-within:outline-solid
+          {missing ? 'border-l-[6px] border-l-over pl-[15px]' : ''}"
+        role="radiogroup"
+        aria-invalid={missing ? "true" : undefined}
+        aria-label={it.text}
+        tabindex={i === focused ? 0 : -1}
+        bind:this={els[i]}
+        onfocus={() => (focused = i)}
+      >
+        <span class="min-w-8 pt-0.5 text-right font-mono text-muted-foreground tabular-nums">{it.key}</span>
+        <div class="flex min-w-0 flex-1 flex-col items-start gap-3">
+          <div class="flex w-full items-baseline gap-3">
+            <span class="min-w-0 flex-1 text-[18px] break-words">{it.text}</span>
+            {#if missing}<span class="shrink-0 text-[14px] font-bold text-over">Antwort fehlt</span>{/if}
+          </div>
+          <div class="inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-muted p-1">
+            {#each it.options as o, j (j)}
+              {@const sel = answers[it.key] === j}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={sel}
+                tabindex="-1"
+                class="flex min-h-12 min-w-28 items-center gap-2.5 rounded-md px-4 py-2 text-left text-[16px]
+                  {sel ? 'bg-primary font-bold text-primary-foreground shadow-sm' : 'text-foreground hover:bg-card'}"
+                onclick={() => { answers[it.key] = j; focusItem(i); }}
+              >
+                {#if it.shortcuts[j]}{@render kbd(it.shortcuts[j], sel ? "shrink-0" : "shrink-0 text-muted-foreground", true)}{/if}{o}
+              </button>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {/each}
+  </div>
 </div>
 
-<div class="bar bottom">
-  {shortcuts.join(" ")} Antwort · ←/→ Antwort ändern · Enter/Tab nächste Frage · Umschalt+Tab zurück · Entf löschen · Strg+Enter Auswerten
-</div>
-
-<style>
-  .bar { background: var(--surface); border: 1px solid var(--line); padding: .5rem 1rem; }
-  .top { flex-wrap: wrap; position: sticky; top: .75rem; z-index: 2; box-shadow: 0 0 0 .75rem var(--bg); display: flex; align-items: center; gap: .75rem; border-radius: 10px; margin-bottom: 1rem; }
-  .top span { flex: 1; font-size: 1.1rem; }
-  .bottom { position: fixed; left: 0; right: 0; bottom: 0; text-align: center; color: var(--muted); border-width: 1px 0 0; }
-  .fields { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
-  label { display: flex; flex-direction: column; gap: .25rem; flex: 1 1 14rem; }
-  label.check { flex-direction: row; align-items: center; flex: 0 0 auto; }
-  input[type="text"], input[type="number"], input[type="date"] { font: inherit; min-height: 48px; padding: 0 .75rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); }
-  input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
-  .items { padding-bottom: 4rem; }
-  .muted { color: var(--muted); }
-  .item { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: .75rem; scroll-margin-block: 7rem; }
-  .item:focus { outline: none; }
-  .item:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
-  .item.missing { border-left: 6px solid var(--over); }
-  .q { font-size: 1.15rem; margin-bottom: .75rem; }
-  .n { color: var(--muted); margin-right: .5rem; }
-  .opts { display: flex; flex-wrap: wrap; gap: .5rem; }
-  .opts button { font: inherit; min-height: 48px; padding: 0 1.25rem; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
-  .opts button.sel { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
-  .k { font-size: .75rem; opacity: .7; margin-right: .35rem; }
-  .bar button { font: inherit; min-height: 48px; padding: 0 1.5rem; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
-  .bar button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
-  .banner { flex: 1 0 100%; margin: 0; background: var(--over-soft); border-left: 4px solid var(--over); padding: .75rem 1rem; }
-</style>
+<footer class="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card">
+  <div class="mx-auto flex min-h-11 max-w-[1040px] flex-wrap items-center justify-center gap-x-5 gap-y-1 px-6 py-2 text-[14px] text-muted-foreground">
+    {#each hints as [keys, label] (label)}
+      <span class="flex items-center gap-1">{#each keys as k, j (j)}{@render kbd(k)}{/each}<span class="ml-0.5">{label}</span></span>
+    {/each}
+  </div>
+</footer>
