@@ -1,4 +1,12 @@
 <script lang="ts">
+  import Copy from "@lucide/svelte/icons/copy";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import { Badge } from "$lib/components/ui/badge/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Card from "$lib/components/ui/card/index.js";
   import { confirm } from "$lib/components/confirm.svelte";
   import { deleteDefinition, duplicateDefinition, listDefinitions, readDefinitionSource, yamlToDefinition } from "../lib/api";
   import { newDoc, openDoc, type Doc } from "../lib/editor";
@@ -42,31 +50,35 @@
     });
 </script>
 
-<h1>Fragebögen bearbeiten</h1>
-{#if banner}<p class="banner" role="alert">{banner}</p>{/if}
-{#each entries ?? [] as e (e.locked + e.file + e.hash)}
-  <div class="card">
-    <div>
-      <strong>{e.summary?.title ?? "Fehlerhafte Datei"}</strong>{#if e.locked}<span class="pill">Registry</span>{/if}
-      <div class="muted">{e.file}{e.summary ? ` · Version ${e.summary.version}` : ""}</div>
-    </div>
-    <div class="actions">
-      <button class="primary" disabled={e.locked || !e.file || !e.hash} onclick={() => edit(e)}>Bearbeiten</button>
-      <button disabled={!e.hash} onclick={() => duplicate(e)}>Duplizieren</button>
-      <button disabled={e.locked || !e.file} onclick={() => remove(e)}>Löschen</button>
-    </div>
+<div class="flex flex-col gap-5 pb-16">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <h1 class="text-[26px] leading-tight font-bold">Fragebögen bearbeiten</h1>
+    <Button class="h-11 px-5 font-bold" onclick={() => onedit(newDoc())}><Plus />Neuer Fragebogen</Button>
   </div>
-{/each}
-<button class="primary" onclick={() => onedit(newDoc())}>Neuer Fragebogen</button>
-
-<style>
-  .card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.5rem; margin-bottom: 1rem; }
-  .card strong { font-size: 1.15rem; }
-  .muted { color: var(--muted); font-family: var(--mono); }
-  .pill { margin-left: .5rem; padding: .1rem .5rem; border: 1px solid var(--line); border-radius: 999px; font-size: .8rem; color: var(--muted); vertical-align: middle; }
-  .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
-  button { font: inherit; min-height: 48px; padding: 0 1.25rem; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  .banner { background: var(--over-soft); border-left: 4px solid var(--over); padding: .75rem 1rem; }
-</style>
+  {#if banner}
+    <p role="alert" class="flex items-center gap-2 rounded-lg border border-over/40 bg-over-soft px-4 py-2.5 text-[15px]">
+      <TriangleAlert class="size-4 shrink-0 text-over" />{banner}
+    </p>
+  {/if}
+  {#if entries?.length}
+    <Card.Root class="gap-0 py-0">
+      <ul class="divide-y">
+        {#each entries as e (e.locked + e.file + e.hash)}
+          <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+            <div class="min-w-0 flex-1">
+              <p class="flex flex-wrap items-center gap-2 text-[17px] font-bold">
+                {e.summary?.title ?? "Fehlerhafte Datei"}{#if e.locked}<Badge variant="outline" class="h-6 px-2 text-[13px] text-muted-foreground">Registry</Badge>{/if}
+              </p>
+              <p class="font-mono text-muted-foreground">{e.file}{e.summary ? ` · Version ${e.summary.version}` : ""}</p>
+            </div>
+            <div class="flex gap-2">
+              <Button variant="outline" class="h-11 px-4" disabled={e.locked || !e.file || !e.hash} onclick={() => edit(e)}><Pencil />Bearbeiten</Button>
+              <Button variant="outline" class="h-11 px-4" disabled={!e.hash} onclick={() => duplicate(e)}><Copy />Duplizieren</Button>
+              <Button variant="destructive" class="h-11 px-4" disabled={e.locked || !e.file} onclick={() => remove(e)}><Trash2 />Löschen</Button>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    </Card.Root>
+  {/if}
+</div>
