@@ -2217,7 +2217,12 @@ dependencies = [
 name = "kreuzchen"
 version = "0.3.0"
 dependencies = [
+ "argon2",
+ "axum",
  "kreuzchen-engine",
+ "kreuzchen-registry",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
@@ -2229,6 +2234,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

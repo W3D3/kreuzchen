@@ -2,6 +2,7 @@ use crate::{
     Paths,
     definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
     editor,
+    registry::{self, Connection, InstallOutcome, Row},
     store::{self, SavedRecord, SavedSummary},
 };
 use kreuzchen_engine::{Grading, Input, schema::Definition};
@@ -186,6 +187,81 @@ pub fn duplicate_definition(
     locked: bool,
 ) -> Result<String, String> {
     editor::duplicate(&paths.definitions, &paths.registry, locked, &file)
+}
+
+#[derive(Serialize)]
+pub struct ConnectionInfo {
+    pub url: String,
+    pub user: String,
+}
+
+#[tauri::command]
+pub fn registry_connection(paths: State<Paths>) -> Option<ConnectionInfo> {
+    registry::load_connection(&paths.data).map(|c| ConnectionInfo {
+        url: c.url,
+        user: c.user,
+    })
+}
+
+#[tauri::command]
+pub async fn registry_connect(
+    paths: State<'_, Paths>,
+    url: String,
+    user: String,
+    key: String,
+) -> Result<(), String> {
+    let c = Connection {
+        url: registry::normalize_url(&url)?,
+        user: user.trim().into(),
+        key: key.trim().into(),
+    };
+    registry::fetch_list(&c).await?;
+    registry::save_connection(&paths.data, &c)
+}
+
+#[tauri::command]
+pub fn registry_disconnect(paths: State<Paths>) {
+    registry::clear_connection(&paths.data)
+}
+
+#[derive(Serialize)]
+pub struct RowsResult {
+    pub online: bool,
+    pub rows: Vec<Row>,
+}
+
+#[tauri::command]
+pub async fn registry_rows(paths: State<'_, Paths>) -> Result<RowsResult, String> {
+    let installed = definitions::scan(&paths.registry);
+    let remote = match registry::load_connection(&paths.data) {
+        None => None,
+        Some(c) => match registry::fetch_list(&c).await {
+            Ok(list) => Some(list),
+            Err(e) if e == registry::UNREACHABLE => None,
+            Err(e) => return Err(e),
+        },
+    };
+    Ok(RowsResult {
+        online: remote.is_some(),
+        rows: registry::rows(remote.as_deref(), &installed),
+    })
+}
+
+#[tauri::command]
+pub async fn registry_install(
+    paths: State<'_, Paths>,
+    id: String,
+    replace_local: bool,
+) -> Result<InstallOutcome, String> {
+    let c = registry::load_connection(&paths.data).ok_or("Keine Registry verbunden.")?;
+    registry::install(&c, &paths, &id, replace_local).await
+}
+
+#[tauri::command]
+pub fn registry_remove(paths: State<Paths>, file: String) -> Result<(), String> {
+    definitions::check_name(&file, definitions::YAML)?;
+    std::fs::remove_file(paths.registry.join(file))
+        .map_err(|e| format!("Löschen fehlgeschlagen: {e}"))
 }
 
 #[cfg(test)]

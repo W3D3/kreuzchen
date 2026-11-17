@@ -1,0 +1,477 @@
+use crate::{
+    Paths,
+    definitions::{DefinitionEntry, YAML, check_name, hash, load_text, scan},
+    store::write_atomic,
+};
+use reqwest::{StatusCode, Url};
+use serde::{Deserialize, Serialize};
+use std::{fs, path::Path, sync::OnceLock, time::Duration};
+
+pub const UNREACHABLE: &str = "Registry nicht erreichbar";
+const WRONG_KEY: &str = "Benutzername oder Schlüssel falsch";
+const BAD_URL: &str = "Ungültige Adresse";
+const FILE: &str = "registry.json";
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct Connection {
+    pub url: String,
+    pub user: String,
+    pub key: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RemoteEntry {
+    pub id: String,
+    pub title: String,
+    pub version: String,
+    pub hash: String,
+}
+
+#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RowState {
+    Available,
+    Current,
+    Update,
+    Gone,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Row {
+    pub id: String,
+    pub title: String,
+    pub state: RowState,
+    pub file: Option<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallOutcome {
+    Installed,
+    NeedsReplaceConfirm,
+}
+
+/// Adds `https://` when no scheme is given and strips trailing `/`; only http and https.
+pub fn normalize_url(input: &str) -> Result<String, String> {
+    let s = input.trim();
+    let s = if s.contains("://") {
+        s.to_string()
+    } else {
+        format!("https://{s}")
+    };
+    let u = Url::parse(&s).map_err(|_| BAD_URL.to_string())?;
+    if !matches!(u.scheme(), "http" | "https") || u.host_str().is_none_or(str::is_empty) {
+        return Err(BAD_URL.into());
+    }
+    Ok(s.trim_end_matches('/').to_string())
+}
+
+pub fn load_connection(app_data: &Path) -> Option<Connection> {
+    serde_json::from_slice(&fs::read(app_data.join(FILE)).ok()?).ok()
+}
+
+pub fn save_connection(app_data: &Path, c: &Connection) -> Result<(), String> {
+    let c = Connection {
+        url: c.url.clone(),
+        user: c.user.trim().to_string(),
+        key: c.key.trim().to_string(),
+    };
+    let json = serde_json::to_vec_pretty(&c).map_err(|e| e.to_string())?;
+    write_atomic(app_data, FILE, &json)
+}
+
+pub fn clear_connection(app_data: &Path) {
+    let _ = fs::remove_file(app_data.join(FILE));
+}
+
+/// The id a registry file stands for: its definition id, else the file stem.
+fn installed_id(e: &DefinitionEntry) -> String {
+    e.summary.as_ref().map_or_else(
+        || {
+            e.file
+                .rsplit_once('.')
+                .map_or(&*e.file, |(stem, _)| stem)
+                .to_string()
+        },
+        |s| s.id.clone(),
+    )
+}
+
+/// Registry screen rows. `installed` is the registry folder's scan; `None` means offline.
+pub fn rows(remote: Option<&[RemoteEntry]>, installed: &[DefinitionEntry]) -> Vec<Row> {
+    let installed: Vec<_> = installed.iter().filter(|e| !e.file.is_empty()).collect();
+    let ids: Vec<String> = installed.iter().map(|e| installed_id(e)).collect();
+    let mut out: Vec<Row> = installed
+        .iter()
+        .zip(&ids)
+        .map(|(e, id)| {
+            let state = match remote {
+                None => RowState::Current,
+                Some(r) => match r.iter().find(|r| &r.id == id) {
+                    None => RowState::Gone,
+                    Some(r) if r.hash == e.hash => RowState::Current,
+                    Some(_) => RowState::Update,
+                },
+            };
+            Row {
+                id: id.clone(),
+                title: e
+                    .summary
+                    .as_ref()
+                    .map_or_else(|| e.file.clone(), |s| s.title.clone()),
+                state,
+                file: Some(e.file.clone()),
+            }
+        })
+        .collect();
+    out.extend(
+        remote
+            .unwrap_or_default()
+            .iter()
+            .filter(|r| !ids.contains(&r.id))
+            .map(|r| Row {
+                id: r.id.clone(),
+                title: r.title.clone(),
+                state: RowState::Available,
+                file: None,
+            }),
+    );
+    out.sort_by(|a, b| (a.title.to_lowercase(), &a.id).cmp(&(b.title.to_lowercase(), &b.id)));
+    out
+}
+
+fn client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        // Same provider as the updater plugin; a second install attempt is a harmless Err.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .expect("HTTP client")
+    })
+}
+
+/// GET `<url>/v1/fragebogen[/<id>]` with Basic auth; returns the hash header and body.
+async fn get(c: &Connection, id: Option<&str>) -> Result<(Option<String>, Vec<u8>), String> {
+    let mut url = Url::parse(&c.url).map_err(|_| BAD_URL.to_string())?;
+    url.path_segments_mut()
+        .map_err(|()| BAD_URL.to_string())?
+        .pop_if_empty()
+        .extend(["v1", "fragebogen"])
+        .extend(id);
+    let resp = client()
+        .get(url)
+        .basic_auth(&c.user, Some(&c.key))
+        .send()
+        .await
+        .map_err(|_| UNREACHABLE.to_string())?;
+    match resp.status() {
+        StatusCode::UNAUTHORIZED => return Err(WRONG_KEY.into()),
+        s if !s.is_success() => return Err(format!("Fehler der Registry: {s}")),
+        _ => {}
+    }
+    let header = resp
+        .headers()
+        .get("x-kreuzchen-hash")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let bytes = resp.bytes().await.map_err(|_| UNREACHABLE.to_string())?;
+    Ok((header, bytes.to_vec()))
+}
+
+pub async fn fetch_list(c: &Connection) -> Result<Vec<RemoteEntry>, String> {
+    let (_, body) = get(c, None).await?;
+    serde_json::from_slice(&body).map_err(|_| "Antwort der Registry ist ungültig".to_string())
+}
+
+pub async fn install(
+    c: &Connection,
+    paths: &Paths,
+    id: &str,
+    replace_local: bool,
+) -> Result<InstallOutcome, String> {
+    let file = format!("{id}.yaml");
+    check_name(&file, YAML)?;
+    let local: Vec<String> = scan(&paths.definitions)
+        .into_iter()
+        .filter(|e| e.summary.as_ref().is_some_and(|s| s.id == id))
+        .map(|e| e.file)
+        .collect();
+    if !local.is_empty() && !replace_local {
+        return Ok(InstallOutcome::NeedsReplaceConfirm);
+    }
+    let list = fetch_list(c).await?;
+    let entry = list
+        .iter()
+        .find(|e| e.id == id)
+        .ok_or("Der Fragebogen ist nicht mehr auf dem Server.")?;
+    let (header, bytes) = get(c, Some(id)).await?;
+    let h = hash(&bytes);
+    if header.as_deref() != Some(h.as_str()) || entry.hash != h {
+        return Err("Die heruntergeladene Datei ist beschädigt.".into());
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|_| "Datei ist nicht UTF-8".to_string())?;
+    if load_text(text)?.def.id != id {
+        return Err("Die heruntergeladene Datei hat eine andere id.".into());
+    }
+    // Deleted only once the download is verified, so a failed install keeps the local copy.
+    for f in local {
+        fs::remove_file(paths.definitions.join(f))
+            .map_err(|e| format!("Löschen fehlgeschlagen: {e}"))?;
+    }
+    write_atomic(&paths.registry, &file, &bytes)?;
+    Ok(InstallOutcome::Installed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::definitions::Summary;
+    use argon2::{
+        Argon2,
+        password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
+    };
+    use std::{sync::Arc, time::Instant};
+
+    const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
+
+    fn def(id: &str) -> String {
+        FIXTURE.replacen("id: beispiel", &format!("id: {id}"), 1)
+    }
+
+    #[test]
+    fn normalize_url_cases() {
+        assert_eq!(
+            normalize_url("kreuzchen.wedenig.dev").unwrap(),
+            "https://kreuzchen.wedenig.dev"
+        );
+        assert_eq!(normalize_url("https://x.y/").unwrap(), "https://x.y");
+        assert!(normalize_url("ftp://x").is_err());
+        assert!(normalize_url("https://").is_err());
+    }
+
+    #[test]
+    fn save_connection_trims() {
+        let d = tempfile::tempdir().unwrap();
+        let c = Connection {
+            url: "https://x.y".into(),
+            user: " praxis \n".into(),
+            key: "abc\n".into(),
+        };
+        save_connection(d.path(), &c).unwrap();
+        let got = load_connection(d.path()).unwrap();
+        assert_eq!((got.user.as_str(), got.key.as_str()), ("praxis", "abc"));
+        clear_connection(d.path());
+        assert!(load_connection(d.path()).is_none());
+    }
+
+    fn remote(id: &str, hash: &str) -> RemoteEntry {
+        RemoteEntry {
+            id: id.into(),
+            title: id.to_uppercase(),
+            version: "1".into(),
+            hash: hash.into(),
+        }
+    }
+
+    fn local(id: &str, hash: &str) -> DefinitionEntry {
+        DefinitionEntry {
+            file: format!("{id}.yaml"),
+            hash: hash.into(),
+            summary: Some(Summary {
+                id: id.into(),
+                title: id.to_uppercase(),
+                version: "1".into(),
+                item_count: 1,
+                scale_count: 1,
+            }),
+            error: None,
+            locked: true,
+        }
+    }
+
+    #[test]
+    fn rows_states() {
+        let r = [remote("a", "h1"), remote("b", "h1"), remote("c", "h1")];
+        let i = [local("a", "h1"), local("b", "h0"), local("d", "h1")];
+        let got: Vec<_> = rows(Some(&r), &i)
+            .into_iter()
+            .map(|r| (r.id, r.state, r.file.is_some()))
+            .collect();
+        let s = |id: &str, st, f| (id.to_string(), st, f);
+        use RowState::*;
+        assert_eq!(
+            got,
+            [
+                s("a", Current, true),
+                s("b", Update, true),
+                s("c", Available, false),
+                s("d", Gone, true)
+            ]
+        );
+        let ids: Vec<_> = rows(None, &i).into_iter().map(|r| r.id).collect();
+        assert_eq!(ids, ["a", "b", "d"]);
+    }
+
+    struct Env {
+        _dir: tempfile::TempDir,
+        paths: Paths,
+    }
+
+    fn env() -> Env {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let paths = Paths {
+            data: p.into(),
+            definitions: p.join("definitionen"),
+            results: p.join("auswertungen"),
+            registry: p.join("registry"),
+        };
+        fs::create_dir(&paths.definitions).unwrap();
+        fs::create_dir(&paths.registry).unwrap();
+        Env { _dir: dir, paths }
+    }
+
+    async fn serve(app: axum::Router) -> String {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", l.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+        url
+    }
+
+    /// A real registry serving `fragebogen_a` to `praxis_a` / `geheim`; keep the dir alive.
+    async fn registry() -> (String, tempfile::TempDir) {
+        let key_hash = Argon2::default()
+            .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
+            .unwrap()
+            .to_string();
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("definitionen")).unwrap();
+        fs::write(
+            dir.path().join("config.yaml"),
+            format!(
+                "praxen:\n  - user: praxis_a\n    key_hash: {key_hash:?}\n    fragebogen: [fragebogen_a]\n"
+            ),
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("definitionen/fragebogen_a.yaml"),
+            def("fragebogen_a"),
+        )
+        .unwrap();
+        let reg = kreuzchen_registry::load(dir.path()).unwrap();
+        (serve(kreuzchen_registry::router(Arc::new(reg))).await, dir)
+    }
+
+    fn conn(url: &str, key: &str) -> Connection {
+        Connection {
+            url: url.into(),
+            user: "praxis_a".into(),
+            key: key.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn install_end_to_end() {
+        let (url, _d) = registry().await;
+        let c = conn(&url, "geheim");
+        let list = fetch_list(&c).await.unwrap();
+        let bytes = def("fragebogen_a");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "fragebogen_a");
+        assert_eq!(list[0].hash, hash(bytes.as_bytes()));
+        let e = env();
+        assert_eq!(
+            install(&c, &e.paths, "fragebogen_a", false).await,
+            Ok(InstallOutcome::Installed)
+        );
+        let written = fs::read(e.paths.registry.join("fragebogen_a.yaml")).unwrap();
+        assert_eq!(written, bytes.as_bytes());
+        let r = rows(Some(&list), &scan(&e.paths.registry));
+        assert_eq!(r[0].state, RowState::Current);
+    }
+
+    #[tokio::test]
+    async fn install_asks_before_replacing_local() {
+        let (url, _d) = registry().await;
+        let c = conn(&url, "geheim");
+        let e = env();
+        let local = e.paths.definitions.join("meine_kopie.yaml");
+        let installed = e.paths.registry.join("fragebogen_a.yaml");
+        fs::write(&local, def("fragebogen_a")).unwrap();
+        assert_eq!(
+            install(&c, &e.paths, "fragebogen_a", false).await,
+            Ok(InstallOutcome::NeedsReplaceConfirm)
+        );
+        assert!(local.exists() && !installed.exists());
+        assert_eq!(
+            install(&c, &e.paths, "fragebogen_a", true).await,
+            Ok(InstallOutcome::Installed)
+        );
+        assert!(!local.exists() && installed.exists());
+    }
+
+    #[tokio::test]
+    async fn install_keeps_old_file_on_bad_hash() {
+        use axum::{Json, routing::get};
+        let bytes = def("fragebogen_a");
+        let entry = RemoteEntry {
+            id: "fragebogen_a".into(),
+            title: "A".into(),
+            version: "1".into(),
+            hash: hash(bytes.as_bytes()),
+        };
+        let app = axum::Router::new()
+            .route(
+                "/v1/fragebogen",
+                get(move || async move { Json(vec![entry]) }),
+            )
+            .route(
+                "/v1/fragebogen/{id}",
+                get(move || async move { ([("x-kreuzchen-hash", "falsch")], bytes) }),
+            );
+        let c = conn(&serve(app).await, "x");
+        let e = env();
+        let old = e.paths.registry.join("fragebogen_a.yaml");
+        fs::write(&old, "alt").unwrap();
+        let err = install(&c, &e.paths, "fragebogen_a", false).await;
+        assert_eq!(
+            err,
+            Err("Die heruntergeladene Datei ist beschädigt.".into())
+        );
+        assert_eq!(fs::read(&old).unwrap(), b"alt");
+    }
+
+    #[tokio::test]
+    async fn install_rejects_bad_id() {
+        let e = env();
+        let c = conn("http://127.0.0.1:1", "x");
+        assert_eq!(
+            install(&c, &e.paths, "../x", false).await,
+            Err("Ungültiger Dateiname".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn wrong_key_message() {
+        let (url, _d) = registry().await;
+        assert_eq!(
+            fetch_list(&conn(&url, "falsch")).await,
+            Err(WRONG_KEY.into())
+        );
+    }
+
+    #[tokio::test]
+    async fn unreachable_is_reported_quickly() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let start = Instant::now();
+        let got = fetch_list(&conn(&format!("http://127.0.0.1:{port}"), "x")).await;
+        assert_eq!(got, Err(UNREACHABLE.into()));
+        assert!(start.elapsed() < Duration::from_secs(11));
+    }
+}
