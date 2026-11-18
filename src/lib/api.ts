@@ -17,6 +17,8 @@ export const openDraft = (name: string) => invoke<Opened<Draft>>("open_draft", {
 export const deleteDraft = (name: string) => invoke<void>("delete_draft", { name });
 export const exportResult = (name: string, dest: string) => invoke<void>("export_result", { name, dest });
 export const exportPdf = (report: Report, dest: string) => invoke<void>("export_pdf", { report, dest });
+/** Writes the report to the app's PDF temp folder and opens it in the system viewer. */
+export const openPdf = (report: Report, name: string) => invoke<void>("open_pdf", { report, name });
 export const importResult = (src: string) => invoke<string>("import_result", { src });
 export const validateDefinition = (yaml: string) => invoke<Summary>("validate_definition", { yaml });
 export const definitionToYaml = (def: Definition) => invoke<string>("definition_to_yaml", { def });

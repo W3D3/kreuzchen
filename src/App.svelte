@@ -142,7 +142,7 @@
         }}
         preview={r.preview != null}
         onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input, draftFile: r.draftFile, savedFile: r.savedFile, preview: r.preview })}
-        onnew={() => (screen = r.preview == null ? { name: "list" } : { name: "editor" })}
+        oneditor={() => (screen = { name: "editor" })}
       />
     {:else if screen.name === "saved"}
       <Saved onopen={(res) => showSaved(res, null)} />
