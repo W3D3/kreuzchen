@@ -4,6 +4,7 @@
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Copy from "@lucide/svelte/icons/copy";
+  import FileDown from "@lucide/svelte/icons/file-down";
   import FilePlus from "@lucide/svelte/icons/file-plus";
   import Info from "@lucide/svelte/icons/info";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
@@ -13,14 +14,19 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-  import { saveResult } from "../lib/api";
+  import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+  import { exportPdf, saveResult } from "../lib/api";
   import { loadAutoSaveResult } from "../lib/settings";
-  import { localTimestamp } from "../lib/kennung";
+  import { formatCreatedAt, localTimestamp, pdfName } from "../lib/kennung";
   import { compactItems } from "../lib/ranges";
-  import type { Graded, Input, OpenedDefinition } from "../lib/types";
+  import type { Graded, Input, Norms, OpenedDefinition, SavedRecord } from "../lib/types";
 
-  let { opened, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, onnew }: {
+  let { opened, record = null, norms = null, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, onnew }: {
     opened: OpenedDefinition | null;
+    /** The saved result on display, if any; without `opened` its date is the evaluation date. */
+    record?: SavedRecord | null;
+    /** Norm tables of the installed definition, for a saved result shown without `opened`. */
+    norms?: Norms | null;
     input: Input;
     graded: Graded;
     notice: string | null;
@@ -55,6 +61,21 @@
     try {
       await writeText(graded.text);
       status = "Kopiert.";
+    } catch (e) {
+      status = "";
+      banner = String(e);
+    }
+  }
+
+  async function pdf() {
+    banner = null;
+    try {
+      const title = opened?.definition.title ?? record?.questionnaire.title ?? "";
+      const dest = await saveDialog({ defaultPath: pdfName(kennung, title), filters: [{ name: "PDF", extensions: ["pdf"] }] });
+      if (!dest) return;
+      const date = formatCreatedAt(opened || !record ? localTimestamp(new Date()) : record.created_at);
+      await exportPdf({ title, date, grading: g, norms: opened ? (opened.definition.norms ?? null) : norms }, dest);
+      status = "PDF gespeichert.";
     } catch (e) {
       status = "";
       banner = String(e);
@@ -104,6 +125,7 @@
     <div class="flex-1"></div>
     <span aria-live="polite" class="mr-2 text-[14px] text-muted-foreground">{status}</span>
     <Button variant="outline" class="h-11 px-4" onclick={copy}><Copy />Als Text kopieren</Button>
+    <Button variant="outline" class="h-11 px-4" onclick={pdf}><FileDown />Als PDF speichern</Button>
     {#if opened && !preview}<Button variant="outline" class="h-11 px-4" disabled={saved} onclick={save}><Save />Speichern</Button>{/if}
     <Button class="h-11 px-4 font-bold" onclick={onnew}><FilePlus />{preview ? "Zurück zum Editor" : "Neuer Fragebogen"}</Button>
   </div>

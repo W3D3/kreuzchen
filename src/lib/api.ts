@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionInfo, Definition, DefinitionEntry, Draft, DraftSummary, Graded, InstallOutcome, Input, Opened, OpenedDefinition, OpenedResult, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
+import type { ConnectionInfo, Definition, DefinitionEntry, Draft, DraftSummary, Graded, InstallOutcome, Input, Opened, OpenedDefinition, OpenedResult, Report, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
 
 export const listDefinitions = () => invoke<DefinitionEntry[]>("list_definitions");
 export const getDefinition = (file: string, locked: boolean) => invoke<OpenedDefinition>("get_definition", { file, locked });
@@ -16,6 +16,7 @@ export const listDrafts = () => invoke<DraftSummary[]>("list_drafts");
 export const openDraft = (name: string) => invoke<Opened<Draft>>("open_draft", { name });
 export const deleteDraft = (name: string) => invoke<void>("delete_draft", { name });
 export const exportResult = (name: string, dest: string) => invoke<void>("export_result", { name, dest });
+export const exportPdf = (report: Report, dest: string) => invoke<void>("export_pdf", { report, dest });
 export const importResult = (src: string) => invoke<string>("import_result", { src });
 export const validateDefinition = (yaml: string) => invoke<Summary>("validate_definition", { yaml });
 export const definitionToYaml = (def: Definition) => invoke<string>("definition_to_yaml", { def });

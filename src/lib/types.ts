@@ -45,6 +45,8 @@ export interface Summary { id: string; title: string; version: string; item_coun
 export interface DefinitionEntry { file: string; hash: string; summary: Summary | null; error: string | null; needs_app: string | null; locked: boolean }
 export interface OpenedDefinition { file: string; hash: string; definition: Definition; locked: boolean }
 export interface Graded { grading: Grading; text: string }
+/** Input of the PDF report; `date` is shown as given. */
+export interface Report { title: string; date: string; grading: Grading; norms: Norms | null }
 export interface QRef { id: string; title: string; version: string; hash: string }
 export interface SavedRecord {
   format: number; kennung: string; created_at: string;
@@ -53,7 +55,8 @@ export interface SavedRecord {
 export interface SavedSummary { name: string; kennung: string; title: string; created_at: string }
 /** A stored record with the installed definition it belongs to; `outdated` when that definition changed since. */
 export interface Opened<T> { record: T; current: DefinitionEntry | null; outdated: boolean }
-export type OpenedResult = Opened<SavedRecord>;
+/** A saved result; `norms` are its definition's, while that is unchanged since grading (for the PDF profile). */
+export type OpenedResult = Opened<SavedRecord> & { norms: Norms | null };
 export interface Draft { saved_at: string; questionnaire: QRef; input: Input }
 export interface DraftSummary { name: string; kennung: string; title: string; saved_at: string; answered: number }
 

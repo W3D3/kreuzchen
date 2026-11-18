@@ -10,3 +10,7 @@ export const formatCreatedAt = (s: string): string => {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
   return m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : s;
 };
+
+/** Default file name for the PDF report, without characters Windows forbids. */
+export const pdfName = (kennung: string, title: string): string =>
+  `${[kennung, title].filter(Boolean).join(" – ")}.pdf`.replace(/[\\/:*?"<>|]/g, "-");

@@ -3,9 +3,13 @@ use crate::{
     definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
     editor,
     registry::{self, Connection, InstallOutcome, RowsResult},
+    report::{self, Report},
     store::{self, Draft, DraftSummary, QRef, SavedRecord, SavedSummary},
 };
-use kreuzchen_engine::{Grading, Input, schema::Definition};
+use kreuzchen_engine::{
+    Grading, Input,
+    schema::{Definition, Norms},
+};
 use serde::Serialize;
 use std::path::Path;
 use tauri::State;
@@ -73,6 +77,15 @@ pub struct Opened<T> {
     pub outdated: bool,
 }
 
+/// A saved result as `Opened`, plus the norm tables of its definition for the PDF profile.
+#[derive(Serialize)]
+pub struct OpenedResult {
+    #[serde(flatten)]
+    pub opened: Opened<SavedRecord>,
+    /// `None` when the definition is gone, changed since grading, or has no norms.
+    pub norms: Option<Norms>,
+}
+
 fn with_current<T>(paths: &Paths, record: T, q: &QRef) -> Opened<T> {
     let current =
         definitions::find_by_id(&paths.definitions, &paths.registry, &q.id, Some(&q.hash));
@@ -106,10 +119,22 @@ pub fn list_results(paths: State<Paths>) -> Vec<SavedSummary> {
 }
 
 #[tauri::command]
-pub fn open_result(paths: State<Paths>, name: String) -> Result<Opened<SavedRecord>, String> {
-    let record: SavedRecord = store::load(&paths.results, &name)?;
+pub fn open_result(paths: State<Paths>, name: String) -> Result<OpenedResult, String> {
+    open_saved(&paths, &name)
+}
+
+fn open_saved(paths: &Paths, name: &str) -> Result<OpenedResult, String> {
+    let record: SavedRecord = store::load(&paths.results, name)?;
     let q = record.questionnaire.clone();
-    Ok(with_current(&paths, record, &q))
+    let opened = with_current(paths, record, &q);
+    // Only the version that graded it: other tables would put the saved values on a foreign axis.
+    let norms = opened
+        .current
+        .as_ref()
+        .filter(|_| !opened.outdated)
+        .and_then(|c| definitions::open(paths.dir(c.locked), &c.file).ok())
+        .and_then(|(q, _)| q.def.norms);
+    Ok(OpenedResult { opened, norms })
 }
 
 #[tauri::command]
@@ -147,6 +172,13 @@ pub fn delete_draft(paths: State<Paths>, name: String) -> Result<(), String> {
 // Paths come from OS dialogs; import only accepts valid records.
 pub fn export_result(paths: State<Paths>, name: String, dest: String) -> Result<(), String> {
     store::export(&paths.results, &name, Path::new(&dest))
+}
+
+#[tauri::command]
+// `dest` comes from the OS save dialog.
+pub fn export_pdf(report: Report, dest: String) -> Result<(), String> {
+    std::fs::write(dest, report::pdf(&report))
+        .map_err(|e| format!("PDF konnte nicht gespeichert werden: {e}"))
 }
 
 #[tauri::command]
@@ -286,9 +318,13 @@ pub fn registry_remove(paths: State<Paths>, file: String) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
-    use super::{refuse_locked, with_current};
-    use crate::{Paths, store::QRef};
-    use std::fs;
+    use super::{definitions, open_saved, refuse_locked, with_current};
+    use crate::{
+        Paths,
+        store::{self, QRef},
+    };
+    use kreuzchen_engine::Input;
+    use std::{collections::BTreeMap, fs};
 
     #[test]
     fn opened_draft_tracks_changed_and_removed_definition() {
@@ -324,6 +360,50 @@ mod tests {
         fs::remove_file(&file).unwrap();
         let gone = with_current(&paths, (), &q(&hash));
         assert!(gone.current.is_none() && !gone.outdated);
+    }
+
+    #[test]
+    fn saved_result_brings_the_norms_of_the_unchanged_definition() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            data: tmp.path().into(),
+            definitions: tmp.path().join("definitionen"),
+            results: tmp.path().join("auswertungen"),
+            drafts: tmp.path().join("entwuerfe"),
+            registry: tmp.path().join("registry"),
+        };
+        for dir in [&paths.definitions, &paths.results, &paths.registry] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        let yaml = include_str!("../../examples/definitionen/beispiel_normen.yaml");
+        let def = paths.definitions.join("beispiel_normen.yaml");
+        fs::write(&def, yaml).unwrap();
+        let q = kreuzchen_engine::load(yaml).unwrap();
+        let input = Input {
+            fields: BTreeMap::new(),
+            answers: BTreeMap::new(),
+        };
+        let (_, hash) = definitions::open(&paths.definitions, "beispiel_normen.yaml").unwrap();
+        let save = |hash: &str| {
+            let record: store::SavedRecord = serde_json::from_value(serde_json::json!({
+                "format": 1, "kennung": "K", "created_at": "2026-11-17T14:30:00",
+                "questionnaire": { "id": "beispiel_normen", "title": "B", "version": "1", "hash": hash },
+                "input": input, "grading": q.grade(&input).unwrap(), "text": "",
+            }))
+            .unwrap();
+            store::save(&paths.results, &record).unwrap()
+        };
+        let same = save(&hash);
+        let changed = save("alt");
+
+        assert_eq!(open_saved(&paths, &same).unwrap().norms, q.def.norms);
+        // Saved values come from the old tables; the new ones must not frame them.
+        let opened = open_saved(&paths, &changed).unwrap();
+        assert!(opened.opened.outdated);
+        assert_eq!(opened.norms, None);
+
+        fs::remove_file(def).unwrap();
+        assert_eq!(open_saved(&paths, &same).unwrap().norms, None);
     }
 
     #[test]

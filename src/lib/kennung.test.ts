@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { defaultKennung, formatCreatedAt, localTimestamp } from "./kennung";
+import { defaultKennung, formatCreatedAt, localTimestamp, pdfName } from "./kennung";
 
 it("formats with zero padding", () => {
   expect(defaultKennung(new Date(2026, 10, 11, 22, 23))).toBe("Anonym 11.11.2026 22:23");
@@ -13,4 +13,9 @@ it("formats a local timestamp", () => {
 it("formats created_at for display", () => {
   expect(formatCreatedAt("2026-01-05T07:04:09")).toBe("05.01.2026 07:04");
   expect(formatCreatedAt("gestern")).toBe("gestern");
+});
+
+it("names the PDF after kennung and title", () => {
+  expect(pdfName("Anonym 05.01.2026 07:04", "Test A/B")).toBe("Anonym 05.01.2026 07-04 – Test A-B.pdf");
+  expect(pdfName("", "Test")).toBe("Test.pdf");
 });

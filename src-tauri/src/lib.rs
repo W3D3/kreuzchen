@@ -6,6 +6,7 @@ mod commands;
 mod definitions;
 mod editor;
 mod registry;
+pub mod report;
 mod store;
 
 use tauri::Manager;
@@ -48,6 +49,7 @@ pub fn run() {
             commands::open_result,
             commands::delete_result,
             commands::export_result,
+            commands::export_pdf,
             commands::import_result,
             commands::save_draft,
             commands::list_drafts,
