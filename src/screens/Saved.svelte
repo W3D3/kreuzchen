@@ -10,7 +10,6 @@
   import { confirm } from "$lib/components/confirm.svelte";
   import { deleteResult, exportResult, importResult, listResults, openResult } from "../lib/api";
   import { formatCreatedAt, pdfName } from "../lib/kennung";
-  import { loadDevMode } from "../lib/settings";
   import type { OpenedResult, Report, SavedSummary } from "../lib/types";
 
   let { onopen }: { onopen: (res: OpenedResult) => void } = $props();
@@ -18,7 +17,6 @@
   let rows = $state<SavedSummary[] | null>(null);
   let banner = $state<string | null>(null);
   let status = $state("");
-  const devMode = loadDevMode();
 
   // Runs an action; any German error string goes to the banner.
   async function run(fn: () => Promise<unknown>) {
@@ -68,7 +66,7 @@
     <h1 class="text-[26px] leading-tight font-bold">Gespeicherte Auswertungen</h1>
     <div class="flex items-center gap-3">
       <span aria-live="polite" class="text-[14px] text-muted-foreground">{status}</span>
-      {#if devMode}<Button variant="outline" class="h-11 px-4" onclick={importOne}><FileInput />JSON importieren …</Button>{/if}
+      <Button variant="outline" class="tech h-11 px-4" onclick={importOne}><FileInput />JSON importieren …</Button>
     </div>
   </div>
   {#if banner}
@@ -95,7 +93,7 @@
                 onerror={(e) => (banner = e)}
                 onstatus={(s) => (status = s)}
               />
-              {#if devMode}<Button variant="outline" class="h-11 px-4" onclick={() => exportRow(r.name)}><FileBraces />JSON exportieren</Button>{/if}
+              <Button variant="outline" class="tech h-11 px-4" onclick={() => exportRow(r.name)}><FileBraces />JSON exportieren</Button>
               <Button variant="destructive" class="h-11 px-4" onclick={() => remove(r)}><Trash2 />Löschen</Button>
             </div>
           </li>
