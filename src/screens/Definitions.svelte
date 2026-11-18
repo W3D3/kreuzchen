@@ -65,7 +65,7 @@
           <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
             <div class="min-w-0 flex-1">
               <p class="flex flex-wrap items-center gap-2 text-[17px] font-bold">
-                {e.summary?.title ?? "Fehlerhafte Datei"}{#if e.locked}<Badge variant="outline" class="h-6 px-2 text-[13px] text-muted-foreground">Registry</Badge>{/if}
+                {e.summary?.title ?? "Fehlerhafte Datei"}{#if e.locked}<Badge variant="outline" class="h-6 px-2 text-[13px] text-muted-foreground">Bibliothek</Badge>{/if}
               </p>
               <p class="font-mono text-muted-foreground">{e.file}{e.summary ? ` · Version ${e.summary.version}` : ""}</p>
             </div>

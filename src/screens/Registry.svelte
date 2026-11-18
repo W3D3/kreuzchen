@@ -28,7 +28,7 @@
   let download = $state<Download | null>(null);
   const shown = $derived(result ? filterRows(result.rows, query) : []);
   // A failed list load, or a connection whose server list could not be fetched (installed rows still show).
-  const failure = $derived(loadError ?? (conn && result && !result.online ? (result.error ?? "Registry nicht erreichbar") : null));
+  const failure = $derived(loadError ?? (conn && result && !result.online ? (result.error ?? "Bibliotheksserver nicht erreichbar") : null));
   const badgeClass: Partial<Record<RowState, string>> = { gone: "bg-over-soft text-over", current: "text-muted-foreground" };
 
   async function run(fn: () => Promise<unknown>) {
@@ -86,7 +86,7 @@
 
   const disconnect = () =>
     run(async () => {
-      if (!(await confirm({ title: "Verbindung trennen", message: "Verbindung zur Registry trennen? Installierte Fragebögen bleiben erhalten.", confirmLabel: "Trennen", destructive: true }))) return;
+      if (!(await confirm({ title: "Verbindung trennen", message: "Verbindung zum Bibliotheksserver trennen? Installierte Fragebögen bleiben erhalten.", confirmLabel: "Trennen", destructive: true }))) return;
       await registryDisconnect();
       conn = null;
       result = await registryRows();
@@ -105,7 +105,7 @@
     run(async () => {
       try {
         if ((await fetchRow(r, false)) === "needs_replace_confirm") {
-          if (!(await confirm({ title: "Lokale Kopie ersetzen", message: "Lokale Kopie durch die Version aus der Registry ersetzen?", confirmLabel: "Ersetzen" }))) return;
+          if (!(await confirm({ title: "Lokale Kopie ersetzen", message: "Lokale Kopie durch die Version aus der Bibliothek ersetzen?", confirmLabel: "Ersetzen" }))) return;
           await fetchRow(r, true);
         }
       } catch (e) {
@@ -125,7 +125,7 @@
 
 <div class="flex flex-col gap-5 pb-16">
   <div class="flex flex-wrap items-center justify-between gap-4">
-    <h1 class="text-[26px] leading-tight font-bold">Fragebögen aus der Registry</h1>
+    <h1 class="text-[26px] leading-tight font-bold">Fragebögen aus der Bibliothek</h1>
     {#if conn}<Button variant="outline" class="h-11 px-4" onclick={load} disabled={busy}><RefreshCw class={loading ? "animate-spin" : ""} />{loading ? "Lädt …" : "Nach Änderungen suchen"}</Button>{/if}
   </div>
   {#if banner}
@@ -134,12 +134,12 @@
 
   {#if loading && !result}
     <div role="status" class="flex items-center justify-center gap-3 rounded-xl border bg-card px-6 py-10 text-[16px] text-muted-foreground">
-      <LoaderCircle class="size-5 animate-spin" />Registry wird geladen …
+      <LoaderCircle class="size-5 animate-spin" />Bibliothek wird geladen …
     </div>
   {:else if conn && !editing}
     <div class="flex flex-wrap items-center gap-3 rounded-xl border bg-card px-5 py-3 text-[15px]">
       <Server class="size-4.5 shrink-0 text-muted-foreground" />
-      <span class="min-w-0 flex-1">Registry: <strong>{conn.user}</strong> @ <span class="font-mono">{host(conn.url)}</span>, verbunden</span>
+      <span class="min-w-0 flex-1">Bibliotheksserver: <strong>{conn.user}</strong> @ <span class="font-mono">{host(conn.url)}</span>, verbunden</span>
       <Button variant="outline" class="h-11 px-4" onclick={change} disabled={busy}>Ändern</Button>
       <Button variant="destructive" class="h-11 px-4" onclick={disconnect} disabled={busy}>Trennen</Button>
     </div>
@@ -149,7 +149,7 @@
         <form class="grid gap-4" onsubmit={connect}>
           <div class="grid gap-1.5">
             <Label for="reg-url" class="text-[14px] font-bold">URL</Label>
-            <Input id="reg-url" class="h-11 font-mono" bind:value={form.url} required placeholder="registry.example.org" />
+            <Input id="reg-url" class="h-11 font-mono" bind:value={form.url} required placeholder="bibliothek.example.org" />
           </div>
           <div class="grid gap-4 sm:grid-cols-2">
             <div class="grid gap-1.5">
@@ -173,7 +173,7 @@
   {#if failure && !loading}
     <div role="alert" class="flex flex-wrap items-center gap-3 rounded-xl border border-over/40 bg-over-soft px-5 py-3 text-[15px]">
       <CloudOff class="size-4.5 shrink-0 text-over" />
-      <span class="min-w-0 flex-1"><strong>Liste der Registry konnte nicht geladen werden.</strong> {failure}</span>
+      <span class="min-w-0 flex-1"><strong>Die Bibliothek konnte nicht geladen werden.</strong> {failure}</span>
       <Button variant="outline" class="h-11 px-4" onclick={load} disabled={busy}><RefreshCw />Erneut versuchen</Button>
     </div>
   {/if}
@@ -184,7 +184,7 @@
       <Input type="search" class="h-11 bg-card pl-10 text-[16px]" aria-label="Fragebögen durchsuchen" placeholder="Fragebogen suchen …" bind:value={query} />
     </div>
   {:else if conn && result?.online}
-    <p class="rounded-xl border border-dashed px-6 py-10 text-center text-[16px] text-muted-foreground">Die Registry bietet derzeit keine Fragebögen an.</p>
+    <p class="rounded-xl border border-dashed px-6 py-10 text-center text-[16px] text-muted-foreground">Die Bibliothek enthält derzeit keine Fragebögen.</p>
   {/if}
 
   {#if result?.rows.length && !shown.length}

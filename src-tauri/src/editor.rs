@@ -24,7 +24,7 @@ pub fn save(
         .any(|e| e.summary.as_ref().is_some_and(|s| s.id == id))
     {
         return Err(format!(
-            "Die ID „{id}“ gehört zu einem Fragebogen aus der Registry."
+            "Die ID „{id}“ gehört zu einem Fragebogen aus der Bibliothek."
         ));
     }
     let path = dir.join(file);
@@ -202,7 +202,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         assert_eq!(
             save(d.path(), registry.path(), "neu.yaml", FIXTURE, None),
-            Err("Die ID „beispiel“ gehört zu einem Fragebogen aus der Registry.".into())
+            Err("Die ID „beispiel“ gehört zu einem Fragebogen aus der Bibliothek.".into())
         );
         assert!(!d.path().join("neu.yaml").exists());
     }
