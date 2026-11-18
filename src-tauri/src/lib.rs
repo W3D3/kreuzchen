@@ -40,6 +40,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
+        // The window starts hidden (tauri.conf.json) and shows once the page has painted
+        // in its theme, so there is no white flash on start.
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                let _ = webview.window().show();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::list_definitions,
             commands::get_definition,
