@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { entryItems, initialInput } from "./input";
+import { entryItems, fitInput, initialInput } from "./input";
 import type { Definition } from "./types";
 
 const def = {
@@ -38,4 +38,17 @@ it("lists items in order with their options", () => {
   expect(items.map((i) => i.key)).toEqual(["1", "2", "3", "4", "zusatz"]);
   expect(items[4]).toMatchObject({ options: ["Nein", "Ja"], shortcuts: ["n", "j"] });
   expect(items[3]).toMatchObject({ options: ["nie", "selten", "oft", "immer"], section: 1, shortcuts: ["0", "1", "2", "3"] });
+});
+
+it("fitInput drops answers and fields a changed definition no longer has", () => {
+  const d = {
+    ...def,
+    answer_sets: { jn: ["Nein", "Ja"] },
+    default_answers: "jn",
+    sections: [{ title: "T", intro: null, items: [1, 2].map((n) => ({ n, id: null, text: `F${n}`, answers: null, scale: "X", key: "normal" })) }],
+  } as Definition;
+  const input = { fields: { kennung: "K", weg: 1 }, answers: { "1": 1, "2": 2, "3": 0 } };
+  expect(fitInput(d, input)).toEqual({ input: { fields: { kennung: "K" }, answers: { "1": 1 } }, dropped: 3 });
+  const kept = { fields: { kennung: "K" }, answers: { "1": 0, "2": 1 } };
+  expect(fitInput(d, kept)).toEqual({ input: kept, dropped: 0 });
 });

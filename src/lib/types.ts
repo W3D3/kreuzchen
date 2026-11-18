@@ -51,7 +51,11 @@ export interface SavedRecord {
   questionnaire: QRef; input: Input; grading: Grading; text: string;
 }
 export interface SavedSummary { name: string; kennung: string; title: string; created_at: string }
-export interface OpenedResult { record: SavedRecord; current: DefinitionEntry | null; outdated: boolean }
+/** A stored record with the installed definition it belongs to; `outdated` when that definition changed since. */
+export interface Opened<T> { record: T; current: DefinitionEntry | null; outdated: boolean }
+export type OpenedResult = Opened<SavedRecord>;
+export interface Draft { saved_at: string; questionnaire: QRef; input: Input }
+export interface DraftSummary { name: string; kennung: string; title: string; saved_at: string; answered: number }
 
 export type RowState = "available" | "current" | "update" | "gone";
 export interface Row { id: string; title: string; state: RowState; file: string | null }

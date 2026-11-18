@@ -1,11 +1,13 @@
 <script lang="ts">
   import * as Card from "$lib/components/ui/card/index.js";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { getVersion } from "@tauri-apps/api/app";
   import Download from "@lucide/svelte/icons/download";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import { loadAutoSaveResult, saveAutoSaveResult } from "../lib/settings";
   import { loadTheme, saveTheme, type Theme } from "../lib/theme";
   import { findUpdate, updates } from "../lib/updates.svelte";
 
@@ -15,6 +17,7 @@
 
   let theme = $state<Theme>(loadTheme());
   const choices: [Theme, string][] = [["system", "Wie das System"], ["light", "Hell"], ["dark", "Dunkel"]];
+  let autoSave = $state(loadAutoSaveResult());
 </script>
 
 <div class="flex flex-col gap-5">
@@ -35,6 +38,16 @@
           </div>
         {/each}
       </RadioGroup.Root>
+    </Card.Content>
+  </Card.Root>
+
+  <Card.Root class="gap-4">
+    <Card.Header><Card.Title class="text-[17px] font-bold">Auswertung</Card.Title></Card.Header>
+    <Card.Content>
+      <div class="flex min-h-11 items-center gap-2.5">
+        <Checkbox id="auto-save" class="size-5" bind:checked={() => autoSave, (v) => { autoSave = v; saveAutoSaveResult(v); }} />
+        <Label for="auto-save" class="cursor-pointer text-[15px]">Ergebnis beim Auswerten automatisch speichern</Label>
+      </div>
     </Card.Content>
   </Card.Root>
 
