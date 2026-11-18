@@ -94,9 +94,10 @@
 <Tooltip.Provider>
   <header class="border-b border-border bg-card">
     <nav class="mx-auto flex h-16 max-w-[1040px] items-center gap-1 px-6">
-      {@render tab("Fragebögen", screen.name === "list" || screen.name === "entry" || screen.name === "registry", () => go({ name: "list" }))}
+      {@render tab("Fragebögen", screen.name === "list" || screen.name === "entry", () => go({ name: "list" }))}
       {@render tab("Gespeicherte Auswertungen", screen.name === "saved" || screen.name === "result", () => go({ name: "saved" }))}
       {@render tab("Fragebögen bearbeiten", screen.name === "definitions" || screen.name === "editor", () => go({ name: "definitions" }), "tech")}
+      {@render tab("Registry", screen.name === "registry", () => go({ name: "registry" }))}
       <div class="flex-1"></div>
       {#if updates.available}
         <Button class="h-10 px-4 font-bold disabled:cursor-progress" title={updates.error ?? undefined} onclick={installUpdate} disabled={updates.installing}>
@@ -108,7 +109,7 @@
   </header>
   <main class="mx-auto max-w-[56rem] p-6">
     {#if screen.name === "list"}
-      <List onstart={(opened, input, draftFile, notice) => (screen = { name: "entry", opened, input, draftFile, notice })} onregistry={() => (screen = { name: "registry" })} onupdate={() => (screen = { name: "settings" })} />
+      <List onstart={(opened, input, draftFile, notice) => (screen = { name: "entry", opened, input, draftFile, notice })} onupdate={() => (screen = { name: "settings" })} />
     {:else if screen.name === "entry"}
       {@const e = screen}
       <Entry

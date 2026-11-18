@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionInfo, Definition, DefinitionEntry, Draft, DraftSummary, Graded, InstallOutcome, Input, Opened, OpenedDefinition, OpenedResult, Report, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import type { ConnectionInfo, Definition, DefinitionEntry, Draft, DraftSummary, Graded, InstallOutcome, Input, Opened, OpenedDefinition, OpenedResult, Progress, Report, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
 
 export const listDefinitions = () => invoke<DefinitionEntry[]>("list_definitions");
 export const getDefinition = (file: string, locked: boolean) => invoke<OpenedDefinition>("get_definition", { file, locked });
@@ -31,5 +31,9 @@ export const registryConnection = () => invoke<ConnectionInfo | null>("registry_
 export const registryConnect = (url: string, user: string, key: string) => invoke<void>("registry_connect", { url, user, key });
 export const registryDisconnect = () => invoke<void>("registry_disconnect");
 export const registryRows = () => invoke<RowsResult>("registry_rows");
-export const registryInstall = (id: string, replaceLocal: boolean) => invoke<InstallOutcome>("registry_install", { id, replaceLocal });
+export function registryInstall(id: string, replaceLocal: boolean, onProgress: (p: Progress) => void) {
+  const ch = new Channel<Progress>();
+  ch.onmessage = onProgress;
+  return invoke<InstallOutcome>("registry_install", { id, replaceLocal, onProgress: ch });
+}
 export const registryRemove = (file: string) => invoke<void>("registry_remove", { file });
