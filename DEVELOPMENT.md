@@ -1,6 +1,6 @@
 # Development
 
-Prerequisites: Rust stable, Node 24 and the [Tauri 2 Linux dependencies](https://v2.tauri.app/start/prerequisites/) on Linux. On NixOS (or with Nix installed), `nix develop` opens a shell with everything; or run commands as `nix develop -c <cmd>`.
+Prerequisites: Rust stable, Node 24 and the [Tauri 2 Linux dependencies](https://v2.tauri.app/start/prerequisites/) on Linux. On NixOS (or with Nix installed), `nix develop` opens a shell with everything, including the GSettings schemas the GTK file dialogs need; or run commands as `nix develop -c <cmd>`.
 
 ```sh
 npm ci
