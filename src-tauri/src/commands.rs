@@ -11,7 +11,10 @@ use kreuzchen_engine::{
     schema::{Definition, Norms},
 };
 use serde::Serialize;
-use std::path::Path;
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 use tauri::State;
 use tauri_plugin_opener::OpenerExt;
 
@@ -175,10 +178,47 @@ pub fn export_result(paths: State<Paths>, name: String, dest: String) -> Result<
 }
 
 #[tauri::command]
-// `dest` comes from the OS save dialog.
-pub fn export_pdf(report: Report, dest: String) -> Result<(), String> {
+// `dest` comes from the OS save dialog. Async, so typesetting stays off the UI thread.
+pub async fn export_pdf(report: Report, dest: String) -> Result<(), String> {
     std::fs::write(dest, report::pdf(&report))
         .map_err(|e| format!("PDF konnte nicht gespeichert werden: {e}"))
+}
+
+#[tauri::command]
+// Rust-side opening needs no opener permission for the webview; only the file-name part of `name` is used.
+pub async fn open_pdf(
+    app: tauri::AppHandle,
+    paths: State<'_, Paths>,
+    report: Report,
+    name: String,
+) -> Result<(), String> {
+    let path = write_temp_pdf(&paths.pdf, &name, &report::pdf(&report))
+        .map_err(|e| format!("PDF konnte nicht erstellt werden: {e}"))?;
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|e| format!("PDF konnte nicht geöffnet werden: {e}"))
+}
+
+/// Writes `<name>.pdf` into `dir`, overwriting an earlier copy. When that copy is
+/// locked (a Windows viewer still shows it), a numbered sibling takes its place.
+fn write_temp_pdf(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<PathBuf> {
+    fs::create_dir_all(dir)?;
+    let stem = Path::new(name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Auswertung");
+    let mut err = None;
+    for n in 1..=9 {
+        let path = dir.join(match n {
+            1 => format!("{stem}.pdf"),
+            _ => format!("{stem} ({n}).pdf"),
+        });
+        match fs::write(&path, bytes) {
+            Ok(()) => return Ok(path),
+            Err(e) => err = Some(e),
+        }
+    }
+    Err(err.unwrap())
 }
 
 #[tauri::command]
@@ -323,7 +363,7 @@ pub fn registry_remove(paths: State<Paths>, file: String) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
-    use super::{definitions, open_saved, refuse_locked, with_current};
+    use super::{definitions, open_saved, refuse_locked, with_current, write_temp_pdf};
     use crate::{
         Paths,
         store::{self, QRef},
@@ -341,6 +381,7 @@ mod tests {
             results: p.join("auswertungen"),
             drafts: p.join("entwuerfe"),
             registry: p.join("registry"),
+            pdf: p.join("pdf"),
         };
         fs::create_dir(&paths.definitions).unwrap();
         fs::create_dir(&paths.registry).unwrap();
@@ -376,6 +417,7 @@ mod tests {
             results: tmp.path().join("auswertungen"),
             drafts: tmp.path().join("entwuerfe"),
             registry: tmp.path().join("registry"),
+            pdf: tmp.path().join("pdf"),
         };
         for dir in [&paths.definitions, &paths.results, &paths.registry] {
             fs::create_dir_all(dir).unwrap();
@@ -418,5 +460,33 @@ mod tests {
             Err("Fragebögen aus der Registry können nicht geändert werden.".into())
         );
         assert_eq!(refuse_locked(false), Ok(()));
+    }
+
+    #[test]
+    fn temp_pdf_overwrites_its_name_and_stays_in_its_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("pdf");
+
+        let first = write_temp_pdf(&dir, "K – Test.pdf", b"one").unwrap();
+        let again = write_temp_pdf(&dir, "K – Test.pdf", b"two").unwrap();
+        assert_eq!(first, dir.join("K – Test.pdf"));
+        assert_eq!(again, first);
+        assert_eq!(fs::read(&first).unwrap(), b"two");
+
+        let escaped = write_temp_pdf(&dir, "../../böse.pdf", b"x").unwrap();
+        assert_eq!(escaped, dir.join("böse.pdf"));
+        assert_eq!(
+            write_temp_pdf(&dir, "..", b"x").unwrap(),
+            dir.join("Auswertung.pdf")
+        );
+    }
+
+    #[test]
+    fn temp_pdf_takes_a_numbered_name_when_the_old_copy_is_held() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A directory stands in for a file a viewer keeps locked.
+        fs::create_dir_all(tmp.path().join("K.pdf")).unwrap();
+        let path = write_temp_pdf(tmp.path(), "K.pdf", b"x").unwrap();
+        assert_eq!(path, tmp.path().join("K (2).pdf"));
     }
 }

@@ -4,24 +4,23 @@
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Copy from "@lucide/svelte/icons/copy";
-  import FileDown from "@lucide/svelte/icons/file-down";
-  import FilePlus from "@lucide/svelte/icons/file-plus";
   import Info from "@lucide/svelte/icons/info";
+  import PencilLine from "@lucide/svelte/icons/pencil-line";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Save from "@lucide/svelte/icons/save";
   import Banner from "$lib/components/Banner.svelte";
+  import PdfButton from "$lib/components/PdfButton.svelte";
   import X from "@lucide/svelte/icons/x";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-  import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-  import { exportPdf, saveResult } from "../lib/api";
+  import { saveResult } from "../lib/api";
   import { loadAutoSaveResult } from "../lib/settings";
   import { formatCreatedAt, localTimestamp, pdfName } from "../lib/kennung";
   import { compactItems } from "../lib/ranges";
   import type { Graded, Input, Norms, OpenedDefinition, SavedRecord } from "../lib/types";
 
-  let { opened, record = null, norms = null, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, onnew }: {
+  let { opened, record = null, norms = null, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, oneditor }: {
     opened: OpenedDefinition | null;
     /** The saved result on display, if any; without `opened` its date is the evaluation date. */
     record?: SavedRecord | null;
@@ -40,11 +39,13 @@
     preview?: boolean;
     onregrade?: (() => void) | null;
     onback: () => void;
-    onnew: () => void;
+    /** Leaves a preview for the editor. */
+    oneditor: () => void;
   } = $props();
 
   const g = $derived(graded.grading);
   const kennung = $derived(String(input.fields.kennung ?? ""));
+  const title = $derived(opened?.definition.title ?? record?.questionnaire.title ?? "");
   const anyMet = $derived(g.rules.some((r) => r.met));
   // Same notation as the engine's copy text: `55`, `3,5`, `3,67`.
   const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false });
@@ -67,20 +68,13 @@
     }
   }
 
-  async function pdf() {
-    banner = null;
-    try {
-      const title = opened?.definition.title ?? record?.questionnaire.title ?? "";
-      const dest = await saveDialog({ defaultPath: pdfName(kennung, title), filters: [{ name: "PDF", extensions: ["pdf"] }] });
-      if (!dest) return;
-      const date = formatCreatedAt(opened || !record ? localTimestamp(new Date()) : record.created_at);
-      await exportPdf({ title, date, grading: g, norms: opened ? (opened.definition.norms ?? null) : norms }, dest);
-      status = "PDF gespeichert.";
-    } catch (e) {
-      status = "";
-      banner = String(e);
-    }
-  }
+  // Saved results keep their evaluation date; a fresh or regraded one is dated now.
+  const report = async () => ({
+    title,
+    date: formatCreatedAt(opened || !record ? localTimestamp(new Date()) : record.created_at),
+    grading: g,
+    norms: opened ? (opened.definition.norms ?? null) : norms,
+  });
 
   async function save() {
     if (!opened || saved) return;
@@ -124,10 +118,17 @@
     {#if opened}<Button variant="ghost" class="-ml-2.5 h-11 px-3" onclick={back}><ArrowLeft />Zurück zu den Antworten</Button>{/if}
     <div class="flex-1"></div>
     <span aria-live="polite" class="mr-2 text-[14px] text-muted-foreground">{status}</span>
-    <Button variant="outline" class="h-11 px-4" onclick={copy}><Copy />Als Text kopieren</Button>
-    <Button variant="outline" class="h-11 px-4" onclick={pdf}><FileDown />Als PDF speichern</Button>
+    {#if preview}<Button variant="outline" class="h-11 px-4" onclick={oneditor}><PencilLine />Zurück zum Editor</Button>{/if}
     {#if opened && !preview}<Button variant="outline" class="h-11 px-4" disabled={saved} onclick={save}><Save />Speichern</Button>{/if}
-    <Button class="h-11 px-4 font-bold" onclick={onnew}><FilePlus />{preview ? "Zurück zum Editor" : "Neuer Fragebogen"}</Button>
+    <Button variant="outline" class="h-11 px-4" onclick={copy}><Copy />Als Text kopieren</Button>
+    <PdfButton
+      primary
+      {report}
+      name={pdfName(kennung, title)}
+      onstart={() => { banner = null; status = ""; }}
+      onerror={(e) => (banner = e)}
+      onstatus={(s) => (status = s)}
+    />
   </div>
   {#if banner}
     <Banner class="mb-3">{banner}</Banner>

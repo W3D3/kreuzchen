@@ -1,24 +1,29 @@
 <script lang="ts">
   import { open, save } from "@tauri-apps/plugin-dialog";
-  import Download from "@lucide/svelte/icons/download";
+  import FileBraces from "@lucide/svelte/icons/file-braces";
   import FileInput from "@lucide/svelte/icons/file-input";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Banner from "$lib/components/Banner.svelte";
+  import PdfButton from "$lib/components/PdfButton.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import { confirm } from "$lib/components/confirm.svelte";
   import { deleteResult, exportResult, importResult, listResults, openResult } from "../lib/api";
-  import { formatCreatedAt } from "../lib/kennung";
-  import type { OpenedResult, SavedSummary } from "../lib/types";
+  import { formatCreatedAt, pdfName } from "../lib/kennung";
+  import { loadDevMode } from "../lib/settings";
+  import type { OpenedResult, Report, SavedSummary } from "../lib/types";
 
   let { onopen }: { onopen: (res: OpenedResult) => void } = $props();
 
   let rows = $state<SavedSummary[] | null>(null);
   let banner = $state<string | null>(null);
+  let status = $state("");
+  const devMode = loadDevMode();
 
   // Runs an action; any German error string goes to the banner.
   async function run(fn: () => Promise<unknown>) {
     banner = null;
+    status = "";
     try {
       await fn();
     } catch (e) {
@@ -29,6 +34,12 @@
   load();
 
   const openRow = (name: string) => run(async () => onopen(await openResult(name)));
+
+  // Same report as the opened result: evaluation date and the norms of the unchanged definition.
+  const report = (name: string) => async (): Promise<Report> => {
+    const { record, norms } = await openResult(name);
+    return { title: record.questionnaire.title, date: formatCreatedAt(record.created_at), grading: record.grading, norms };
+  };
 
   const exportRow = (name: string) =>
     run(async () => {
@@ -55,7 +66,10 @@
 <div class="flex flex-col gap-5 pb-16">
   <div class="flex flex-wrap items-center justify-between gap-4">
     <h1 class="text-[26px] leading-tight font-bold">Gespeicherte Auswertungen</h1>
-    <Button variant="outline" class="h-11 px-4" onclick={importOne}><FileInput />Importieren…</Button>
+    <div class="flex items-center gap-3">
+      <span aria-live="polite" class="text-[14px] text-muted-foreground">{status}</span>
+      {#if devMode}<Button variant="outline" class="h-11 px-4" onclick={importOne}><FileInput />JSON importieren …</Button>{/if}
+    </div>
   </div>
   {#if banner}
     <Banner>{banner}</Banner>
@@ -72,9 +86,16 @@
               <p class="text-[15px] text-muted-foreground">{r.title} · {formatCreatedAt(r.created_at)}</p>
               <p class="tech font-mono text-muted-foreground">{r.name}</p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <Button class="h-11 px-5 font-bold" onclick={() => openRow(r.name)}>Öffnen</Button>
-              <Button variant="outline" class="h-11 px-4" onclick={() => exportRow(r.name)}><Download />Exportieren</Button>
+              <PdfButton
+                report={report(r.name)}
+                name={pdfName(r.kennung, r.title)}
+                onstart={() => { banner = null; status = ""; }}
+                onerror={(e) => (banner = e)}
+                onstatus={(s) => (status = s)}
+              />
+              {#if devMode}<Button variant="outline" class="h-11 px-4" onclick={() => exportRow(r.name)}><FileBraces />JSON exportieren</Button>{/if}
               <Button variant="destructive" class="h-11 px-4" onclick={() => remove(r)}><Trash2 />Löschen</Button>
             </div>
           </li>

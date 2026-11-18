@@ -420,6 +420,7 @@ mod tests {
             results: p.join("auswertungen"),
             drafts: p.join("entwuerfe"),
             registry: p.join("registry"),
+            pdf: p.join("pdf"),
         };
         fs::create_dir(&paths.definitions).unwrap();
         fs::create_dir(&paths.registry).unwrap();

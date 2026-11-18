@@ -18,6 +18,8 @@ pub struct Paths {
     pub results: PathBuf,
     pub drafts: PathBuf,
     pub registry: PathBuf,
+    /// PDFs handed to the system viewer; emptied on every start.
+    pub pdf: PathBuf,
 }
 
 impl Paths {
@@ -50,6 +52,7 @@ pub fn run() {
             commands::delete_result,
             commands::export_result,
             commands::export_pdf,
+            commands::open_pdf,
             commands::import_result,
             commands::save_draft,
             commands::list_drafts,
@@ -81,7 +84,10 @@ pub fn run() {
                 drafts: base.join("entwuerfe"),
                 registry: base.join("registry"),
                 data: base,
+                pdf: app.path().app_cache_dir()?.join("pdf"),
             };
+            // A PDF still open in a locking viewer survives until the next start.
+            let _ = fs::remove_dir_all(&paths.pdf);
             fs::create_dir_all(&paths.definitions)?;
             fs::create_dir_all(&paths.results)?;
             fs::create_dir_all(&paths.drafts)?;

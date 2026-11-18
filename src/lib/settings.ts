@@ -18,3 +18,24 @@ export function saveAutoSaveResult(on: boolean) {
     // Storage unavailable: the choice applies until the app closes.
   }
 }
+
+const DEV_MODE = "kreuzchen.devMode";
+
+/** Off unless explicitly turned on. */
+export const parseDevMode = (raw: string | null): boolean => raw === "on";
+
+export function loadDevMode(): boolean {
+  try {
+    return parseDevMode(localStorage.getItem(DEV_MODE));
+  } catch {
+    return false;
+  }
+}
+
+export function saveDevMode(on: boolean) {
+  try {
+    localStorage.setItem(DEV_MODE, on ? "on" : "off");
+  } catch {
+    // Storage unavailable: the choice applies until the app closes.
+  }
+}
