@@ -97,7 +97,7 @@
       {@render tab("Fragebögen", screen.name === "list" || screen.name === "entry", () => go({ name: "list" }))}
       {@render tab("Gespeicherte Auswertungen", screen.name === "saved" || screen.name === "result", () => go({ name: "saved" }))}
       {@render tab("Fragebögen bearbeiten", screen.name === "definitions" || screen.name === "editor", () => go({ name: "definitions" }), "tech")}
-      {@render tab("Registry", screen.name === "registry", () => go({ name: "registry" }))}
+      {@render tab("Bibliothek", screen.name === "registry", () => go({ name: "registry" }))}
       <div class="flex-1"></div>
       {#if updates.available}
         <Button class="h-10 px-4 font-bold disabled:cursor-progress" title={updates.error ?? undefined} onclick={installUpdate} disabled={updates.installing}>

@@ -14,7 +14,7 @@ Type in the crosses from a completed paper questionnaire, and Kreuzchen does the
 - **Scoring you can trust.** Reverse-scored items, subscales, totals, means, T-values and severity levels are calculated the same way every time.
 - **A result that is ready to use.** Cut-offs are marked, missing answers are flagged per scale, and one click copies the whole result as text.
 - **Your questionnaires.** Add the questionnaires your practice uses with the built-in editor, and try them out before you save.
-- **Private by design.** Everything stays on your computer. Kreuzchen needs no account and no internet. It goes online only to check for updates when it starts and, if your practice uses a questionnaire registry, when you open the registry screen.
+- **Private by design.** Everything stays on your computer. Kreuzchen needs no account and no internet. It goes online only to check for updates when it starts and, if your practice uses a shared questionnaire library (Bibliothek), when you open the Bibliothek tab.
 - **Always up to date.** New versions install with one click.
 - **Windows, macOS and Linux.** The app is in German.
 

@@ -269,7 +269,7 @@ pub fn read_definition_source(
 
 fn refuse_locked(locked: bool) -> Result<(), String> {
     if locked {
-        Err("Fragebögen aus der Registry können nicht geändert werden.".into())
+        Err("Fragebögen aus der Bibliothek können nicht geändert werden.".into())
     } else {
         Ok(())
     }
@@ -354,7 +354,7 @@ pub async fn registry_install(
     replace_local: bool,
     on_progress: tauri::ipc::Channel<Progress>,
 ) -> Result<InstallOutcome, String> {
-    let c = registry::load_connection(&paths.data).ok_or("Keine Registry verbunden.")?;
+    let c = registry::load_connection(&paths.data).ok_or("Kein Bibliotheksserver verbunden.")?;
     // A closed channel only loses the progress display, never the install.
     registry::install(&c, &paths, &id, replace_local, |p| {
         let _ = on_progress.send(p);
@@ -463,7 +463,7 @@ mod tests {
     fn locked_save_and_delete_are_refused() {
         assert_eq!(
             refuse_locked(true),
-            Err("Fragebögen aus der Registry können nicht geändert werden.".into())
+            Err("Fragebögen aus der Bibliothek können nicht geändert werden.".into())
         );
         assert_eq!(refuse_locked(false), Ok(()));
     }

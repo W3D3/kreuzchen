@@ -7,7 +7,7 @@ use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path, sync::OnceLock, time::Duration};
 
-const UNREACHABLE: &str = "Registry nicht erreichbar";
+const UNREACHABLE: &str = "Bibliotheksserver nicht erreichbar";
 const WRONG_KEY: &str = "Benutzername oder Schlüssel falsch";
 const BAD_URL: &str = "Ungültige Adresse";
 const FILE: &str = "registry.json";
@@ -205,7 +205,7 @@ async fn get(
     };
     match resp.status() {
         StatusCode::UNAUTHORIZED => return Err(WRONG_KEY.into()),
-        s if !s.is_success() => return Err(format!("Fehler der Registry: {s}")),
+        s if !s.is_success() => return Err(format!("Fehler des Bibliotheksservers: {s}")),
         _ => {}
     }
     let header = resp
@@ -235,7 +235,7 @@ pub async fn try_fetch_list(c: &Connection) -> Result<Option<Vec<RemoteEntry>>, 
     };
     serde_json::from_slice(&body)
         .map(Some)
-        .map_err(|_| "Antwort der Registry ist ungültig".to_string())
+        .map_err(|_| "Antwort des Bibliotheksservers ist ungültig".to_string())
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -292,7 +292,7 @@ pub async fn install(
     let entry = list
         .iter()
         .find(|e| e.id == id)
-        .ok_or("Der Fragebogen ist nicht mehr auf dem Server.")?;
+        .ok_or("Der Fragebogen ist nicht mehr in der Bibliothek.")?;
     let (header, bytes) = get(c, Some(id), progress).await?.ok_or(UNREACHABLE)?;
     let h = hash(&bytes);
     if header.as_deref() != Some(h.as_str()) || entry.hash != h {
@@ -599,7 +599,7 @@ mod tests {
         let c = fake(vec![], h, bytes).await;
         assert_eq!(
             install_fails(c).await,
-            "Der Fragebogen ist nicht mehr auf dem Server."
+            "Der Fragebogen ist nicht mehr in der Bibliothek."
         );
     }
 

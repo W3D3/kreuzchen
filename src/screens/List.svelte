@@ -112,7 +112,7 @@
             <div class="min-w-0 flex-1">
               {#if e.summary}
                 <p class="flex flex-wrap items-center gap-2 text-[18px] font-bold">
-                  {e.summary.title}{#if e.locked}<Badge variant="outline" class="h-6 px-2 text-[13px] text-muted-foreground">Registry</Badge>{/if}
+                  {e.summary.title}{#if e.locked}<Badge variant="outline" class="h-6 px-2 text-[13px] text-muted-foreground">Bibliothek</Badge>{/if}
                 </p>
                 <p class="mt-0.5 text-[15px] text-muted-foreground">
                   {e.summary.item_count} Fragen · {e.summary.scale_count} Skalen · Version {e.summary.version}<span class="tech"> · <span class="font-mono">{e.file}</span></span>

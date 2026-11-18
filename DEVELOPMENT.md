@@ -63,6 +63,8 @@ Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is 
 
 `crates/registry` (`kreuzchen-registry`) serves questionnaire definitions to practices over HTTP: `GET /healthz`, `GET /v1/fragebogen` and `GET /v1/fragebogen/{id}` (HTTP Basic auth, read-only).
 
+The app never shows the word "registry". Users see the server as the **Bibliotheksserver** and its questionnaires as the **Bibliothek**. Internal names (`registry/`, `registry.json`, command names, the binary and image) stay as they are.
+
 Layout of the data directory (`/data` in the container, `--data DIR` otherwise):
 
 ```
