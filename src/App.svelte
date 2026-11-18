@@ -18,13 +18,13 @@
   import { isDirty, type Doc } from "./lib/editor";
   import { initialInput } from "./lib/input";
   import { installTech } from "./lib/tech.svelte";
-  import type { Definition, Graded, Input, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
+  import type { Definition, Graded, Input, Norms, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
 
   // `preview` is the editor's draft YAML while it is being tested; `draftFile` and `savedFile` name the entry's autosaved draft and its saved result.
   type Screen =
     | { name: "list" }
     | { name: "entry"; opened: OpenedDefinition; input: Input; draftFile?: string; savedFile?: string; notice?: string | null; preview?: string }
-    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null; draftFile?: string; savedFile?: string; preview?: string }
+    | { name: "result"; opened: OpenedDefinition | null; record: SavedRecord | null; norms?: Norms | null; input: Input; graded: Graded; notice: string | null; onregrade?: (() => void) | null; draftFile?: string; savedFile?: string; preview?: string }
     | { name: "saved" }
     | { name: "definitions" }
     | { name: "editor" }
@@ -71,7 +71,7 @@
   function showSaved(res: OpenedResult, notice: string | null) {
     const { record, current, outdated } = res;
     screen = {
-      name: "result", opened: null, record, input: record.input,
+      name: "result", opened: null, record, norms: res.norms, input: record.input,
       graded: { grading: record.grading, text: record.text },
       notice: notice ?? (outdated
         ? "Dieser Fragebogen wurde seit dem Speichern geändert. Angezeigt wird das gespeicherte Ergebnis."
@@ -125,6 +125,8 @@
       {@const r = screen}
       <Result
         opened={r.opened}
+        record={r.record}
+        norms={r.norms}
         input={r.input}
         graded={r.graded}
         notice={r.notice}

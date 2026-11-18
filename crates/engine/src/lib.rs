@@ -5,6 +5,7 @@ mod text;
 mod validate;
 
 pub use grade::{FieldLine, GradeError, Grading, Input, NormValue, ResultRow, RuleOutcome};
+pub use text::number;
 pub use validate::Questionnaire;
 
 use schema::Definition;
