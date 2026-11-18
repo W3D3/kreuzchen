@@ -12,7 +12,8 @@ use kreuzchen_engine::{
 };
 use serde::Serialize;
 use std::{
-    fs, io,
+    fs,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 use tauri::State;
@@ -199,26 +200,31 @@ pub async fn open_pdf(
         .map_err(|e| format!("PDF konnte nicht geöffnet werden: {e}"))
 }
 
-/// Writes `<name>.pdf` into `dir`, overwriting an earlier copy. When that copy is
-/// locked (a Windows viewer still shows it), a numbered sibling takes its place.
+/// Writes `<name>.pdf` into `dir`, or `<name> (n).pdf` when that holds another report.
+/// Never overwrites: a viewer may still show the old file (or lock it, on Windows).
+/// The same report opened again reuses its file; the folder is emptied on start.
 fn write_temp_pdf(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<PathBuf> {
     fs::create_dir_all(dir)?;
     let stem = Path::new(name)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Auswertung");
-    let mut err = None;
-    for n in 1..=9 {
+    for n in 1.. {
         let path = dir.join(match n {
             1 => format!("{stem}.pdf"),
             _ => format!("{stem} ({n}).pdf"),
         });
-        match fs::write(&path, bytes) {
-            Ok(()) => return Ok(path),
-            Err(e) => err = Some(e),
+        match fs::File::create_new(&path) {
+            Ok(mut f) => return f.write_all(bytes).map(|()| path),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                if fs::read(&path).is_ok_and(|old| old == bytes) {
+                    return Ok(path);
+                }
+            }
+            Err(e) => return Err(e),
         }
     }
-    Err(err.unwrap())
+    unreachable!()
 }
 
 #[tauri::command]
@@ -463,16 +469,26 @@ mod tests {
     }
 
     #[test]
-    fn temp_pdf_overwrites_its_name_and_stays_in_its_folder() {
+    fn temp_pdf_keeps_other_reports_and_reuses_its_own() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("pdf");
 
-        let first = write_temp_pdf(&dir, "K – Test.pdf", b"one").unwrap();
-        let again = write_temp_pdf(&dir, "K – Test.pdf", b"two").unwrap();
-        assert_eq!(first, dir.join("K – Test.pdf"));
-        assert_eq!(again, first);
-        assert_eq!(fs::read(&first).unwrap(), b"two");
+        // Two evaluations of the same Kennung and questionnaire share a name.
+        let a = write_temp_pdf(&dir, "K – Test.pdf", b"child A").unwrap();
+        let b = write_temp_pdf(&dir, "K – Test.pdf", b"child B").unwrap();
+        assert_eq!(a, dir.join("K – Test.pdf"));
+        assert_eq!(b, dir.join("K – Test (2).pdf"));
+        assert_eq!(fs::read(&a).unwrap(), b"child A");
+        assert_eq!(fs::read(&b).unwrap(), b"child B");
 
+        assert_eq!(write_temp_pdf(&dir, "K – Test.pdf", b"child B").unwrap(), b);
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn temp_pdf_stays_in_its_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("pdf");
         let escaped = write_temp_pdf(&dir, "../../böse.pdf", b"x").unwrap();
         assert_eq!(escaped, dir.join("böse.pdf"));
         assert_eq!(
@@ -482,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn temp_pdf_takes_a_numbered_name_when_the_old_copy_is_held() {
+    fn temp_pdf_skips_a_name_it_cannot_read() {
         let tmp = tempfile::tempdir().unwrap();
         // A directory stands in for a file a viewer keeps locked.
         fs::create_dir_all(tmp.path().join("K.pdf")).unwrap();

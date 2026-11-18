@@ -1,41 +1,29 @@
 const AUTO_SAVE = "kreuzchen.autoSaveResult";
+const DEV_MODE = "kreuzchen.devMode";
 
 /** On unless explicitly turned off. */
 export const parseAutoSaveResult = (raw: string | null): boolean => raw !== "off";
-
-export function loadAutoSaveResult(): boolean {
-  try {
-    return parseAutoSaveResult(localStorage.getItem(AUTO_SAVE));
-  } catch {
-    return true;
-  }
-}
-
-export function saveAutoSaveResult(on: boolean) {
-  try {
-    localStorage.setItem(AUTO_SAVE, on ? "on" : "off");
-  } catch {
-    // Storage unavailable: the choice applies until the app closes.
-  }
-}
-
-const DEV_MODE = "kreuzchen.devMode";
-
 /** Off unless explicitly turned on. */
 export const parseDevMode = (raw: string | null): boolean => raw === "on";
 
-export function loadDevMode(): boolean {
+// Without storage a switch keeps its default, and a change applies until the app closes.
+function load(key: string, parse: (raw: string | null) => boolean): boolean {
   try {
-    return parseDevMode(localStorage.getItem(DEV_MODE));
+    return parse(localStorage.getItem(key));
   } catch {
-    return false;
+    return parse(null);
   }
 }
 
-export function saveDevMode(on: boolean) {
+function store(key: string, on: boolean) {
   try {
-    localStorage.setItem(DEV_MODE, on ? "on" : "off");
+    localStorage.setItem(key, on ? "on" : "off");
   } catch {
-    // Storage unavailable: the choice applies until the app closes.
+    // See `load`.
   }
 }
+
+export const loadAutoSaveResult = () => load(AUTO_SAVE, parseAutoSaveResult);
+export const saveAutoSaveResult = (on: boolean) => store(AUTO_SAVE, on);
+export const loadDevMode = () => load(DEV_MODE, parseDevMode);
+export const saveDevMode = (on: boolean) => store(DEV_MODE, on);
