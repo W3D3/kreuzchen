@@ -2,7 +2,7 @@ use crate::{
     Paths,
     definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
     editor,
-    registry::{self, Connection, InstallOutcome, RowsResult},
+    registry::{self, Connection, InstallOutcome, Progress, RowsResult},
     report::{self, Report},
     store::{self, Draft, DraftSummary, QRef, SavedRecord, SavedSummary},
 };
@@ -306,9 +306,14 @@ pub async fn registry_install(
     paths: State<'_, Paths>,
     id: String,
     replace_local: bool,
+    on_progress: tauri::ipc::Channel<Progress>,
 ) -> Result<InstallOutcome, String> {
     let c = registry::load_connection(&paths.data).ok_or("Keine Registry verbunden.")?;
-    registry::install(&c, &paths, &id, replace_local).await
+    // A closed channel only loses the progress display, never the install.
+    registry::install(&c, &paths, &id, replace_local, |p| {
+        let _ = on_progress.send(p);
+    })
+    .await
 }
 
 #[tauri::command]

@@ -64,4 +64,5 @@ export type RowState = "available" | "current" | "update" | "gone";
 export interface Row { id: string; title: string; state: RowState; file: string | null }
 export interface RowsResult { online: boolean; rows: Row[]; error: string | null }
 export type InstallOutcome = "installed" | "needs_replace_confirm";
+export interface Progress { received: number; total: number | null }
 export interface ConnectionInfo { url: string; user: string }

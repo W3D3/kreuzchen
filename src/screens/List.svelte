@@ -1,5 +1,4 @@
 <script lang="ts">
-  import CloudDownload from "@lucide/svelte/icons/cloud-download";
   import Download from "@lucide/svelte/icons/download";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import Play from "@lucide/svelte/icons/play";
@@ -16,10 +15,9 @@
   import { formatCreatedAt } from "../lib/kennung";
   import type { DefinitionEntry, DraftSummary, Input, OpenedDefinition } from "../lib/types";
 
-  let { onstart, onregistry, onupdate }: {
+  let { onstart, onupdate }: {
     /** `draft` and `notice` are set when a saved draft is resumed. */
     onstart: (opened: OpenedDefinition, input: Input, draft?: string, notice?: string) => void;
-    onregistry: () => void;
     onupdate: () => void;
   } = $props();
 
@@ -78,10 +76,7 @@
 </script>
 
 <div class="flex flex-col gap-5 pb-16">
-  <div class="flex flex-wrap items-center justify-between gap-4">
-    <h1 class="text-[26px] leading-tight font-bold">Fragebögen</h1>
-    <Button variant="outline" class="h-11 px-4" onclick={onregistry}><CloudDownload />Fragebögen aus der Registry</Button>
-  </div>
+  <h1 class="text-[26px] leading-tight font-bold">Fragebögen</h1>
   {#if banner}
     <Banner>{banner}</Banner>
   {/if}

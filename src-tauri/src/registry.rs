@@ -61,6 +61,13 @@ pub enum InstallOutcome {
     NeedsReplaceConfirm,
 }
 
+/// Bytes of a download received so far; `total` is `None` when the server sends no length.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
+pub struct Progress {
+    pub received: u64,
+    pub total: Option<u64>,
+}
+
 /// Adds `https://` when no scheme is given and strips trailing `/`; https only (http for loopback).
 pub fn normalize_url(input: &str) -> Result<String, String> {
     let s = input.trim();
@@ -176,9 +183,11 @@ fn client() -> &'static reqwest::Client {
 }
 
 /// GET `<url>/v1/fragebogen[/<id>]` with Basic auth; the hash header and body, `None` if unreachable.
+/// `progress` sees the body arrive chunk by chunk.
 async fn get(
     c: &Connection,
     id: Option<&str>,
+    mut progress: impl FnMut(Progress),
 ) -> Result<Option<(Option<String>, Vec<u8>)>, String> {
     let mut url = Url::parse(&c.url).map_err(|_| BAD_URL.to_string())?;
     url.path_segments_mut()
@@ -186,7 +195,7 @@ async fn get(
         .pop_if_empty()
         .extend(["v1", "fragebogen"])
         .extend(id);
-    let Ok(resp) = client()
+    let Ok(mut resp) = client()
         .get(url)
         .basic_auth(&c.user, Some(&c.key))
         .send()
@@ -204,12 +213,24 @@ async fn get(
         .get("x-kreuzchen-hash")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    Ok(resp.bytes().await.ok().map(|b| (header, b.to_vec())))
+    let total = resp.content_length();
+    let mut body = Vec::new();
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => body.extend_from_slice(&chunk),
+            Ok(None) => return Ok(Some((header, body))),
+            Err(_) => return Ok(None),
+        }
+        progress(Progress {
+            received: body.len() as u64,
+            total,
+        });
+    }
 }
 
 /// The server list, or `None` when the registry cannot be reached.
 pub async fn try_fetch_list(c: &Connection) -> Result<Option<Vec<RemoteEntry>>, String> {
-    let Some((_, body)) = get(c, None).await? else {
+    let Some((_, body)) = get(c, None, |_| {}).await? else {
         return Ok(None);
     };
     serde_json::from_slice(&body)
@@ -255,6 +276,7 @@ pub async fn install(
     paths: &Paths,
     id: &str,
     replace_local: bool,
+    progress: impl FnMut(Progress),
 ) -> Result<InstallOutcome, String> {
     let file = format!("{id}.yaml");
     check_name(&file, YAML)?;
@@ -271,7 +293,7 @@ pub async fn install(
         .iter()
         .find(|e| e.id == id)
         .ok_or("Der Fragebogen ist nicht mehr auf dem Server.")?;
-    let (header, bytes) = get(c, Some(id)).await?.ok_or(UNREACHABLE)?;
+    let (header, bytes) = get(c, Some(id), progress).await?.ok_or(UNREACHABLE)?;
     let h = hash(&bytes);
     if header.as_deref() != Some(h.as_str()) || entry.hash != h {
         return Err("Die heruntergeladene Datei ist beschädigt.".into());
@@ -453,9 +475,19 @@ mod tests {
         assert_eq!(list[0].id, "fragebogen_a");
         assert_eq!(list[0].hash, hash(bytes.as_bytes()));
         let e = env();
+        let mut seen = Vec::new();
         assert_eq!(
-            install(&c, &e.paths, "fragebogen_a", false).await,
+            install(&c, &e.paths, "fragebogen_a", false, |p| seen.push(p)).await,
             Ok(InstallOutcome::Installed)
+        );
+        let len = bytes.len() as u64;
+        assert!(seen.windows(2).all(|w| w[0].received < w[1].received));
+        assert_eq!(
+            seen.last(),
+            Some(&Progress {
+                received: len,
+                total: Some(len)
+            })
         );
         let written = fs::read(e.paths.registry.join("fragebogen_a.yaml")).unwrap();
         assert_eq!(written, bytes.as_bytes());
@@ -472,17 +504,21 @@ mod tests {
         let installed = e.paths.registry.join("fragebogen_a.yaml");
         fs::write(&local, def("fragebogen_a")).unwrap();
         assert_eq!(
-            install(&c, &e.paths, "fragebogen_a", false).await,
+            install(&c, &e.paths, "fragebogen_a", false, |_| {}).await,
             Ok(InstallOutcome::NeedsReplaceConfirm)
         );
         assert!(local.exists() && !installed.exists());
         // A failed write (registry folder missing) keeps the local copy.
         fs::remove_dir(&e.paths.registry).unwrap();
-        assert!(install(&c, &e.paths, "fragebogen_a", true).await.is_err());
+        assert!(
+            install(&c, &e.paths, "fragebogen_a", true, |_| {})
+                .await
+                .is_err()
+        );
         assert!(local.exists());
         fs::create_dir(&e.paths.registry).unwrap();
         assert_eq!(
-            install(&c, &e.paths, "fragebogen_a", true).await,
+            install(&c, &e.paths, "fragebogen_a", true, |_| {}).await,
             Ok(InstallOutcome::Installed)
         );
         assert!(!local.exists() && installed.exists());
@@ -514,7 +550,7 @@ mod tests {
         let e = env();
         let old = e.paths.registry.join("fragebogen_a.yaml");
         fs::write(&old, "alt").unwrap();
-        let err = install(&c, &e.paths, "fragebogen_a", false)
+        let err = install(&c, &e.paths, "fragebogen_a", false, |_| {})
             .await
             .unwrap_err();
         assert_eq!(fs::read(&old).unwrap(), b"alt");
@@ -588,7 +624,7 @@ mod tests {
         let e = env();
         let c = conn("http://127.0.0.1:1", "x");
         assert_eq!(
-            install(&c, &e.paths, "../x", false).await,
+            install(&c, &e.paths, "../x", false, |_| {}).await,
             Err("Ungültiger Dateiname".into())
         );
     }
