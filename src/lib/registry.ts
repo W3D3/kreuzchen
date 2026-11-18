@@ -4,7 +4,7 @@ const LABELS: Record<RowState, string> = {
   available: "verfügbar",
   current: "aktuell",
   update: "neue Version verfügbar",
-  gone: "nicht mehr auf dem Server",
+  gone: "nicht mehr in der Bibliothek",
 };
 const ACTIONS: Partial<Record<RowState, "Installieren" | "Aktualisieren">> = { available: "Installieren", update: "Aktualisieren" };
 
