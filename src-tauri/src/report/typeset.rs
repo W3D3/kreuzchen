@@ -1,5 +1,6 @@
 //! Page geometry, theme colours and drawing primitives for the PDF report: text in the standard
-//! Helvetica fonts measured with their metrics, lines, fills, and the final document assembly.
+//! Helvetica fonts (plus an embedded font for a few signs) measured with their metrics, lines, fills, and the final document assembly.
+use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Content, Name, Pdf, Rect, Ref, Str, TextStr};
 
 // A4 in points; content runs from the top margin down to the footer.
@@ -66,6 +67,7 @@ pub(super) fn finish(pages: Vec<Content>, title: &str, footer: &str) -> Vec<u8> 
         Ref::new(5),
         Ref::new(6),
     );
+    let signs = [7, 8, 9, 10, 11].map(Ref::new);
     pdf.catalog(catalog).pages(tree);
     for (id, name) in [
         (regular, Name(b"Helvetica")),
@@ -75,13 +77,14 @@ pub(super) fn finish(pages: Vec<Content>, title: &str, footer: &str) -> Vec<u8> 
             .base_font(name)
             .encoding_predefined(Name(b"WinAnsiEncoding"));
     }
+    embed_signs(&mut pdf, signs);
     pdf.ext_graphics(shade).non_stroking_alpha(SHADE_ALPHA);
     pdf.document_info(info)
         .title(TextStr(title))
         .creator(TextStr("Kreuzchen"));
     let n = pages.len();
     let ids: Vec<(Ref, Ref)> = (0..n as i32)
-        .map(|i| (Ref::new(7 + 2 * i), Ref::new(8 + 2 * i)))
+        .map(|i| (Ref::new(12 + 2 * i), Ref::new(13 + 2 * i)))
         .collect();
     pdf.pages(tree)
         .kids(ids.iter().map(|p| p.0))
@@ -109,7 +112,8 @@ pub(super) fn finish(pages: Vec<Content>, title: &str, footer: &str) -> Vec<u8> 
         let mut res = p.resources();
         res.fonts()
             .pair(Name(b"F1"), regular)
-            .pair(Name(b"F2"), bold);
+            .pair(Name(b"F2"), bold)
+            .pair(SIGNS_FONT, signs[0]);
         res.ext_g_states().pair(Name(b"Shade"), shade);
         drop(res);
         drop(p);
@@ -141,13 +145,19 @@ impl Font {
     }
 }
 
-/// Text at `x` with its baseline `y` below the top of the page.
+/// Text at `x` with its baseline `y` below the top of the page, one run per font.
 pub(super) fn text(c: &mut Content, x: f32, y: f32, font: Font, size: f32, s: &str) {
-    c.begin_text()
-        .set_font(font.name(), size)
-        .next_line(x, H - y)
-        .show(Str(&winansi(s)))
-        .end_text();
+    let glyphs: Vec<Glyph> = s.chars().map(|ch| glyph(ch, font)).collect();
+    c.begin_text().next_line(x, H - y);
+    for run in glyphs.chunk_by(|a, b| a.font == b.font) {
+        // The signs font takes two-byte glyph ids (Identity-H), the others one-byte WinAnsi.
+        let codes: Vec<u8> = match run[0].font == SIGNS_FONT {
+            true => run.iter().flat_map(|g| g.code.to_be_bytes()).collect(),
+            false => run.iter().map(|g| g.code as u8).collect(),
+        };
+        c.set_font(run[0].font, size).show(Str(&codes));
+    }
+    c.end_text();
 }
 
 pub(super) fn right(c: &mut Content, x: f32, y: f32, font: Font, size: f32, s: &str) {
@@ -199,24 +209,92 @@ const CP1252: [char; 32] = [
     '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}', 'ž', 'Ÿ',
 ];
 
-/// `s` in WinAnsiEncoding, the encoding of the standard fonts; anything else becomes `?`.
-fn winansi(s: &str) -> Vec<u8> {
-    s.chars()
-        .map(|c| match c as u32 {
-            0x20..=0x7e | 0xa0..=0xff => c as u8,
-            _ => CP1252
-                .iter()
-                .position(|&u| u == c)
-                .map_or(b'?', |i| 0x80 + i as u8),
-        })
-        .collect()
+const SIGNS_FONT: Name<'static> = Name(b"F3");
+
+/// Signs outside WinAnsi, which no standard font has in every viewer. `signs.ttf` holds them, cut
+/// from DejaVu Sans (licence in its name table) with `pyftsubset DejaVuSans.ttf
+/// --text="→≈≠≤≥✓✔✗✘" --no-hinting --layout-features="" --name-IDs="0,1,2,3,4,5,6,13,14"
+/// --notdef-outline --recalc-bounds --drop-tables+=FFTM,GDEF,GPOS,GSUB,MATH,gasp`; the glyph id of
+/// a sign is its index here + 1.
+const SIGNS_TTF: &[u8] = include_bytes!("signs.ttf");
+const SIGNS: [char; 9] = ['→', '≈', '≠', '≤', '≥', '✓', '✔', '✗', '✘'];
+/// Advance of every sign per 1000 em.
+const SIGN_WIDTH: u16 = 838;
+
+/// The signs font as a Type0 font with glyph ids as codes, and their text for copying. Refs: font,
+/// CID font, descriptor, font file, ToUnicode map.
+fn embed_signs(pdf: &mut Pdf, [font, cid_font, descriptor, file, to_unicode]: [Ref; 5]) {
+    let name = Name(b"KRZCHN+DejaVuSans");
+    let info = SystemInfo {
+        registry: Str(b"Adobe"),
+        ordering: Str(b"Identity"),
+        supplement: 0,
+    };
+    pdf.type0_font(font)
+        .base_font(name)
+        .encoding_predefined(Name(b"Identity-H"))
+        .descendant_font(cid_font)
+        .to_unicode(to_unicode);
+    pdf.cid_font(cid_font)
+        .subtype(CidFontType::Type2)
+        .base_font(name)
+        .system_info(info)
+        .font_descriptor(descriptor)
+        .default_width(SIGN_WIDTH as f32)
+        .cid_to_gid_map_predefined(Name(b"Identity"));
+    // Metrics of the subset in 1000 em (DejaVu Sans has 2048 units per em).
+    pdf.font_descriptor(descriptor)
+        .name(name)
+        .flags(FontFlags::SYMBOLIC)
+        .bbox(Rect::new(50.0, -177.0, 789.0, 739.0))
+        .italic_angle(0.0)
+        .ascent(928.0)
+        .descent(-236.0)
+        .cap_height(729.0)
+        .stem_v(80.0)
+        .font_file2(file);
+    pdf.stream(file, SIGNS_TTF)
+        .pair(Name(b"Length1"), SIGNS_TTF.len() as i32);
+    let mut cmap = UnicodeCmap::new(Name(b"Custom"), info);
+    for (i, &c) in SIGNS.iter().enumerate() {
+        cmap.pair(i as u16 + 1, c);
+    }
+    pdf.cmap(to_unicode, &cmap.finish());
+}
+
+/// A character as drawn: font resource, code in that font's encoding, width per 1000 em.
+#[derive(Debug, PartialEq)]
+struct Glyph {
+    font: Name<'static>,
+    code: u16,
+    width: u16,
+}
+
+/// `c` in WinAnsiEncoding of `font`, else from the signs; anything else becomes `?`.
+fn glyph(c: char, font: Font) -> Glyph {
+    let winansi = match c as u32 {
+        0x20..=0x7e | 0xa0..=0xff => Some(c as u8),
+        _ => CP1252.iter().position(|&u| u == c).map(|i| 0x80 + i as u8),
+    };
+    match (winansi, SIGNS.iter().position(|&s| s == c)) {
+        (None, Some(i)) => Glyph {
+            font: SIGNS_FONT,
+            code: i as u16 + 1,
+            width: SIGN_WIDTH,
+        },
+        (code, _) => {
+            let code = code.unwrap_or(b'?');
+            Glyph {
+                font: font.name(),
+                code: code as u16,
+                width: font.widths()[code as usize - 32],
+            }
+        }
+    }
 }
 
 pub(super) fn width(s: &str, font: Font, size: f32) -> f32 {
-    let w: u32 = winansi(s)
-        .iter()
-        .map(|&b| font.widths()[b as usize - 32] as u32)
-        .sum();
+    let w: u32 = s.chars().map(|c| glyph(c, font).width as u32).sum();
     w as f32 * size / 1000.0
 }
 
@@ -258,10 +336,11 @@ mod tests {
 
     #[test]
     fn text_is_winansi_and_measured_by_helvetica_metrics() {
-        assert_eq!(
-            winansi("Größe – „ok“ €✓"),
-            b"Gr\xf6\xdfe \x96 \x84ok\x93 \x80?"
-        );
+        let codes: Vec<u8> = "Größe – „ok“ €±☺"
+            .chars()
+            .map(|c| glyph(c, Font::Regular).code as u8)
+            .collect();
+        assert_eq!(codes, b"Gr\xf6\xdfe \x96 \x84ok\x93 \x80\xb1?");
         assert_eq!(width("Wi", Font::Regular, 10.0), (944.0 + 222.0) / 100.0);
         assert!(
             width(
@@ -271,5 +350,25 @@ mod tests {
             ) <= 50.0
         );
         assert_eq!(wrap("aa bb cc", Font::Regular, 10.0, 26.0), ["aa bb", "cc"]);
+    }
+
+    #[test]
+    fn signs_outside_winansi_come_from_the_embedded_font() {
+        let g = |c| glyph(c, Font::Bold);
+        let sign = |code| Glyph {
+            font: SIGNS_FONT,
+            code,
+            width: 838,
+        };
+        // Glyph ids of `signs.ttf`, as fontTools lists them.
+        assert_eq!(g('≥'), sign(5));
+        assert_eq!(g('≤'), sign(4));
+        assert_eq!(g('≠'), sign(3));
+        assert_eq!(g('✓'), sign(6));
+        assert_eq!(g('✗'), sign(8));
+        assert_eq!(
+            width("≥ 7", Font::Regular, 10.0),
+            (838.0 + 278.0 + 556.0) / 100.0
+        );
     }
 }

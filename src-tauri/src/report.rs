@@ -40,7 +40,7 @@ pub fn pdf(r: &Report) -> Vec<u8> {
         p.draw(&mut d);
     }
     if !rest.is_empty() {
-        table(&mut d, &rest);
+        table(&mut d, &rest, typical(r.norms.as_ref()));
     }
     caveats(&mut d, &g.caveats);
 
@@ -101,7 +101,7 @@ fn header(d: &mut Doc, r: &Report) {
 fn verdict(d: &mut Doc, g: &Grading) {
     if let Some(v) = &g.verdict {
         d.ink(MUTED);
-        d.text(M, d.y + 10.0, Font::Regular, 8.0, "GESAMTURTEIL");
+        d.text(M, d.y + 10.0, Font::Regular, 8.0, "ERGEBNIS");
         d.ink(FG);
         d.text(
             M,
@@ -114,35 +114,23 @@ fn verdict(d: &mut Doc, g: &Grading) {
     }
     for rule in &g.rules {
         d.room(15.0);
-        let box_y = d.y + 3.5;
-        stroke(d.c(), FG);
-        d.c()
-            .set_line_width(0.7)
-            .rect(M, H - box_y - 8.0, 8.0, 8.0)
-            .stroke();
-        if rule.met {
-            d.line(M + 1.5, box_y + 1.5, M + 6.5, box_y + 6.5, 1.2, FG);
-            d.line(M + 1.5, box_y + 6.5, M + 6.5, box_y + 1.5, 1.2, FG);
-        }
         let f = if rule.met { Font::Bold } else { Font::Regular };
         let state = if rule.met {
             "erfüllt"
         } else {
             "nicht erfüllt"
         };
-        d.text(
-            M + 14.0,
-            d.y + 11.0,
-            f,
-            10.0,
-            &format!("{}: {state}", rule.label),
-        );
+        d.text(M, d.y + 11.0, f, 10.0, &format!("{}: {state}", rule.label));
         d.y += 15.0;
     }
-    let mut missing = format!("Fehlende Antworten: {}", g.missing);
-    if g.missing > 0 {
-        missing += &format!(" (Fragen {})", g.missing_items.join(", "));
+    if g.missing == 0 {
+        return;
     }
+    let missing = format!(
+        "Fehlende Antworten: {} (Fragen {})",
+        g.missing,
+        g.missing_items.join(", ")
+    );
     for l in wrap(&missing, Font::Regular, 10.0, W - 2.0 * M) {
         d.room(14.0);
         d.text(M, d.y + 11.0, Font::Regular, 10.0, &l);
@@ -183,6 +171,8 @@ struct Profile<'a> {
     rows: Vec<Mark<'a>>,
     axis: Axis,
     middle: Option<[i64; 3]>,
+    /// Label of the band that holds the scale mean; see [`class`].
+    typical: Option<&'a str>,
     /// Whether any row has a band or is over its cut-off, i.e. needs the „Einordnung“ column.
     classified: bool,
 }
@@ -268,12 +258,16 @@ impl<'a> Profile<'a> {
             None => values.extend(middle.iter().flatten().copied()),
         }
         let axis = axis(values)?;
-        let classified = rows.iter().any(|m| !class(m.norm, m.over).is_empty());
+        let typical = typical(r.norms.as_ref());
+        let classified = rows
+            .iter()
+            .any(|m| !class(m.norm, m.over, typical).is_empty());
         Some(Profile {
             name,
             rows,
             axis,
             middle,
+            typical,
             classified,
         })
     }
@@ -303,7 +297,12 @@ impl<'a> Profile<'a> {
             .map(|mark| {
                 let label = wrap(mark.label, Font::Regular, 9.0, P_LABEL);
                 let class = match self.classified {
-                    true => wrap(&class(mark.norm, mark.over), Font::Regular, 8.0, P_CLASS),
+                    true => wrap(
+                        &class(mark.norm, mark.over, self.typical),
+                        Font::Regular,
+                        8.0,
+                        P_CLASS,
+                    ),
                     false => vec![],
                 };
                 let h = P_ROW.max(label.len().max(class.len()) as f32 * P_LEADING + 9.0);
@@ -449,7 +448,7 @@ impl<'a> Profile<'a> {
                 mid + 9.5,
                 Font::Regular,
                 7.5,
-                &format!("Roh {}", number(m.value)),
+                &format!("RW {}", number(m.value)),
             );
             let (font, color) = if m.over {
                 (Font::Bold, OVER)
@@ -495,7 +494,7 @@ const T_CUT: f32 = 385.0;
 const T_NORM: f32 = 440.0;
 const T_CLASS: f32 = 452.0;
 
-fn table(d: &mut Doc, rows: &[&ResultRow]) {
+fn table(d: &mut Doc, rows: &[&ResultRow], typical: Option<&str>) {
     heading(d, "Ergebnisse");
     let normed = rows
         .iter()
@@ -586,7 +585,12 @@ fn table(d: &mut Doc, rows: &[&ResultRow]) {
                 base,
                 font,
                 10.0,
-                &fit(&class(norm.as_ref(), *over), font, 10.0, W - M - T_CLASS),
+                &fit(
+                    &class(norm.as_ref(), *over, typical),
+                    font,
+                    10.0,
+                    W - M - T_CLASS,
+                ),
             );
             ink(c, FG);
         }
@@ -595,13 +599,39 @@ fn table(d: &mut Doc, rows: &[&ResultRow]) {
     d.line(M, d.y, W - M, d.y, 0.8, FG);
 }
 
-/// The „Einordnung“ column: the norm band and whether the score is over its cut-off.
-fn class(norm: Option<&NormValue>, over: bool) -> String {
-    let mut parts: Vec<&str> = norm.iter().filter_map(|n| n.band.as_deref()).collect();
+/// The „Einordnung“ column: the norm band and whether the score is over its cut-off. Bands
+/// other than the `typical` one read as a degree of expression.
+fn class(norm: Option<&NormValue>, over: bool, typical: Option<&str>) -> String {
+    let mut parts: Vec<String> = norm
+        .and_then(|n| n.band.as_deref())
+        .map(|b| match typical {
+            Some(t) if t != b => degree(b),
+            _ => b.to_string(),
+        })
+        .into_iter()
+        .collect();
     if over {
-        parts.push("über Cut-off");
+        parts.push("über Cut-off".into());
     }
     parts.join(", ")
+}
+
+/// Label of the norm band that holds the scale mean, when the bands and the mean are known.
+fn typical(norms: Option<&Norms>) -> Option<&str> {
+    let n = norms?;
+    let [_, mean, _] = middle(&n.name)?;
+    let band = n.bands.iter().rev().find(|b| mean >= b.from)?;
+    Some(&band.label)
+}
+
+/// A band label as a degree of expression: „mild“ → „milde Ausprägung“.
+fn degree(label: &str) -> String {
+    let stem = match label.strip_suffix("hoch") {
+        Some(head) => format!("{head}hoh"),
+        None => label.to_string(),
+    };
+    let e = if stem.ends_with('e') { "" } else { "e" };
+    format!("{stem}{e} Ausprägung")
 }
 
 /// Norm axis from `lo` to `hi` with a tick every `step`; both ends are multiples of `step`.
@@ -696,6 +726,47 @@ mod tests {
             })
         );
         assert_eq!(axis([]), None);
+    }
+
+    #[test]
+    fn bands_away_from_the_mean_read_as_a_degree_of_expression() {
+        for (band, want) in [
+            ("mild", "milde Ausprägung"),
+            ("moderat", "moderate Ausprägung"),
+            ("schwer", "schwere Ausprägung"),
+            ("niedrig", "niedrige Ausprägung"),
+            ("sehr hoch", "sehr hohe Ausprägung"),
+            ("leichte", "leichte Ausprägung"),
+        ] {
+            assert_eq!(degree(band), want);
+        }
+        let norms: Norms = serde_json::from_value(serde_json::json!({
+            "name": "T",
+            "bands": [
+                { "from": 0, "label": "unauffällig" },
+                { "from": 60, "label": "mild" },
+                { "from": 66, "label": "moderat" },
+            ],
+            "tables": {},
+        }))
+        .unwrap();
+        let typical = typical(Some(&norms));
+        assert_eq!(typical, Some("unauffällig"));
+        let t = |band: &str| NormValue {
+            name: "T".into(),
+            value: 0,
+            band: Some(band.into()),
+        };
+        assert_eq!(
+            class(Some(&t("unauffällig")), false, typical),
+            "unauffällig"
+        );
+        assert_eq!(
+            class(Some(&t("moderat")), true, typical),
+            "moderate Ausprägung, über Cut-off"
+        );
+        // Without the bands, the mean's band is unknown and labels stay as they are.
+        assert_eq!(class(Some(&t("mild")), false, None), "mild");
     }
 
     #[test]

@@ -47,6 +47,54 @@ fn stanine(name: &str, n: usize) -> String {
     render(name, &yaml, answers)
 }
 
+/// Like the SRS-2: five scales of eight items, a total with severity bands and a `≥` rule.
+/// Item 40 stays unanswered.
+fn srs(name: &str) -> String {
+    let scales = [
+        ("A", "Soziale Wahrnehmung", 4),
+        ("B", "Soziale Kognition", 12),
+        ("C", "Soziale Kommunikation", 16),
+        ("D", "Soziale Motivation", 20),
+        ("E", "Restriktive Interessen und repetitives Verhalten", 18),
+    ];
+    let mut yaml = String::from(
+        "schema: 1\nid: srs\nversion: \"1\"\ntitle: Skala zur Erfassung sozialer Reaktivität\n\
+         cutoff_compare: \">=\"\n\
+         answer_sets: { haeufigkeit: [nie, manchmal, oft, immer] }\n\
+         keys: { k: [0, 1, 2, 3] }\ndefault_answers: haeufigkeit\n\
+         fields: [{ id: kennung, label: Kennung, type: text }]\nscales:\n",
+    );
+    for (id, label, _) in scales {
+        yaml += &format!("  - {{ id: {id}, label: \"{label}\" }}\n");
+    }
+    yaml += "derived:\n  - { id: gesamt, label: Gesamtrohwert, value: A + B + C + D + E, cutoff: 70 }\n\
+             rules:\n  - { id: ass, label: \"ASS-Screening: Gesamtrohwert ≥ 70\", when: gesamt >= 70 }\n\
+             verdict:\n  - { when: ass, text: \"Hinweis auf eine Autismus-Spektrum-Störung\" }\n  - { else: \"Unauffällig\" }\n\
+             sections:\n  - title: Fragen\n    items:\n";
+    let mut answers = Vec::new();
+    for (s, (id, _, raw)) in scales.iter().enumerate() {
+        for i in 0..8 {
+            let n = s * 8 + i + 1;
+            yaml += &format!("      - {{ n: {n}, scale: {id}, key: k, text: \"Frage\" }}\n");
+            if n < 40 {
+                answers.push((n.to_string(), (raw - 3 * i as i64).clamp(0, 3) as usize));
+            }
+        }
+    }
+    yaml += "result: [gesamt, A, B, C, D, E]\nnorms:\n  name: T\n  bands:\n\
+             \x20   - { from: 0, label: unauffällig }\n    - { from: 60, label: mild }\n\
+             \x20   - { from: 66, label: moderat }\n    - { from: 76, label: schwer }\n  tables:\n";
+    for (id, _, _) in scales {
+        let t: Vec<String> = (0..=24).map(|r| format!("{r}: {}", 38 + 2 * r)).collect();
+        yaml += &format!("    {id}: {{ {} }}\n", t.join(", "));
+    }
+    let t: Vec<String> = (0..=24)
+        .map(|r| format!("{}: {}", 5 * r, 38 + 2 * r))
+        .collect();
+    yaml += &format!("    gesamt: {{ {} }}\n", t.join(", "));
+    render(name, &yaml, answers)
+}
+
 fn render(name: &str, yaml: &str, answers: Vec<(String, usize)>) -> String {
     let q = kreuzchen_engine::load(yaml).unwrap();
     let input = Input {
@@ -119,4 +167,34 @@ fn stanine_profile_marks_the_middle_range() {
 fn long_profile_continues_on_the_next_page() {
     let pdf = stanine("stanine_lang", 45);
     assert!(pdf.contains("(Seite 2 von "));
+}
+
+#[test]
+fn srs_report_shows_signs_degrees_and_the_missing_answer() {
+    let pdf = srs("srs");
+    assert!(pdf.contains("(ERGEBNIS)"));
+    // „≥“ is drawn from the embedded signs font, not replaced by „?“.
+    assert!(pdf.contains("/BaseFont /KRZCHN+DejaVuSans"));
+    assert!(
+        pdf.contains("/F3 10 Tf\n(\\000\\005) Tj"),
+        "≥ in the signs font"
+    );
+    assert!(!pdf.contains("Gesamtrohwert ?"));
+    // The profile column wraps „milde Ausprägung“ onto two lines; the mean's band stays as is.
+    for band in ["(milde) Tj", "(moderate) Tj", "(schwere) Tj"] {
+        assert!(pdf.contains(band), "{band}");
+    }
+    assert!(shows(&pdf, "Ausprägung") && shows(&pdf, "unauffällig"));
+    assert!(!shows(&pdf, "unauffällige"));
+    assert!(pdf.contains("(RW 12)"));
+    assert!(shows(&pdf, "Fehlende Antworten: 1 (Fragen 40)"));
+}
+
+#[test]
+fn no_missing_answers_line_when_all_are_answered() {
+    let pdf = example(
+        "beispiel_normen",
+        &[("1", 3), ("2", 0), ("3", 2), ("4", 1), ("5", 1), ("6", 0)],
+    );
+    assert!(!pdf.contains("Fehlende Antworten"));
 }
