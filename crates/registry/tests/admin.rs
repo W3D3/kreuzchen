@@ -394,3 +394,185 @@ async fn broken_hand_edit_stops_write_before_any_change() {
     // Practices keep being served from the last good state.
     assert_eq!(practice_ids(&app).await, ["fragebogen_a"]);
 }
+
+fn basic_for(user: &str, key: &str) -> String {
+    format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("{user}:{key}"))
+    )
+}
+
+async fn practice_status(app: &Router, user: &str, key: &str) -> StatusCode {
+    call(
+        app,
+        "GET",
+        "/v1/fragebogen",
+        Some(basic_for(user, key)),
+        Body::empty(),
+    )
+    .await
+    .0
+}
+
+fn key_of(body: &str) -> String {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap();
+    v["key"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn add_practice_validates() {
+    let (app, d) = setup(Some(TOKEN));
+    let cfg = fs::read_to_string(d.path().join("config.yaml")).unwrap();
+    let long = "a".repeat(65);
+    for (body, want) in [
+        (r#"{"user":"Praxis_C"}"#.to_owned(), StatusCode::BAD_REQUEST),
+        (r#"{"user":""}"#.to_owned(), StatusCode::BAD_REQUEST),
+        (r#"{"user":"praxis c"}"#.to_owned(), StatusCode::BAD_REQUEST),
+        (r#"{"user":"praxis:c"}"#.to_owned(), StatusCode::BAD_REQUEST),
+        (format!(r#"{{"user":"{long}"}}"#), StatusCode::BAD_REQUEST),
+        (
+            r#"{"user":"praxis_c","fragebogen":["gibtsnicht"]}"#.to_owned(),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            r#"{"user":"praxis_c","key_hash":"x"}"#.to_owned(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (r#"{"user":"praxis_a"}"#.to_owned(), StatusCode::CONFLICT),
+    ] {
+        let (s, _) = call_json(&app, "POST", "/admin/api/praxen", body.clone()).await;
+        assert_eq!(s, want, "{body}");
+    }
+    assert_eq!(
+        fs::read_to_string(d.path().join("config.yaml")).unwrap(),
+        cfg
+    );
+}
+
+async fn call_json(app: &Router, method: &str, uri: &str, body: String) -> (StatusCode, String) {
+    let r = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("authorization", bearer())
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+        .unwrap();
+    let resp = app.clone().oneshot(r).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[tokio::test]
+async fn add_practice_stores_only_the_hash() {
+    let (app, d) = setup(Some(TOKEN));
+    let body = r#"{"user":"praxis_neu-2","fragebogen":["fragebogen_b"]}"#.to_owned();
+    let (s, b) = call_json(&app, "POST", "/admin/api/praxen", body).await;
+    assert_eq!(s, StatusCode::CREATED);
+    let key = key_of(&b);
+    assert_eq!(key.len(), 43);
+
+    let cfg = fs::read_to_string(d.path().join("config.yaml")).unwrap();
+    assert!(!cfg.contains(&key));
+    let reg = load(d.path()).unwrap();
+    let p = reg
+        .practices
+        .iter()
+        .find(|p| p.user == "praxis_neu-2")
+        .unwrap();
+    assert_eq!(p.fragebogen, ["fragebogen_b"]);
+    assert!(p.key_hash.starts_with("$argon2id$"));
+
+    assert_eq!(
+        practice_status(&app, "praxis_neu-2", &key).await,
+        StatusCode::OK
+    );
+    let (_, list) = call(
+        &app,
+        "GET",
+        "/v1/fragebogen",
+        Some(basic_for("praxis_neu-2", &key)),
+        Body::empty(),
+    )
+    .await;
+    assert!(list.contains("fragebogen_b") && !list.contains("fragebogen_a"));
+    let (_, admin_list) = admin(&app, "GET", "/admin/api/fragebogen", Body::empty()).await;
+    assert!(!admin_list.contains(&key) && !admin_list.contains("argon2"));
+}
+
+#[tokio::test]
+async fn new_key_replaces_old_at_once() {
+    let (app, d) = setup(Some(TOKEN));
+    assert_eq!(
+        practice_status(&app, "praxis_a", "geheim").await,
+        StatusCode::OK
+    );
+    let (s, b) = admin(
+        &app,
+        "POST",
+        "/admin/api/praxen/praxis_a/schluessel",
+        Body::empty(),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    let key = key_of(&b);
+    assert_eq!(
+        practice_status(&app, "praxis_a", "geheim").await,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        practice_status(&app, "praxis_a", &key).await,
+        StatusCode::OK
+    );
+    assert!(!fs::read_to_string(d.path().join("config.yaml"))
+        .unwrap()
+        .contains(&key));
+    // Other fields of the practice are kept.
+    assert_eq!(
+        load(d.path()).unwrap().practices[0].fragebogen,
+        ["fragebogen_a"]
+    );
+
+    let (s, _) = admin(
+        &app,
+        "POST",
+        "/admin/api/praxen/gibtsnicht/schluessel",
+        Body::empty(),
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_practice() {
+    let (app, d) = setup(Some(TOKEN));
+    let (s, _) = admin(&app, "DELETE", "/admin/api/praxen/praxis_a", Body::empty()).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(
+        practice_status(&app, "praxis_a", "geheim").await,
+        StatusCode::UNAUTHORIZED
+    );
+    let reg = load(d.path()).unwrap();
+    assert_eq!(reg.practices.len(), 1);
+    assert_eq!(reg.practices[0].user, "praxis_b");
+    let (s, _) = admin(&app, "DELETE", "/admin/api/praxen/praxis_a", Body::empty()).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn practice_routes_need_the_admin_token() {
+    let (app, d) = setup(Some(TOKEN));
+    let cfg = fs::read_to_string(d.path().join("config.yaml")).unwrap();
+    for (method, uri) in [
+        ("POST", "/admin/api/praxen"),
+        ("POST", "/admin/api/praxen/praxis_a/schluessel"),
+        ("DELETE", "/admin/api/praxen/praxis_a"),
+    ] {
+        let (s, _) = call(&app, method, uri, Some(basic()), r#"{"user":"x"}"#).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED, "{method} {uri}");
+    }
+    assert_eq!(
+        fs::read_to_string(d.path().join("config.yaml")).unwrap(),
+        cfg
+    );
+}

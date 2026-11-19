@@ -6,15 +6,16 @@ use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{get, put};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
+use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::config::{load, parse_entry, write_atomic, write_config};
-use crate::{Entry, Registry};
+use crate::{new_key, Entry, Practice, Registry};
 
 /// Largest accepted questionnaire upload.
 pub const MAX_UPLOAD: usize = 1024 * 1024;
@@ -35,6 +36,9 @@ pub(crate) fn router(st: AdminState) -> Router {
         .route("/fragebogen", get(list).post(upload))
         .route("/fragebogen/{id}", put(replace).delete(remove))
         .route("/fragebogen/{id}/praxen", put(assign))
+        .route("/praxen", post(add_practice))
+        .route("/praxen/{user}", delete(remove_practice))
+        .route("/praxen/{user}/schluessel", post(rekey_practice))
         .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
         .layer(from_fn_with_state(st.clone(), auth))
@@ -210,6 +214,109 @@ async fn assign(
     write_config(&reg.dir, practices).map_err(internal)?;
     let reg = reload(&st)?;
     Ok(Json(entry_json(&reg, &reg.entries[&id])))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewPractice {
+    user: String,
+    #[serde(default)]
+    fragebogen: Vec<String>,
+}
+
+/// Lowercase so names stay unambiguous when read aloud or typed into the app.
+fn valid_user(user: &str) -> bool {
+    (1..=64).contains(&user.len())
+        && user
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+}
+
+/// Argon2 is memory-hard; keep it off the async workers.
+async fn generate_key() -> Result<(String, String), Fail> {
+    tokio::task::spawn_blocking(new_key).await.map_err(internal)
+}
+
+/// The response is the only place the plaintext key ever appears.
+fn key_response(user: &str, key: String) -> Json<serde_json::Value> {
+    Json(json!({"user": user, "key": key}))
+}
+
+async fn add_practice(
+    State(st): State<AdminState>,
+    Json(new): Json<NewPractice>,
+) -> Result<Response, Fail> {
+    if !valid_user(&new.user) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "ungültiger Benutzername {:?}: erlaubt sind 1–64 Zeichen aus a–z, 0–9, _ und -",
+                new.user
+            ),
+        ));
+    }
+    let _w = st.write.lock().await;
+    let reg = reload(&st)?;
+    if reg.practices.iter().any(|p| p.user == new.user) {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("Praxis {:?} gibt es schon", new.user),
+        ));
+    }
+    if let Some(id) = new
+        .fragebogen
+        .iter()
+        .find(|id| !reg.entries.contains_key(*id))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("unbekannter Fragebogen {id:?}"),
+        ));
+    }
+    let (key, key_hash) = generate_key().await?;
+    let mut practices = reg.practices.clone();
+    practices.push(Practice {
+        user: new.user.clone(),
+        key_hash,
+        fragebogen: new.fragebogen,
+    });
+    write_config(&reg.dir, practices).map_err(internal)?;
+    reload(&st)?;
+    Ok((StatusCode::CREATED, key_response(&new.user, key)).into_response())
+}
+
+async fn rekey_practice(
+    State(st): State<AdminState>,
+    Path(user): Path<String>,
+) -> Result<Json<serde_json::Value>, Fail> {
+    let _w = st.write.lock().await;
+    let reg = reload(&st)?;
+    let mut practices = reg.practices.clone();
+    let p = practices
+        .iter_mut()
+        .find(|p| p.user == user)
+        .ok_or((StatusCode::NOT_FOUND, String::new()))?;
+    let (key, key_hash) = generate_key().await?;
+    p.key_hash = key_hash;
+    write_config(&reg.dir, practices).map_err(internal)?;
+    reload(&st)?;
+    Ok(key_response(&user, key))
+}
+
+async fn remove_practice(
+    State(st): State<AdminState>,
+    Path(user): Path<String>,
+) -> Result<StatusCode, Fail> {
+    let _w = st.write.lock().await;
+    let reg = reload(&st)?;
+    if !reg.practices.iter().any(|p| p.user == user) {
+        return Err((StatusCode::NOT_FOUND, String::new()));
+    }
+    let mut practices = reg.practices.clone();
+    practices.retain(|p| p.user != user);
+    write_config(&reg.dir, practices).map_err(internal)?;
+    reload(&st)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// The single kept previous version of a definition file.

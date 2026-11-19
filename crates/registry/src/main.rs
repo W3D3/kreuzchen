@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use argon2::password_hash::{rand_core::OsRng, rand_core::RngCore, PasswordHasher, SaltString};
-use argon2::Argon2;
 use axum::extract::Request;
 use axum::http::header;
 use axum::middleware::{from_fn, Next};
@@ -34,14 +32,7 @@ async fn main() -> ExitCode {
 }
 
 fn key() {
-    let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
-    let key = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
-    // Same parameters as the API's dummy hash, so login timing matches.
-    let hash = Argon2::default()
-        .hash_password(key.as_bytes(), &SaltString::generate(&mut OsRng))
-        .expect("hash key")
-        .to_string();
+    let (key, hash) = kreuzchen_registry::new_key();
     println!("key: {key}\nkey_hash: {hash}");
 }
 

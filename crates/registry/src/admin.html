@@ -4,137 +4,309 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
 <title>Bibliotheksserver – Verwaltung</title>
 <style>
-  :root { --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #0b6bcb; --bad: #b42318; --badbg: #fef3f2; --ok: #067647; }
+  /* Tokens from the app's src/app.css. */
+  :root {
+    --bg: #eef1f2; --surface: #fff; --fg: #1d2a2f; --muted: #5f6f75; --line: #d3dbde;
+    --accent: #1f6f78; --accent-fg: #fff; --accent-soft: #dcefef; --danger: #b42318;
+    --font: "Atkinson Hyperlegible", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12191c; --surface: #1b2428; --fg: #e4ecee; --muted: #93a4aa; --line: #2d3a3f;
+      --accent: #5cbcc6; --accent-fg: #0c1a1d; --accent-soft: #1f3a3e; --danger: #f2877e;
+    }
+  }
+  :root { --danger-soft: color-mix(in oklab, var(--danger) 12%, var(--surface)); --hover: color-mix(in oklab, var(--line) 45%, var(--surface)); }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; color: var(--fg); background: #f6f8fa; }
-  main { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.4rem; margin: 0 0 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
-  label { font-weight: 600; }
-  input[type=password] { font: inherit; padding: .4rem .5rem; width: 100%; max-width: 28rem; border: 1px solid var(--line); border-radius: 6px; }
-  button { font: inherit; padding: .35rem .8rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
-  h1 button { font-size: .9rem; font-weight: 400; }
-  button:hover { background: #f3f4f6; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  button.danger { color: var(--bad); }
-  button:disabled { opacity: .5; cursor: default; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: .55rem .5rem; border-top: 1px solid var(--line); vertical-align: top; }
-  th { border-top: 0; color: var(--muted); font-weight: 600; font-size: .85rem; }
-  .id { font-family: ui-monospace, monospace; font-size: .85rem; color: var(--muted); }
-  .praxen label { display: block; font-weight: 400; white-space: nowrap; }
-  .actions { white-space: nowrap; text-align: right; }
-  .actions button + button { margin-left: .3rem; }
-  #fehler { display: none; background: var(--badbg); border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: .75rem 1rem; margin-bottom: 1rem; }
-  #fehler pre { white-space: pre-wrap; margin: .3rem 0 0; font: .85rem/1.4 ui-monospace, monospace; }
-  #status { color: var(--ok); min-height: 1.4em; margin-bottom: .5rem; }
+  body { margin: 0; font: 15px/1.5 var(--font); color: var(--fg); background: var(--bg); }
+  header { background: var(--surface); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 68rem; margin: 0 auto; padding: .75rem 1.25rem; display: flex; align-items: center; gap: 1rem; }
+  .brand { font-weight: 700; font-size: 1.05rem; flex: 1; display: flex; align-items: center; gap: .6rem; }
+  .brand::before { content: ""; width: 1.4rem; height: 1.4rem; border-radius: 6px; background: var(--accent); }
+  .brand span { color: var(--muted); font-weight: 400; }
+  main { max-width: 68rem; margin: 0 auto; padding: 1.25rem; }
+  h2 { font-size: 1.15rem; margin: 0; }
+  p { margin: 0; }
   .muted { color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .btn { font: inherit; font-size: .9rem; padding: .4rem .85rem; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: var(--hover); }
+  .btn:focus-visible, input:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  .primary:hover { background: color-mix(in oklab, var(--accent) 88%, var(--fg)); }
+  .danger { background: var(--danger); border-color: var(--danger); color: var(--surface); font-weight: 600; }
+  .danger:hover { background: color-mix(in oklab, var(--danger) 88%, var(--fg)); }
+  .quiet-danger { color: var(--danger); }
+  .ghost { border-color: transparent; background: transparent; }
+  input[type=text], input[type=password] { font: inherit; padding: .45rem .6rem; width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); }
+  input[type=checkbox] { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; }
+  label.check { display: flex; align-items: center; gap: .45rem; padding: .1rem 0; cursor: pointer; }
+  .login { max-width: 26rem; margin: 3rem auto; padding: 1.5rem; display: grid; gap: .9rem; }
+  .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin-bottom: 1.25rem; }
+  .tab { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: .55rem .9rem; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+  .tab[aria-selected=true] { color: var(--fg); border-color: var(--accent); font-weight: 600; }
+  .count { display: inline-block; min-width: 1.5em; padding: 0 .4em; margin-left: .35rem; border-radius: 99px; background: var(--accent-soft); color: var(--fg); font-size: .8rem; text-align: center; }
+  .head { display: flex; align-items: flex-end; gap: 1rem; margin-bottom: .9rem; }
+  .head > div { flex: 1; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .75rem 1rem; vertical-align: top; }
+  tr + tr td { border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; border-bottom: 1px solid var(--line); }
+  .mono { font-family: var(--mono); font-size: .85rem; }
+  .actions { text-align: right; white-space: nowrap; }
+  .actions .btn + .btn { margin-left: .35rem; }
+  .empty { padding: 2.5rem 1rem; text-align: center; display: grid; gap: .6rem; justify-items: center; }
+  .alert { background: var(--danger-soft); border: 1px solid var(--danger); border-radius: 8px; padding: .8rem 1rem; margin-bottom: 1rem; display: grid; gap: .3rem; }
+  .alert strong { color: var(--danger); }
+  .alert pre { white-space: pre-wrap; margin: .2rem 0 0; font: .8rem/1.45 var(--mono); color: var(--muted); }
+  .alert .row { display: flex; gap: 1rem; align-items: start; }
+  .alert .row > div { flex: 1; display: grid; gap: .3rem; }
+  #toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: .6rem 1rem; border-radius: 8px; box-shadow: 0 6px 24px #0003; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--fg); padding: 1.4rem; width: min(30rem, calc(100vw - 2rem)); box-shadow: 0 16px 48px #0004; }
+  dialog::backdrop { background: #0008; }
+  dialog form { display: grid; gap: .9rem; }
+  dialog .buttons { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .3rem; }
+  fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .2rem; }
+  legend { font-weight: 600; margin-bottom: .3rem; }
+  .field { display: grid; gap: .3rem; }
+  .field label { font-weight: 600; }
+  .hint { font-size: .85rem; color: var(--muted); }
+  .err { color: var(--danger); font-size: .9rem; }
+  .key { font: 1rem/1.4 var(--mono); padding: .7rem .8rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; word-break: break-all; user-select: all; }
+  .warn { background: var(--accent-soft); border-radius: 8px; padding: .7rem .9rem; font-size: .9rem; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
+<header><div class="bar">
+  <div class="brand">Bibliotheksserver <span>– Verwaltung</span></div>
+  <button class="btn ghost" id="abmelden" hidden>Abmelden</button>
+</div></header>
+
 <main>
-  <h1>Bibliotheksserver – Verwaltung <button id="abmelden" hidden>Abmelden</button></h1>
-
-  <div id="fehler" role="alert"><strong id="fehler-titel"></strong><pre id="fehler-text"></pre></div>
-
-  <form id="anmeldung" class="card" hidden>
-    <p><label for="token">Admin-Token</label></p>
-    <p><input id="token" type="password" autocomplete="off" required></p>
-    <p class="muted">Das Token bleibt nur in diesem Browser-Tab gespeichert, bis Sie ihn schließen.</p>
-    <button class="primary" type="submit">Anmelden</button>
+  <form id="anmeldung" class="card login" hidden>
+    <h2>Anmelden</h2>
+    <div class="field">
+      <label for="token">Admin-Token</label>
+      <input id="token" type="password" autocomplete="off" required>
+      <p class="hint">Das Token bleibt nur in diesem Tab gespeichert, bis Sie ihn schließen.</p>
+    </div>
+    <p id="anmeldefehler" class="err" role="alert" hidden></p>
+    <button class="btn primary" type="submit">Anmelden</button>
   </form>
 
-  <div id="verwaltung" hidden>
-    <div class="card">
-      <button class="primary" id="neu">Neuen Fragebogen hochladen …</button>
-      <span class="muted">YAML-Datei; sie wird vor dem Speichern geprüft.</span>
+  <div id="app" hidden>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-fragebogen" aria-controls="fragebogen">Fragebögen<span class="count" id="n-fragebogen"></span></button>
+      <button class="tab" role="tab" id="tab-praxen" aria-controls="praxen">Praxen<span class="count" id="n-praxen"></span></button>
+    </nav>
+
+    <div class="alert" id="fehler" role="alert" hidden>
+      <div class="row"><div><strong id="fehler-titel"></strong><p id="fehler-text"></p></div>
+      <button class="btn ghost" id="fehler-zu" aria-label="Meldung schließen">✕</button></div>
+      <pre id="fehler-detail"></pre>
     </div>
-    <div id="status" role="status"></div>
-    <div class="card">
-      <table>
-        <thead><tr><th>Fragebogen</th><th>Version</th><th>Sichtbar für Praxen</th><th></th></tr></thead>
-        <tbody id="liste"></tbody>
-      </table>
-      <p id="leer" class="muted" hidden>Noch keine Fragebögen.</p>
-    </div>
+
+    <section id="fragebogen" role="tabpanel" aria-labelledby="tab-fragebogen">
+      <div class="head">
+        <div><h2>Fragebögen</h2><p class="muted">Häkchen bestimmen, welche Praxen einen Fragebogen in ihrer Bibliothek sehen.</p></div>
+        <button class="btn primary" id="hochladen">Fragebogen hochladen</button>
+      </div>
+      <div class="card" id="fb-karte"></div>
+    </section>
+
+    <section id="praxen" role="tabpanel" aria-labelledby="tab-praxen" hidden>
+      <div class="head">
+        <div><h2>Praxen</h2><p class="muted">Zugänge für die Bibliothek. Schlüssel werden nur beim Erzeugen angezeigt.</p></div>
+        <button class="btn primary" id="anlegen">Praxis anlegen</button>
+      </div>
+      <div class="card" id="px-karte"></div>
+    </section>
   </div>
   <input type="file" id="datei" accept=".yaml,.yml" hidden>
 </main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="dlg-frage"><form method="dialog">
+  <h2 id="frage-titel"></h2>
+  <p id="frage-text"></p>
+  <div class="buttons"><button class="btn" value="nein">Abbrechen</button><button class="btn danger" value="ja" id="frage-ok"></button></div>
+</form></dialog>
+
+<dialog id="dlg-praxis"><form id="praxis-form">
+  <h2>Praxis anlegen</h2>
+  <div class="field">
+    <label for="praxis-name">Benutzername</label>
+    <input id="praxis-name" type="text" required maxlength="64" pattern="[a-z0-9_\-]+" autocomplete="off" spellcheck="false" placeholder="z. B. praxis_sonnenhof">
+    <p class="hint">Kleinbuchstaben, Ziffern, _ und -. Lässt sich später nicht ändern.</p>
+  </div>
+  <fieldset id="praxis-fb"><legend>Sichtbare Fragebögen</legend></fieldset>
+  <p id="praxis-fehler" class="err" role="alert" hidden></p>
+  <div class="buttons"><button class="btn" type="button" id="praxis-abbrechen">Abbrechen</button><button class="btn primary" type="submit">Anlegen</button></div>
+</form></dialog>
+
+<dialog id="dlg-schluessel"><form method="dialog">
+  <h2 id="schluessel-titel"></h2>
+  <p class="warn"><strong>Nur jetzt sichtbar.</strong> Der Schlüssel wird nicht gespeichert und kann nicht erneut angezeigt werden. Geben Sie ihn zusammen mit dem Benutzernamen an die Praxis weiter.</p>
+  <div class="field"><span class="hint">Benutzername</span><div class="key" id="schluessel-user"></div></div>
+  <div class="field"><span class="hint">Schlüssel</span><div class="key" id="schluessel-wert"></div></div>
+  <div class="buttons"><button class="btn" type="button" id="kopieren">Schlüssel kopieren</button><button class="btn primary" value="ok">Fertig</button></div>
+</form></dialog>
+
 <script>
 "use strict";
 const KEY = "kreuzchen-admin-token";
 const $ = (id) => document.getElementById(id);
-let praxen = [];
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+let data = { praxen: [], fragebogen: [] };
 
-function el(tag, props = {}, ...children) {
-  const e = Object.assign(document.createElement(tag), props);
-  e.append(...children);
-  return e;
-}
+const SUMMARY = {
+  0: "Der Server ist nicht erreichbar. Bitte Verbindung prüfen und erneut versuchen.",
+  400: "Die Angaben wurden nicht angenommen. Es wurde nichts geändert.",
+  404: "Den Eintrag gibt es nicht mehr. Die Liste wurde neu geladen.",
+  409: "Den Eintrag gibt es schon. Es wurde nichts geändert.",
+  413: "Die Datei ist größer als 1 MiB.",
+  422: "Die Anfrage war unvollständig.",
+  500: "Der Server konnte die Änderung nicht speichern. Häufige Ursachen: Datenverzeichnis schreibgeschützt oder eine Datei wurde von Hand fehlerhaft bearbeitet.",
+};
 
-function zeigeFehler(titel, text) {
-  $("fehler-titel").textContent = titel;
-  $("fehler-text").textContent = text || "";
-  $("fehler").style.display = "block";
-  $("fehler").scrollIntoView({ block: "nearest" });
-}
-function fehlerWeg() { $("fehler").style.display = "none"; }
-function status(text) { $("status").textContent = text; }
+class ApiError extends Error { constructor(status, detail) { super(detail); this.status = status; } }
 
 async function api(method, pfad, body, typ) {
   const headers = { Authorization: "Bearer " + sessionStorage.getItem(KEY) };
   if (typ) headers["Content-Type"] = typ;
-  const r = await fetch("/admin/api" + pfad, { method, headers, body });
+  let r;
+  try { r = await fetch("/admin/api" + pfad, { method, headers, body }); }
+  catch { throw new ApiError(0, ""); }
   if (r.status === 401) { abmelden("Das Token ist ungültig."); throw null; }
-  if (r.status === 413) throw new Error("Die Datei ist zu groß (höchstens 1 MiB).");
-  if (!r.ok) throw new Error((await r.text()) || "Fehler " + r.status);
+  if (!r.ok) throw new ApiError(r.status, await r.text());
   return r.status === 204 ? null : r.json();
 }
 
-function anzeigen(angemeldet) {
-  $("anmeldung").hidden = angemeldet;
-  $("verwaltung").hidden = !angemeldet;
-  $("abmelden").hidden = !angemeldet;
+// German summary first, the server's raw message (e.g. parser output) below it.
+function fehler(titel, e, summary) {
+  if (!e) return;
+  $("fehler-titel").textContent = titel;
+  $("fehler-text").textContent = summary || SUMMARY[e.status] || "Unerwarteter Fehler (" + e.status + ").";
+  $("fehler-detail").textContent = e.message || "";
+  $("fehler-detail").hidden = !e.message;
+  $("fehler").hidden = false;
+  $("fehler").scrollIntoView({ block: "nearest" });
+  if (e.status === 404) laden().catch(() => {});
+}
+const fehlerWeg = () => ($("fehler").hidden = true);
+$("fehler-zu").onclick = fehlerWeg;
+
+let toastTimer;
+function toast(text) {
+  $("toast").textContent = text;
+  $("toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("show"), 3500);
 }
 
-function abmelden(grund) {
-  sessionStorage.removeItem(KEY);
-  anzeigen(false);
-  status("");
-  if (grund) zeigeFehler(grund); else fehlerWeg();
-  $("token").focus();
+function fragen(titel, text, ok) {
+  $("frage-titel").textContent = titel;
+  $("frage-text").textContent = text;
+  $("frage-ok").textContent = ok;
+  $("dlg-frage").returnValue = "";
+  $("dlg-frage").showModal();
+  return new Promise((res) => $("dlg-frage").addEventListener("close", () => res($("dlg-frage").returnValue === "ja"), { once: true }));
 }
+
+function zeigeTab(name) {
+  for (const t of ["fragebogen", "praxen"]) {
+    $(t).hidden = t !== name;
+    $("tab-" + t).setAttribute("aria-selected", t === name);
+  }
+  history.replaceState(null, "", "#" + name);
+}
+$("tab-fragebogen").onclick = () => zeigeTab("fragebogen");
+$("tab-praxen").onclick = () => zeigeTab("praxen");
 
 async function laden() {
-  const d = await api("GET", "/fragebogen");
-  praxen = d.praxen;
-  const tbody = $("liste");
-  tbody.replaceChildren(...d.fragebogen.map(zeile));
-  $("leer").hidden = d.fragebogen.length > 0;
+  data = await api("GET", "/fragebogen");
+  $("n-fragebogen").textContent = data.fragebogen.length;
+  $("n-praxen").textContent = data.praxen.length;
+  zeichneFragebogen();
+  zeichnePraxen();
 }
 
-function zeile(f) {
-  const boxen = praxen.length
-    ? praxen.map((p) => {
-        const cb = el("input", { type: "checkbox", checked: f.praxen.includes(p) });
-        cb.dataset.praxis = p;
-        cb.addEventListener("change", () => zuweisen(f, td));
-        return el("label", {}, cb, " " + p);
-      })
-    : [el("span", { className: "muted", textContent: "keine Praxen eingerichtet" })];
-  const td = el("td", { className: "praxen" }, ...boxen);
-  const ersetzen = el("button", { textContent: "Ersetzen …", title: "Neue Version dieser Datei hochladen" });
-  ersetzen.addEventListener("click", () => dateiWaehlen((text) => hochladen("PUT", "/fragebogen/" + encodeURIComponent(f.id), text, "„" + f.title + "“ ersetzt.")));
-  const loeschen = el("button", { className: "danger", textContent: "Löschen" });
-  loeschen.addEventListener("click", () => entfernen(f));
-  return el("tr", {},
-    el("td", {}, el("div", { textContent: f.title }), el("div", { className: "id", textContent: f.id })),
-    el("td", { textContent: f.version }),
-    td,
-    el("td", { className: "actions" }, ersetzen, loeschen));
+function leer(text, knopf, aktion) {
+  const b = el("button", { className: "btn primary", textContent: knopf });
+  b.onclick = aktion;
+  return el("div", { className: "empty" }, el("p", { className: "muted", textContent: text }), b);
+}
+
+function tabelle(koepfe, zeilen) {
+  return el("table", {},
+    el("thead", {}, el("tr", {}, ...koepfe.map((h) => el("th", { textContent: h })))),
+    el("tbody", {}, ...zeilen));
+}
+
+function knopf(text, klasse, aktion, title = "") {
+  const b = el("button", { className: "btn " + klasse, textContent: text, title });
+  b.onclick = aktion;
+  return b;
+}
+
+function zeichneFragebogen() {
+  if (!data.fragebogen.length) return $("fb-karte").replaceChildren(leer("Noch keine Fragebögen. Laden Sie eine YAML-Datei hoch; sie wird vor dem Speichern geprüft.", "Fragebogen hochladen", hochladenNeu));
+  $("fb-karte").replaceChildren(tabelle(["Fragebogen", "Version", "Sichtbar für", ""], data.fragebogen.map((f) => {
+    const td = el("td");
+    if (!data.praxen.length) td.append(el("span", { className: "muted", textContent: "Noch keine Praxen" }));
+    for (const p of data.praxen) {
+      const cb = el("input", { type: "checkbox", checked: f.praxen.includes(p) });
+      cb.dataset.praxis = p;
+      cb.onchange = () => zuweisen(f, td);
+      td.append(el("label", { className: "check" }, cb, el("span", { className: "mono", textContent: p })));
+    }
+    return el("tr", {},
+      el("td", {}, el("div", { textContent: f.title }), el("div", { className: "mono muted", textContent: f.id })),
+      el("td", { textContent: f.version }),
+      td,
+      el("td", { className: "actions" },
+        knopf("Ersetzen …", "", () => dateiWaehlen((file) => senden("PUT", "/fragebogen/" + encodeURIComponent(f.id), file, "„" + f.title + "“ ersetzt")), "Neue Version hochladen; die alte bleibt als .bak erhalten"),
+        knopf("Löschen", "ghost quiet-danger", () => fragebogenLoeschen(f))));
+  })));
+}
+
+function zeichnePraxen() {
+  if (!data.praxen.length) return $("px-karte").replaceChildren(leer("Noch keine Praxen. Legen Sie eine an, um ihr Zugang zur Bibliothek zu geben.", "Praxis anlegen", praxisDialog));
+  $("px-karte").replaceChildren(tabelle(["Praxis", "Sieht", ""], data.praxen.map((p) => {
+    const sichtbar = data.fragebogen.filter((f) => f.praxen.includes(p)).map((f) => f.title);
+    return el("tr", {},
+      el("td", { className: "mono", textContent: p }),
+      el("td", sichtbar.length ? { textContent: sichtbar.join(", ") } : { className: "muted", textContent: "keine Fragebögen" }),
+      el("td", { className: "actions" },
+        knopf("Neuer Schlüssel", "", () => neuerSchluessel(p)),
+        knopf("Löschen", "ghost quiet-danger", () => praxisLoeschen(p))));
+  })));
+}
+
+let beiDatei = null;
+function dateiWaehlen(fn) { beiDatei = fn; $("datei").value = ""; $("datei").click(); }
+$("datei").onchange = () => { const f = $("datei").files[0]; if (f && beiDatei) beiDatei(f); };
+const hochladenNeu = () => dateiWaehlen((file) => senden("POST", "/fragebogen", file));
+$("hochladen").onclick = hochladenNeu;
+
+async function senden(method, pfad, file, meldung) {
+  fehlerWeg();
+  try {
+    const f = await api(method, pfad, file, "application/yaml");
+    await laden();
+    toast((meldung || "„" + f.title + "“ hochgeladen") + ".");
+  } catch (e) {
+    const s = e?.status === 400 ? "Die Datei ist kein gültiger Fragebogen und wurde nicht veröffentlicht. Meldung der Prüfung (Zeilennummer in der YAML-Datei):"
+      : e?.status === 409 ? "Diesen Fragebogen gibt es schon. Für eine neue Version „Ersetzen …“ in seiner Zeile verwenden." : "";
+    fehler("„" + file.name + "“ wurde nicht gespeichert", e, s);
+  }
 }
 
 async function zuweisen(f, td) {
@@ -145,57 +317,114 @@ async function zuweisen(f, td) {
   try {
     await api("PUT", "/fragebogen/" + encodeURIComponent(f.id) + "/praxen", JSON.stringify(users), "application/json");
     f.praxen = users;
-    status("Zuordnung für „" + f.title + "“ gespeichert.");
+    zeichnePraxen();
+    toast("Sichtbarkeit von „" + f.title + "“ gespeichert.");
   } catch (e) {
     boxen.forEach((b) => (b.checked = f.praxen.includes(b.dataset.praxis)));
-    if (e) zeigeFehler("Zuordnung nicht gespeichert", e.message);
+    fehler("Sichtbarkeit nicht gespeichert", e);
   } finally {
     boxen.forEach((b) => (b.disabled = false));
   }
 }
 
-async function entfernen(f) {
-  const sichtbar = f.praxen.length ? "\n\nEr ist derzeit für " + f.praxen.length + " Praxis/Praxen sichtbar und verschwindet dort beim nächsten Abruf." : "";
-  if (!confirm("Fragebogen „" + f.title + "“ (" + f.id + ") wirklich löschen?" + sichtbar)) return;
+async function fragebogenLoeschen(f) {
+  const n = f.praxen.length;
+  const text = (n ? "Er verschwindet bei " + n + (n === 1 ? " Praxis" : " Praxen") + " beim nächsten Abruf aus der Bibliothek. " : "")
+    + "Die letzte Fassung bleibt auf dem Server als .bak-Datei erhalten.";
+  if (!(await fragen("„" + f.title + "“ löschen?", text, "Fragebogen löschen"))) return;
   fehlerWeg();
   try {
     await api("DELETE", "/fragebogen/" + encodeURIComponent(f.id));
-    status("„" + f.title + "“ gelöscht.");
     await laden();
-  } catch (e) { if (e) zeigeFehler("Löschen fehlgeschlagen", e.message); }
+    toast("„" + f.title + "“ gelöscht.");
+  } catch (e) { fehler("Löschen fehlgeschlagen", e); }
 }
 
-let beiDatei = null;
-function dateiWaehlen(fn) { beiDatei = fn; $("datei").value = ""; $("datei").click(); }
-$("datei").addEventListener("change", () => {
-  const file = $("datei").files[0];
-  if (file && beiDatei) beiDatei(file);
-});
+function zeigeSchluessel(user, key, titel) {
+  $("schluessel-titel").textContent = titel;
+  $("schluessel-user").textContent = user;
+  $("schluessel-wert").textContent = key;
+  $("kopieren").textContent = "Schlüssel kopieren";
+  $("dlg-schluessel").showModal();
+}
+// Closing must be deliberate (no Esc): the key is gone afterwards.
+$("dlg-schluessel").addEventListener("cancel", (e) => e.preventDefault());
+$("dlg-schluessel").addEventListener("close", () => ($("schluessel-wert").textContent = ""));
+$("kopieren").onclick = async () => {
+  try { await navigator.clipboard.writeText($("schluessel-wert").textContent); $("kopieren").textContent = "Kopiert ✓"; }
+  catch { getSelection().selectAllChildren($("schluessel-wert")); $("kopieren").textContent = "Markiert – mit Strg+C kopieren"; }
+};
 
-async function hochladen(method, pfad, file, meldung) {
-  fehlerWeg();
-  status("");
+function praxisDialog() {
+  $("praxis-form").reset();
+  $("praxis-fehler").hidden = true;
+  $("praxis-fb").replaceChildren(el("legend", { textContent: "Sichtbare Fragebögen" }),
+    ...(data.fragebogen.length
+      ? data.fragebogen.map((f) => el("label", { className: "check" }, el("input", { type: "checkbox", value: f.id }), f.title))
+      : [el("p", { className: "hint", textContent: "Noch keine Fragebögen; die Zuordnung geht auch später." })]));
+  $("dlg-praxis").showModal();
+}
+$("anlegen").onclick = praxisDialog;
+$("praxis-abbrechen").onclick = () => $("dlg-praxis").close();
+$("praxis-name").oninvalid = (e) => e.target.setCustomValidity(e.target.value ? "Nur Kleinbuchstaben, Ziffern, _ und - (höchstens 64 Zeichen)." : "Bitte einen Benutzernamen eingeben.");
+$("praxis-name").oninput = (e) => e.target.setCustomValidity("");
+$("praxis-form").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const user = $("praxis-name").value;
+  const fragebogen = [...$("praxis-fb").querySelectorAll("input:checked")].map((c) => c.value);
   try {
-    const f = await api(method, pfad, file, "application/yaml");
-    status(meldung || "„" + f.title + "“ hochgeladen.");
+    const r = await api("POST", "/praxen", JSON.stringify({ user, fragebogen }), "application/json");
+    $("dlg-praxis").close();
+    zeigeSchluessel(r.user, r.key, "Praxis „" + r.user + "“ angelegt");
     await laden();
-  } catch (e) { if (e) zeigeFehler("„" + file.name + "“ wurde nicht gespeichert", e.message); }
+  } catch (e) {
+    if (!e) return;
+    $("praxis-fehler").textContent = e.status === 409 ? "Diesen Benutzernamen gibt es schon." : (SUMMARY[e.status] || "Fehler.") + (e.message ? " " + e.message : "");
+    $("praxis-fehler").hidden = false;
+  }
+};
+
+async function neuerSchluessel(user) {
+  if (!(await fragen("Neuen Schlüssel für „" + user + "“ erzeugen?", "Der bisherige Schlüssel funktioniert sofort nicht mehr. Die Praxis muss den neuen in Kreuzchen eintragen, bevor sie die Bibliothek wieder abrufen kann.", "Neuen Schlüssel erzeugen"))) return;
+  fehlerWeg();
+  try {
+    const r = await api("POST", "/praxen/" + encodeURIComponent(user) + "/schluessel");
+    zeigeSchluessel(r.user, r.key, "Neuer Schlüssel für „" + r.user + "“");
+  } catch (e) { fehler("Kein neuer Schlüssel erzeugt", e); }
 }
 
-$("neu").addEventListener("click", () => dateiWaehlen((file) => hochladen("POST", "/fragebogen", file)));
-$("abmelden").addEventListener("click", () => abmelden());
-$("anmeldung").addEventListener("submit", async (ev) => {
+async function praxisLoeschen(user) {
+  if (!(await fragen("Praxis „" + user + "“ löschen?", "Ihr Zugang endet sofort. Bereits heruntergeladene Fragebögen bleiben in ihrer App erhalten. Das lässt sich nicht rückgängig machen.", "Praxis löschen"))) return;
+  fehlerWeg();
+  try {
+    await api("DELETE", "/praxen/" + encodeURIComponent(user));
+    await laden();
+    toast("Praxis „" + user + "“ gelöscht.");
+  } catch (e) { fehler("Löschen fehlgeschlagen", e); }
+}
+
+function anzeigen(an) { $("anmeldung").hidden = an; $("app").hidden = !an; $("abmelden").hidden = !an; }
+function abmelden(grund) {
+  sessionStorage.removeItem(KEY);
+  document.querySelectorAll("dialog[open]").forEach((d) => d.close());
+  anzeigen(false);
+  $("anmeldefehler").textContent = grund || "";
+  $("anmeldefehler").hidden = !grund;
+  $("token").focus();
+}
+$("abmelden").onclick = () => abmelden();
+$("anmeldung").onsubmit = async (ev) => {
   ev.preventDefault();
   sessionStorage.setItem(KEY, $("token").value);
   $("token").value = "";
   await start();
-});
+};
 
 async function start() {
-  fehlerWeg();
   if (!sessionStorage.getItem(KEY)) return abmelden();
   anzeigen(true);
-  try { await laden(); } catch (e) { if (e) zeigeFehler("Laden fehlgeschlagen", e.message); }
+  zeigeTab(location.hash === "#praxen" ? "praxen" : "fragebogen");
+  try { await laden(); } catch (e) { fehler("Die Daten konnten nicht geladen werden", e); }
 }
 start();
 </script>
