@@ -1,5 +1,4 @@
 use std::fs;
-use std::sync::Arc;
 
 use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
 use argon2::Argon2;
@@ -37,7 +36,7 @@ fn app() -> (Router, tempfile::TempDir) {
         .unwrap();
     }
     let reg = load(dir.path()).unwrap();
-    (router(Arc::new(reg)), dir)
+    (router(reg, None), dir)
 }
 
 fn basic(user: &str, key: &str) -> String {

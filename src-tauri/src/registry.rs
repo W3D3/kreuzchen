@@ -319,7 +319,7 @@ mod tests {
         Argon2,
         password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
     };
-    use std::{sync::Arc, time::Instant};
+    use std::time::Instant;
 
     const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
 
@@ -455,7 +455,7 @@ mod tests {
         )
         .unwrap();
         let reg = kreuzchen_registry::load(dir.path()).unwrap();
-        (serve(kreuzchen_registry::router(Arc::new(reg))).await, dir)
+        (serve(kreuzchen_registry::router(reg, None)).await, dir)
     }
 
     fn conn(url: &str, key: &str) -> Connection {

@@ -5,7 +5,14 @@ services:
     image: ghcr.io/w3d3/kreuzchen-registry:latest
     restart: unless-stopped
     read_only: true
+    environment:
+      # Enables /admin (upload, replace, delete, assign). Unset or empty: admin is off (404) and
+      # the server stays read-only. Generate one with e.g. `openssl rand -base64 32`, keep it in
+      # an .env file next to this one, and serve only over HTTPS: it is a bearer secret.
+      KREUZCHEN_ADMIN_TOKEN: ${KREUZCHEN_ADMIN_TOKEN:-}
     volumes:
-      - ./example:/data:ro
+      # Writable so admin changes can be saved; the directory must belong to uid 65532
+      # (`sudo chown -R 65532:65532 ./example`). Append :ro to keep it read-only without admin.
+      - ./example:/data
     ports:
       - "127.0.0.1:8080:8080"
