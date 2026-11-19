@@ -372,8 +372,8 @@ $("praxis-form").onsubmit = async (ev) => {
   ev.preventDefault();
   const user = $("praxis-name").value;
   const fragebogen = [...$("praxis-fb").querySelectorAll("input:checked")].map((c) => c.value);
-  const senden = ev.submitter;
-  if (senden) senden.disabled = true;
+  const knopfAnlegen = ev.submitter;
+  if (knopfAnlegen) knopfAnlegen.disabled = true;
   try {
     const r = await api("POST", "/praxen", JSON.stringify({ user, fragebogen }), "application/json");
     $("dlg-praxis").close();
@@ -384,7 +384,7 @@ $("praxis-form").onsubmit = async (ev) => {
     $("praxis-fehler").textContent = e.status === 409 ? "Diesen Benutzernamen gibt es schon." : (SUMMARY[e.status] || "Fehler.") + (e.message ? " " + e.message : "");
     $("praxis-fehler").hidden = false;
   } finally {
-    if (senden) senden.disabled = false;
+    if (knopfAnlegen) knopfAnlegen.disabled = false;
   }
 };
 
