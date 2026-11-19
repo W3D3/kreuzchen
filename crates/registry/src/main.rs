@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::Arc;
 
 use argon2::password_hash::{rand_core::OsRng, rand_core::RngCore, PasswordHasher, SaltString};
 use argon2::Argon2;
@@ -51,7 +50,9 @@ async fn serve(args: &[String]) -> Result<(), String> {
     let mut port: u16 = 8080;
     let mut it = args.iter();
     while let Some(a) = it.next() {
-        let v = it.next().ok_or_else(|| format!("{a}: Wert fehlt\n{USAGE}"))?;
+        let v = it
+            .next()
+            .ok_or_else(|| format!("{a}: Wert fehlt\n{USAGE}"))?;
         match a.as_str() {
             "--data" => data = v.into(),
             "--port" => port = v.parse().map_err(|_| format!("ungültiger Port {v:?}"))?,
@@ -59,11 +60,17 @@ async fn serve(args: &[String]) -> Result<(), String> {
         }
     }
     let reg = kreuzchen_registry::load(&data)?;
-    let app = kreuzchen_registry::router(Arc::new(reg)).layer(from_fn(log));
+    let token = std::env::var("KREUZCHEN_ADMIN_TOKEN").ok();
+    let admin = token.as_deref().is_some_and(|t| !t.is_empty());
+    let app = kreuzchen_registry::router(reg, token.as_deref()).layer(from_fn(log));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
         .await
         .map_err(|e| format!("Port {port}: {e}"))?;
-    eprintln!("listening on 0.0.0.0:{port}, data {}", data.display());
+    eprintln!(
+        "listening on 0.0.0.0:{port}, data {}, admin {}",
+        data.display(),
+        if admin { "on" } else { "off" }
+    );
     axum::serve(listener, app).await.map_err(|e| e.to_string())
 }
 

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Bibliotheksserver – Verwaltung</title>
+<style>
+  :root { --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #0b6bcb; --bad: #b42318; --badbg: #fef3f2; --ok: #067647; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; color: var(--fg); background: #f6f8fa; }
+  main { max-width: 64rem; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  label { font-weight: 600; }
+  input[type=password] { font: inherit; padding: .4rem .5rem; width: 100%; max-width: 28rem; border: 1px solid var(--line); border-radius: 6px; }
+  button { font: inherit; padding: .35rem .8rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+  h1 button { font-size: .9rem; font-weight: 400; }
+  button:hover { background: #f3f4f6; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger { color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .55rem .5rem; border-top: 1px solid var(--line); vertical-align: top; }
+  th { border-top: 0; color: var(--muted); font-weight: 600; font-size: .85rem; }
+  .id { font-family: ui-monospace, monospace; font-size: .85rem; color: var(--muted); }
+  .praxen label { display: block; font-weight: 400; white-space: nowrap; }
+  .actions { white-space: nowrap; text-align: right; }
+  .actions button + button { margin-left: .3rem; }
+  #fehler { display: none; background: var(--badbg); border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: .75rem 1rem; margin-bottom: 1rem; }
+  #fehler pre { white-space: pre-wrap; margin: .3rem 0 0; font: .85rem/1.4 ui-monospace, monospace; }
+  #status { color: var(--ok); min-height: 1.4em; margin-bottom: .5rem; }
+  .muted { color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bibliotheksserver – Verwaltung <button id="abmelden" hidden>Abmelden</button></h1>
+
+  <div id="fehler" role="alert"><strong id="fehler-titel"></strong><pre id="fehler-text"></pre></div>
+
+  <form id="anmeldung" class="card" hidden>
+    <p><label for="token">Admin-Token</label></p>
+    <p><input id="token" type="password" autocomplete="off" required></p>
+    <p class="muted">Das Token bleibt nur in diesem Browser-Tab gespeichert, bis Sie ihn schließen.</p>
+    <button class="primary" type="submit">Anmelden</button>
+  </form>
+
+  <div id="verwaltung" hidden>
+    <div class="card">
+      <button class="primary" id="neu">Neuen Fragebogen hochladen …</button>
+      <span class="muted">YAML-Datei; sie wird vor dem Speichern geprüft.</span>
+    </div>
+    <div id="status" role="status"></div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Fragebogen</th><th>Version</th><th>Sichtbar für Praxen</th><th></th></tr></thead>
+        <tbody id="liste"></tbody>
+      </table>
+      <p id="leer" class="muted" hidden>Noch keine Fragebögen.</p>
+    </div>
+  </div>
+  <input type="file" id="datei" accept=".yaml,.yml" hidden>
+</main>
+<script>
+"use strict";
+const KEY = "kreuzchen-admin-token";
+const $ = (id) => document.getElementById(id);
+let praxen = [];
+
+function el(tag, props = {}, ...children) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...children);
+  return e;
+}
+
+function zeigeFehler(titel, text) {
+  $("fehler-titel").textContent = titel;
+  $("fehler-text").textContent = text || "";
+  $("fehler").style.display = "block";
+  $("fehler").scrollIntoView({ block: "nearest" });
+}
+function fehlerWeg() { $("fehler").style.display = "none"; }
+function status(text) { $("status").textContent = text; }
+
+async function api(method, pfad, body, typ) {
+  const headers = { Authorization: "Bearer " + sessionStorage.getItem(KEY) };
+  if (typ) headers["Content-Type"] = typ;
+  const r = await fetch("/admin/api" + pfad, { method, headers, body });
+  if (r.status === 401) { abmelden("Das Token ist ungültig."); throw null; }
+  if (r.status === 413) throw new Error("Die Datei ist zu groß (höchstens 1 MiB).");
+  if (!r.ok) throw new Error((await r.text()) || "Fehler " + r.status);
+  return r.status === 204 ? null : r.json();
+}
+
+function anzeigen(angemeldet) {
+  $("anmeldung").hidden = angemeldet;
+  $("verwaltung").hidden = !angemeldet;
+  $("abmelden").hidden = !angemeldet;
+}
+
+function abmelden(grund) {
+  sessionStorage.removeItem(KEY);
+  anzeigen(false);
+  status("");
+  if (grund) zeigeFehler(grund); else fehlerWeg();
+  $("token").focus();
+}
+
+async function laden() {
+  const d = await api("GET", "/fragebogen");
+  praxen = d.praxen;
+  const tbody = $("liste");
+  tbody.replaceChildren(...d.fragebogen.map(zeile));
+  $("leer").hidden = d.fragebogen.length > 0;
+}
+
+function zeile(f) {
+  const boxen = praxen.length
+    ? praxen.map((p) => {
+        const cb = el("input", { type: "checkbox", checked: f.praxen.includes(p) });
+        cb.dataset.praxis = p;
+        cb.addEventListener("change", () => zuweisen(f, td));
+        return el("label", {}, cb, " " + p);
+      })
+    : [el("span", { className: "muted", textContent: "keine Praxen eingerichtet" })];
+  const td = el("td", { className: "praxen" }, ...boxen);
+  const ersetzen = el("button", { textContent: "Ersetzen …", title: "Neue Version dieser Datei hochladen" });
+  ersetzen.addEventListener("click", () => dateiWaehlen((text) => hochladen("PUT", "/fragebogen/" + encodeURIComponent(f.id), text, "„" + f.title + "“ ersetzt.")));
+  const loeschen = el("button", { className: "danger", textContent: "Löschen" });
+  loeschen.addEventListener("click", () => entfernen(f));
+  return el("tr", {},
+    el("td", {}, el("div", { textContent: f.title }), el("div", { className: "id", textContent: f.id })),
+    el("td", { textContent: f.version }),
+    td,
+    el("td", { className: "actions" }, ersetzen, loeschen));
+}
+
+async function zuweisen(f, td) {
+  const boxen = [...td.querySelectorAll("input")];
+  const users = boxen.filter((b) => b.checked).map((b) => b.dataset.praxis);
+  boxen.forEach((b) => (b.disabled = true));
+  fehlerWeg();
+  try {
+    await api("PUT", "/fragebogen/" + encodeURIComponent(f.id) + "/praxen", JSON.stringify(users), "application/json");
+    f.praxen = users;
+    status("Zuordnung für „" + f.title + "“ gespeichert.");
+  } catch (e) {
+    boxen.forEach((b) => (b.checked = f.praxen.includes(b.dataset.praxis)));
+    if (e) zeigeFehler("Zuordnung nicht gespeichert", e.message);
+  } finally {
+    boxen.forEach((b) => (b.disabled = false));
+  }
+}
+
+async function entfernen(f) {
+  const sichtbar = f.praxen.length ? "\n\nEr ist derzeit für " + f.praxen.length + " Praxis/Praxen sichtbar und verschwindet dort beim nächsten Abruf." : "";
+  if (!confirm("Fragebogen „" + f.title + "“ (" + f.id + ") wirklich löschen?" + sichtbar)) return;
+  fehlerWeg();
+  try {
+    await api("DELETE", "/fragebogen/" + encodeURIComponent(f.id));
+    status("„" + f.title + "“ gelöscht.");
+    await laden();
+  } catch (e) { if (e) zeigeFehler("Löschen fehlgeschlagen", e.message); }
+}
+
+let beiDatei = null;
+function dateiWaehlen(fn) { beiDatei = fn; $("datei").value = ""; $("datei").click(); }
+$("datei").addEventListener("change", () => {
+  const file = $("datei").files[0];
+  if (file && beiDatei) beiDatei(file);
+});
+
+async function hochladen(method, pfad, file, meldung) {
+  fehlerWeg();
+  status("");
+  try {
+    const f = await api(method, pfad, file, "application/yaml");
+    status(meldung || "„" + f.title + "“ hochgeladen.");
+    await laden();
+  } catch (e) { if (e) zeigeFehler("„" + file.name + "“ wurde nicht gespeichert", e.message); }
+}
+
+$("neu").addEventListener("click", () => dateiWaehlen((file) => hochladen("POST", "/fragebogen", file)));
+$("abmelden").addEventListener("click", () => abmelden());
+$("anmeldung").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  sessionStorage.setItem(KEY, $("token").value);
+  $("token").value = "";
+  await start();
+});
+
+async function start() {
+  fehlerWeg();
+  if (!sessionStorage.getItem(KEY)) return abmelden();
+  anzeigen(true);
+  try { await laden(); } catch (e) { if (e) zeigeFehler("Laden fehlgeschlagen", e.message); }
+}
+start();
+</script>
+</body>
+</html>

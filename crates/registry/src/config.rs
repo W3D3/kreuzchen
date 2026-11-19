@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use argon2::password_hash::PasswordHash;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Practice {
     pub user: String,
@@ -14,7 +15,8 @@ pub struct Practice {
     pub fragebogen: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+// deny_unknown_fields means serializing a Config back loses no data, only comments.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub praxen: Vec<Practice>,
@@ -27,10 +29,12 @@ pub struct Entry {
     pub version: String,
     pub hash: String,
     pub bytes: Vec<u8>,
+    pub path: PathBuf,
 }
 
 #[derive(Debug)]
 pub struct Registry {
+    pub dir: PathBuf,
     pub practices: Vec<Practice>,
     pub entries: BTreeMap<String, Entry>,
 }
@@ -52,8 +56,12 @@ pub fn safe_id(id: &str) -> bool {
 }
 
 fn load_entry(path: &Path) -> Result<Entry, String> {
-    let name = path.display();
-    let bytes = fs::read(path).map_err(|e| format!("{name}: nicht lesbar: {e}"))?;
+    let bytes = fs::read(path).map_err(|e| format!("{}: nicht lesbar: {e}", path.display()))?;
+    parse_entry(&path.display().to_string(), bytes, path.to_owned())
+}
+
+/// Parses and validates a definition exactly as `load` does; `name` prefixes error messages.
+pub fn parse_entry(name: &str, bytes: Vec<u8>, path: PathBuf) -> Result<Entry, String> {
     let text = std::str::from_utf8(&bytes).map_err(|_| format!("{name}: nicht UTF-8"))?;
     let q = kreuzchen_engine::load(text).map_err(|errs| {
         let msgs: Vec<_> = errs.iter().map(|e| e.to_string()).collect();
@@ -69,6 +77,7 @@ fn load_entry(path: &Path) -> Result<Entry, String> {
         title: d.title,
         version: d.version,
         bytes,
+        path,
     })
 }
 
@@ -115,7 +124,30 @@ pub fn load(data: &Path) -> Result<Registry, String> {
         }
     }
     Ok(Registry {
+        dir: data.to_owned(),
         practices: config.praxen,
         entries,
     })
+}
+
+/// Replaces `path` atomically: a reader sees the old or the new content, never a mix.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    let mut f = fs::File::create(&tmp)?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+    fs::rename(&tmp, path)?;
+    if let Some(dir) = path.parent() {
+        fs::File::open(dir)?.sync_all()?;
+    }
+    Ok(())
+}
+
+/// Rewrites `config.yaml` with `practices`, atomically. Comments in the file are not kept.
+pub fn write_config(dir: &Path, practices: Vec<Practice>) -> Result<(), String> {
+    let text = serde_norway::to_string(&Config { praxen: practices }).map_err(|e| e.to_string())?;
+    write_atomic(&dir.join("config.yaml"), text.as_bytes())
+        .map_err(|e| format!("config.yaml: nicht schreibbar: {e}"))
 }

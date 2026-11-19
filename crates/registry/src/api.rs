@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, SaltString};
 use argon2::{Argon2, PasswordVerifier};
@@ -10,27 +10,31 @@ use axum::routing::get;
 use axum::{Extension, Json, Router};
 use base64::Engine;
 use serde_json::json;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 use tower_http::set_header::SetResponseHeaderLayer;
 
+use crate::admin::{self, AdminState};
 use crate::{Practice, Registry};
 
 #[derive(Clone)]
 struct AppState {
-    reg: Arc<Registry>,
+    /// Swapped whole after each admin write; practices see changes on their next request.
+    reg: Arc<RwLock<Arc<Registry>>>,
     /// Verified against for unknown users so timing matches known ones.
     dummy_hash: Arc<str>,
     /// Bounds concurrent argon2 verifications (memory-hard).
     verify_slots: Arc<Semaphore>,
 }
 
-pub fn router(reg: Arc<Registry>) -> Router {
+/// `admin_token`: `None` (or empty) leaves every `/admin` route unmounted, so they answer 404.
+pub fn router(reg: Registry, admin_token: Option<&str>) -> Router {
+    let reg = Arc::new(RwLock::new(Arc::new(reg)));
     let dummy_hash = Argon2::default()
         .hash_password(b"dummy", &SaltString::generate(&mut OsRng))
         .expect("hash dummy")
         .to_string();
     let state = AppState {
-        reg,
+        reg: reg.clone(),
         dummy_hash: dummy_hash.into(),
         verify_slots: Arc::new(Semaphore::new(4)),
     };
@@ -40,13 +44,23 @@ pub fn router(reg: Arc<Registry>) -> Router {
         .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(from_fn_with_state(state.clone(), auth))
         .with_state(state);
-    Router::new()
+    let mut app = Router::new()
         .route("/healthz", get(|| async {}))
-        .nest("/v1", v1)
-        .layer(SetResponseHeaderLayer::overriding(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("no-store"),
-        ))
+        .nest("/v1", v1);
+    if let Some(token) = admin_token.filter(|t| !t.is_empty()) {
+        app = app.nest(
+            "/admin",
+            admin::router(AdminState {
+                reg,
+                token: admin::digest(token),
+                write: Arc::new(Mutex::new(())),
+            }),
+        );
+    }
+    app.layer(SetResponseHeaderLayer::overriding(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    ))
 }
 
 fn credentials(req: &Request) -> (String, String) {
@@ -63,7 +77,8 @@ fn credentials(req: &Request) -> (String, String) {
 // No WWW-Authenticate: the app sends credentials preemptively and browsers must not prompt.
 async fn auth(State(st): State<AppState>, mut req: Request, next: Next) -> Response {
     let (user, key) = credentials(&req);
-    let practice = st.reg.practices.iter().find(|p| p.user == user).cloned();
+    let reg = st.reg.read().unwrap().clone();
+    let practice = reg.practices.iter().find(|p| p.user == user).cloned();
     let hash = practice
         .as_ref()
         .map_or_else(|| st.dummy_hash.to_string(), |p| p.key_hash.clone());
@@ -94,9 +109,9 @@ async fn list(
     State(st): State<AppState>,
     Extension(p): Extension<Practice>,
 ) -> Json<Vec<serde_json::Value>> {
+    let reg = st.reg.read().unwrap().clone();
     Json(
-        st.reg
-            .entries
+        reg.entries
             .values()
             .filter(|e| p.fragebogen.contains(&e.id))
             .map(|e| json!({"id": e.id, "title": e.title, "version": e.version, "hash": e.hash}))
@@ -109,8 +124,8 @@ async fn download(
     Extension(p): Extension<Practice>,
     Path(id): Path<String>,
 ) -> Response {
-    match st
-        .reg
+    let reg = st.reg.read().unwrap().clone();
+    match reg
         .entries
         .get(&id)
         .filter(|e| p.fragebogen.contains(&e.id))
