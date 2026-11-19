@@ -83,11 +83,12 @@ fn internal(e: impl ToString) -> Fail {
     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
 }
 
-/// Re-reads the data dir so the practice API serves exactly what is on disk.
-fn reload(st: &AdminState, dir: &std::path::Path) -> Result<(), Fail> {
-    let reg = load(dir).map_err(internal)?;
-    *st.reg.write().unwrap() = Arc::new(reg);
-    Ok(())
+/// Re-reads the data dir and serves it. Called before each write too, so hand edits made since
+/// the last load are the base of the write (not overwritten), and a broken one stops it early.
+fn reload(st: &AdminState) -> Result<Arc<Registry>, Fail> {
+    let reg = Arc::new(load(&current(st).dir).map_err(internal)?);
+    *st.reg.write().unwrap() = reg.clone();
+    Ok(reg)
 }
 
 fn entry_json(reg: &Registry, e: &Entry) -> serde_json::Value {
@@ -114,7 +115,7 @@ fn parse_upload(body: Bytes) -> Result<Entry, Fail> {
 async fn upload(State(st): State<AdminState>, body: Bytes) -> Result<Response, Fail> {
     let new = parse_upload(body)?;
     let _w = st.write.lock().await;
-    let reg = current(&st);
+    let reg = reload(&st)?;
     let path = reg
         .dir
         .join("definitionen")
@@ -129,8 +130,7 @@ async fn upload(State(st): State<AdminState>, body: Bytes) -> Result<Response, F
         ));
     }
     write_atomic(&path, &new.bytes).map_err(internal)?;
-    reload(&st, &reg.dir)?;
-    let reg = current(&st);
+    let reg = reload(&st)?;
     Ok((
         StatusCode::CREATED,
         Json(entry_json(&reg, &reg.entries[&new.id])),
@@ -151,21 +151,20 @@ async fn replace(
         ));
     }
     let _w = st.write.lock().await;
-    let reg = current(&st);
+    let reg = reload(&st)?;
     let old = reg
         .entries
         .get(&id)
         .ok_or((StatusCode::NOT_FOUND, String::new()))?;
     write_atomic(&bak(&old.path), &old.bytes).map_err(internal)?;
     write_atomic(&old.path, &new.bytes).map_err(internal)?;
-    reload(&st, &reg.dir)?;
-    let reg = current(&st);
+    let reg = reload(&st)?;
     Ok(Json(entry_json(&reg, &reg.entries[&id])))
 }
 
 async fn remove(State(st): State<AdminState>, Path(id): Path<String>) -> Result<StatusCode, Fail> {
     let _w = st.write.lock().await;
-    let reg = current(&st);
+    let reg = reload(&st)?;
     let old = reg
         .entries
         .get(&id)
@@ -179,7 +178,7 @@ async fn remove(State(st): State<AdminState>, Path(id): Path<String>) -> Result<
         write_config(&reg.dir, practices).map_err(internal)?;
     }
     std::fs::rename(&old.path, bak(&old.path)).map_err(internal)?;
-    reload(&st, &reg.dir)?;
+    reload(&st)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -189,7 +188,7 @@ async fn assign(
     Json(users): Json<Vec<String>>,
 ) -> Result<Json<serde_json::Value>, Fail> {
     let _w = st.write.lock().await;
-    let reg = current(&st);
+    let reg = reload(&st)?;
     if !reg.entries.contains_key(&id) {
         return Err((StatusCode::NOT_FOUND, String::new()));
     }
@@ -209,8 +208,7 @@ async fn assign(
         }
     }
     write_config(&reg.dir, practices).map_err(internal)?;
-    reload(&st, &reg.dir)?;
-    let reg = current(&st);
+    let reg = reload(&st)?;
     Ok(Json(entry_json(&reg, &reg.entries[&id])))
 }
 

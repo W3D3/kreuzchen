@@ -79,7 +79,7 @@ Add a practice:
 1. `kreuzchen-registry key` prints `key:` (give it to the practice, it is shown once) and `key_hash:` (argon2id).
 2. Add an entry to `praxen` in `config.yaml` with a unique `user`, the `key_hash` and the `fragebogen` ids the practice may fetch.
 3. Put new definitions in `definitionen/` if needed.
-4. Restart the server; hand edits on disk are read only at startup. Changes made through `/admin` apply at once.
+4. Restart the server; hand edits on disk are read at startup (and before each `/admin` write, which builds on them; a broken edit makes the admin write fail without changing anything). Changes made through `/admin` apply at once.
 
 ### Admin
 

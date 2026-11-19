@@ -350,3 +350,47 @@ async fn concurrent_writes_all_land() {
         );
     }
 }
+
+#[tokio::test]
+async fn writes_build_on_hand_edits_since_startup() {
+    let (app, d) = setup(Some(TOKEN));
+    let cfg = d.path().join("config.yaml");
+    let hash = load(d.path()).unwrap().practices[0].key_hash.clone();
+    let mut text = fs::read_to_string(&cfg).unwrap();
+    text +=
+        &format!("  - user: praxis_neu\n    key_hash: {hash:?}\n    fragebogen: [fragebogen_b]\n");
+    fs::write(&cfg, text).unwrap();
+
+    let uri = "/admin/api/fragebogen/fragebogen_a/praxen";
+    let (s, _) = admin(&app, "PUT", uri, r#"["praxis_neu"]"#).await;
+    assert_eq!(s, StatusCode::OK);
+    let reg = load(d.path()).unwrap();
+    let neu = reg
+        .practices
+        .iter()
+        .find(|p| p.user == "praxis_neu")
+        .unwrap();
+    assert_eq!(neu.key_hash, hash);
+    assert_eq!(neu.fragebogen, ["fragebogen_b", "fragebogen_a"]);
+}
+
+#[tokio::test]
+async fn broken_hand_edit_stops_write_before_any_change() {
+    let (app, d) = setup(Some(TOKEN));
+    let cfg = d.path().join("config.yaml");
+    fs::write(&cfg, "praxen: [kaputt").unwrap();
+    let path = d.path().join("definitionen/fragebogen_a.yaml");
+    let (s, msg) = admin(
+        &app,
+        "DELETE",
+        "/admin/api/fragebogen/fragebogen_a",
+        Body::empty(),
+    )
+    .await;
+    assert_eq!(s, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(msg.contains("config.yaml"), "{msg}");
+    assert!(path.exists());
+    assert_eq!(fs::read_to_string(&cfg).unwrap(), "praxen: [kaputt");
+    // Practices keep being served from the last good state.
+    assert_eq!(practice_ids(&app).await, ["fragebogen_a"]);
+}
