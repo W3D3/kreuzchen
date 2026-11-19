@@ -109,3 +109,50 @@ fn hash_matches_app() {
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
 }
+
+#[test]
+fn github_source_reads_only_the_published_set() {
+    let quelle =
+        "quelle:\n  typ: github\n  repo: owner/fragen\n  branch: main\n  pfad: fragebogen\n";
+    let cfg = quelle.to_string() + &config(&[("praxis1", KEY_HASH, &["noch_nicht_da"])]);
+    let r = load(setup(&cfg, &ab()).path()).unwrap();
+    assert!(r.entries.is_empty(), "definitionen/ is ignored");
+    match r.source {
+        kreuzchen_registry::Source::Github(gh) => {
+            assert_eq!(gh.intervall_minuten, 5);
+            assert_eq!(gh.api_url, "https://api.github.com");
+        }
+        s => panic!("{s:?}"),
+    }
+}
+
+#[test]
+fn refuses_bad_github_source() {
+    for (quelle, needle) in [
+        (
+            "typ: github\n  repo: nur-ein-teil\n  branch: main\n  pfad: x",
+            "nur-ein-teil",
+        ),
+        (
+            "typ: github\n  repo: o/../r\n  branch: main\n  pfad: x",
+            "o/../r",
+        ),
+        (
+            "typ: github\n  repo: o/r\n  branch: \"\"\n  pfad: x",
+            "branch",
+        ),
+        (
+            "typ: github\n  repo: o/r\n  branch: main\n  pfad: x\n  intervall_minuten: 0",
+            "intervall",
+        ),
+        (
+            "typ: github\n  repo: o/r\n  branch: main\n  pfad: x\n  tokn: geheim",
+            "tokn",
+        ),
+        ("typ: gitlab", "gitlab"),
+    ] {
+        let cfg = format!("quelle:\n  {quelle}\n") + &config(&[]);
+        let e = err(setup(&cfg, &ab()).path());
+        assert!(e.contains(needle), "{needle}: {e}");
+    }
+}

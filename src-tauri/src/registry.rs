@@ -455,7 +455,10 @@ mod tests {
         )
         .unwrap();
         let reg = kreuzchen_registry::load(dir.path()).unwrap();
-        (serve(kreuzchen_registry::router(reg, None)).await, dir)
+        (
+            serve(kreuzchen_registry::router(reg, None, None)).await,
+            dir,
+        )
     }
 
     fn conn(url: &str, key: &str) -> Connection {

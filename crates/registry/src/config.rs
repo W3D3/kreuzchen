@@ -18,11 +18,54 @@ pub struct Practice {
     pub fragebogen: Vec<String>,
 }
 
+/// Where the questionnaires come from. One per deployment, never both.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "typ", rename_all = "lowercase", deny_unknown_fields)]
+pub enum Source {
+    /// `definitionen/`, managed through `/admin`.
+    #[default]
+    Lokal,
+    /// A folder in a GitHub repo, synced into `github/` (see `sync`).
+    Github(GitHub),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitHub {
+    /// `owner/name`
+    pub repo: String,
+    pub branch: String,
+    /// Folder of the YAML files inside the repo; empty for the top level.
+    pub pfad: String,
+    #[serde(default = "default_interval")]
+    pub intervall_minuten: u64,
+    #[serde(default = "default_api", skip_serializing_if = "is_default_api")]
+    pub api_url: String,
+}
+
+fn default_interval() -> u64 {
+    5
+}
+
+fn default_api() -> String {
+    "https://api.github.com".into()
+}
+
+fn is_default_api(url: &str) -> bool {
+    url == default_api()
+}
+
 // deny_unknown_fields means serializing a Config back loses no data, only comments.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[serde(default, skip_serializing_if = "is_lokal")]
+    pub quelle: Source,
     pub praxen: Vec<Practice>,
+}
+
+fn is_lokal(s: &Source) -> bool {
+    *s == Source::Lokal
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +81,7 @@ pub struct Entry {
 #[derive(Debug)]
 pub struct Registry {
     pub dir: PathBuf,
+    pub source: Source,
     pub practices: Vec<Practice>,
     pub entries: BTreeMap<String, Entry>,
 }
@@ -104,18 +148,17 @@ pub fn load(data: &Path) -> Result<Registry, String> {
     let config: Config =
         serde_norway::from_str(text).map_err(|e| format!("{}: {e}", cfg_path.display()))?;
 
-    let dir = data.join("definitionen");
-    let mut files: Vec<_> = fs::read_dir(&dir)
-        .map_err(|e| format!("{}: {e}", dir.display()))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.is_file()
-                && p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-                    e.eq_ignore_ascii_case("yaml") || e.eq_ignore_ascii_case("yml")
-                })
-        })
-        .collect();
-    files.sort();
+    let dir = match &config.quelle {
+        Source::Lokal => Some(data.join("definitionen")),
+        Source::Github(gh) => {
+            check_github(gh).map_err(|e| format!("{}: quelle: {e}", cfg_path.display()))?;
+            crate::sync::published(data)
+        }
+    };
+    let files = match dir {
+        Some(dir) => yaml_files(&dir).map_err(|e| format!("{}: {e}", dir.display()))?,
+        None => Vec::new(),
+    };
 
     let mut entries = BTreeMap::new();
     for path in files {
@@ -132,6 +175,10 @@ pub fn load(data: &Path) -> Result<Registry, String> {
         }
         PasswordHash::new(&p.key_hash)
             .map_err(|e| format!("Benutzer {:?}: ungültiger key_hash: {e}", p.user))?;
+        // From GitHub a questionnaire may vanish with the next sync; its assignments then wait.
+        if config.quelle != Source::Lokal {
+            continue;
+        }
         if let Some(id) = p.fragebogen.iter().find(|id| !entries.contains_key(*id)) {
             return Err(format!(
                 "Benutzer {:?}: unbekannter Fragebogen {id:?}",
@@ -141,9 +188,56 @@ pub fn load(data: &Path) -> Result<Registry, String> {
     }
     Ok(Registry {
         dir: data.to_owned(),
+        source: config.quelle,
         practices: config.praxen,
         entries,
     })
+}
+
+/// The `*.yaml`/`*.yml` files directly in `dir`, sorted.
+pub(crate) fn yaml_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut files: Vec<_> = fs::read_dir(dir)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_file() && is_yaml(p))
+        .collect();
+    files.sort();
+    Ok(files)
+}
+
+pub(crate) fn is_yaml(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("yaml") || e.eq_ignore_ascii_case("yml"))
+}
+
+fn check_github(gh: &GitHub) -> Result<(), String> {
+    let part = |s: &str| {
+        !s.is_empty()
+            && s != "."
+            && s != ".."
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+    };
+    if !gh
+        .repo
+        .split_once('/')
+        .is_some_and(|(o, r)| part(o) && part(r))
+    {
+        return Err(format!("repo {:?} ist nicht „owner/name“", gh.repo));
+    }
+    if gh.branch.is_empty() {
+        return Err("branch fehlt".into());
+    }
+    if gh.intervall_minuten == 0 {
+        return Err("intervall_minuten muss mindestens 1 sein".into());
+    }
+    if !(gh.api_url.starts_with("https://") || gh.api_url.starts_with("http://")) {
+        return Err(format!(
+            "api_url {:?} ist keine http(s)-Adresse",
+            gh.api_url
+        ));
+    }
+    Ok(())
 }
 
 /// Replaces `path` atomically: a reader sees the old or the new content, never a mix.
@@ -162,8 +256,12 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// Rewrites `config.yaml` with `practices`, atomically. Comments in the file are not kept.
-pub fn write_config(dir: &Path, practices: Vec<Practice>) -> Result<(), String> {
-    let text = serde_norway::to_string(&Config { praxen: practices }).map_err(|e| e.to_string())?;
+pub fn write_config(dir: &Path, quelle: &Source, practices: Vec<Practice>) -> Result<(), String> {
+    let config = Config {
+        quelle: quelle.clone(),
+        praxen: practices,
+    };
+    let text = serde_norway::to_string(&config).map_err(|e| e.to_string())?;
     write_atomic(&dir.join("config.yaml"), text.as_bytes())
         .map_err(|e| format!("config.yaml: nicht schreibbar: {e}"))
 }
