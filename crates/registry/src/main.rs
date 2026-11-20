@@ -6,6 +6,7 @@ use axum::http::header;
 use axum::middleware::{from_fn, Next};
 use axum::response::Response;
 use base64::Engine;
+use kreuzchen_registry::Source;
 
 const USAGE: &str = "usage: kreuzchen-registry serve [--data DIR] [--port N] | key";
 
@@ -51,14 +52,20 @@ async fn serve(args: &[String]) -> Result<(), String> {
         }
     }
     let reg = kreuzchen_registry::load(&data)?;
+    let source = match &reg.source {
+        Source::Local => "local".to_owned(),
+        Source::Github(gh) => format!("github {}@{}", gh.repo, gh.branch),
+    };
     let token = std::env::var("KREUZCHEN_ADMIN_TOKEN").ok();
     let admin = token.as_deref().is_some_and(|t| !t.is_empty());
-    let app = kreuzchen_registry::router(reg, token.as_deref()).layer(from_fn(log));
+    let github_token = std::env::var("KREUZCHEN_GITHUB_TOKEN").ok();
+    let app = kreuzchen_registry::router(reg, token.as_deref(), github_token.as_deref())
+        .layer(from_fn(log));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
         .await
         .map_err(|e| format!("Port {port}: {e}"))?;
     eprintln!(
-        "listening on 0.0.0.0:{port}, data {}, admin {}",
+        "listening on 0.0.0.0:{port}, data {}, admin {}, source {source}",
         data.display(),
         if admin { "on" } else { "off" }
     );

@@ -68,8 +68,9 @@ The app never shows the word "registry". Users see the server as the **Bibliothe
 Layout of the data directory (`/data` in the container, `--data DIR` otherwise):
 
 ```
-config.yaml          # practices: user, key_hash, allowed fragebogen ids
-definitionen/*.yaml  # questionnaire definitions, one file each
+config.yaml          # practices: user, key_hash, allowed fragebogen ids; optional source
+definitionen/*.yaml  # questionnaire definitions, one file each (source type local, the default)
+github/              # synced snapshot (source type github), written by the server only
 ```
 
 A sample is in [`crates/registry/example/`](crates/registry/example/). Its `config.yaml` ships with a placeholder `key_hash` that the server rejects ("ungültiger key_hash") until you replace it with one from `kreuzchen-registry key`. Run it with `kreuzchen-registry serve [--data DIR] [--port N]` (defaults `/data` and `8080`, bound to `0.0.0.0`). The server exits non-zero if the config or any definition is invalid. Each request is logged to stderr as `user path status`; keys are never logged.
@@ -85,7 +86,7 @@ Add a practice (or use **Praxen → Praxis anlegen** in `/admin`, see [Admin](#a
 
 Set `KREUZCHEN_ADMIN_TOKEN` to a long random secret (`openssl rand -base64 32`) to enable it. Unset or empty, every `/admin` route answers 404 and the server stays read-only, as before. The startup line says `admin on` or `admin off`.
 
-`/admin` is a German page built into the binary. It asks for the token and keeps it in `sessionStorage` (gone when the tab closes). It follows the app's colours, light and dark. The **Fragebögen** tab uploads, replaces and deletes questionnaires and ticks which practices see each one. The **Praxen** tab adds practices, issues a new key and deletes practices. A new key is generated on the server exactly like `kreuzchen-registry key`. Only its argon2id hash goes into `config.yaml`; the plaintext key is in the response once, shown once in a dialog with a copy button, and never logged or stored.
+`/admin` is a German page built into the binary. It asks for the token and keeps it in `sessionStorage` (gone when the tab closes). It follows the app's colours, light and dark. The **Fragebögen** tab uploads, replaces and deletes questionnaires and ticks which practices see each one. With a `type: github` source it instead shows the source (repo, branch, synced commit and age), a **Jetzt synchronisieren** button, the last sync error and the files that were not taken over; upload, replace and delete are disabled there (see [GitHub as the source](#github-as-the-source)). The **Praxen** tab adds practices, issues a new key and deletes practices. A new key is generated on the server exactly like `kreuzchen-registry key`. Only its argon2id hash goes into `config.yaml`; the plaintext key is in the response once, shown once in a dialog with a copy button, and never logged or stored.
 
 API (`Authorization: Bearer <token>`; practice Basic credentials are rejected here, and the token is rejected on `/v1`):
 
@@ -99,6 +100,8 @@ API (`Authorization: Bearer <token>`; practice Basic credentials are rejected he
 | `POST /admin/api/praxen` (JSON `{"user", "fragebogen": [id…]}`) | Adds a practice; `user` is 1–64 of `a–z 0–9 _ -`. `409` if it exists. Returns `201 {"user", "key"}`. |
 | `POST /admin/api/praxen/{user}/schluessel` | New key; the old one stops working at once. Returns `{"user", "key"}`. |
 | `DELETE /admin/api/praxen/{user}` | Removes the practice; its key stops working at once. |
+| `GET /admin/api/sync` | `{"source": "local"}`, or with GitHub `{source, repo, branch, path, sha, checked_at, error, invalid: [{file, error}…]}` (`sha`: commit of the published set; `checked_at`: Unix seconds of the last successful check). |
+| `POST /admin/api/sync` | Syncs now and returns the same status. `409` with a `local` source. |
 
 Uploads are capped at 1 MiB (`413`) and checked exactly like files at startup (engine parse and validation, safe id); on any error the response is `400` with the message and nothing is written. Each write goes to a `.tmp` file that is then renamed over the target, admin requests run one at a time, and after each write the server reloads the data directory, so practices see the change on their next list or download. Only one backup per file is kept; the next replace or delete overwrites it.
 
@@ -106,10 +109,38 @@ When the admin rewrites `config.yaml`, all practices, key hashes and lists are k
 
 The data directory must be writable by the server (uid `65532` in the image): `sudo chown -R 65532:65532 <dir>`. A fresh named volume already is. Mounted `:ro`, the practice API works as before and admin writes fail with an error.
 
+### GitHub as the source
+
+Instead of managing questionnaires through `/admin`, a deployment can take them from a folder in a GitHub repo. It is one or the other: with a `type: github` source, `definitionen/` is ignored, and upload, replace and delete answer `409` ("Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen"). Practices, key hashes and the questionnaire-to-practice assignments stay in `config.yaml` on the server and are never read from git; assigning still works in `/admin`.
+
+```yaml
+source:
+  type: github             # default: local
+  repo: owner/fragebogen
+  branch: main
+  path: fragebogen         # folder of the YAML files in the repo; "" for the top level
+  interval_minutes: 5      # optional, default 5
+praxen:
+  - ...
+```
+
+**Keep the questionnaire repo private.** Some questionnaires are copyrighted and must not be published.
+
+Access uses a fine-grained personal access token limited to that one repo with **Contents: read-only**, passed as `KREUZCHEN_GITHUB_TOKEN`. It is sent only as the `Authorization` header to the GitHub API and never logged or shown. A public repo works without it (60 requests per hour per IP, enough for the default interval).
+
+The server syncs at start, every `interval_minutes`, and on "Jetzt synchronisieren" in `/admin` (`POST /admin/api/sync`). A sync asks for the branch head (`GET /repos/{owner}/{repo}/commits/{branch}`). If the sha is unchanged, it stops there. Otherwise it downloads that commit's tarball over HTTPS (no git binary, no SSH) and takes the `*.yaml`/`*.yml` files directly in `path`. Each file is checked like an upload. The valid set is written to a new `github/<sha>-<millis>/` directory, and then `github/current` is switched to it, so practices see either the old or the new set on their next request, never a mix, without a restart.
+
+- An invalid file is not published: its last good version stays (a new file stays out), and `/admin` lists it with the error.
+- A failed fetch (network, rate limit, wrong token) keeps the current set online and shows the error in `/admin`; the next interval tries again.
+- A questionnaire removed from the repo disappears with the next sync. Its assignments in `config.yaml` stay and apply again if it comes back.
+- Before the first successful sync after a fresh install, the set is empty.
+
+There is no webhook; changes arrive within `interval_minutes` or on a manual sync. The startup line says `source github owner/repo@branch` or `source local`, and each sync logs one line.
+
 The token is a bearer secret: serve `/admin` only over HTTPS (reverse proxy or tunnel), never plain HTTP over the internet. Consider restricting `/admin` at the proxy to your own IPs.
 
 Published image: `ghcr.io/w3d3/kreuzchen-registry` (amd64). `.github/workflows/registry.yml` builds the image for every change to the engine or the registry and publishes it when a `registry-v*` tag is pushed, e.g. `registry-v0.1.0` → tags `0.1.0`, `0.1` and `latest`. The registry is versioned separately from the app. The image contains only the server, never definitions or keys.
 
-Container: `docker build -f crates/registry/Dockerfile -t kreuzchen-registry .` builds a static musl binary into a distroless, non-root image (`EXPOSE 8080`, `VOLUME /data`). [`docker-compose.example.yml`](crates/registry/docker-compose.example.yml) mounts the data directory writable and passes `KREUZCHEN_ADMIN_TOKEN` from the environment or an `.env` file. `docker compose restart` applies hand edits to the data.
+Container: `docker build -f crates/registry/Dockerfile -t kreuzchen-registry .` builds a static musl binary into a distroless, non-root image (`EXPOSE 8080`, `VOLUME /data`). [`docker-compose.example.yml`](crates/registry/docker-compose.example.yml) mounts the data directory writable and passes `KREUZCHEN_ADMIN_TOKEN` (and, for a `type: github` source, `KREUZCHEN_GITHUB_TOKEN`) from the environment or an `.env` file. `docker compose restart` applies hand edits to the data.
 
 The server speaks plain HTTP. Run it behind a Cloudflare tunnel or another HTTPS reverse proxy (required when the admin token is set) and add a rate-limit rule on `/v1/` and `/admin/api/` to throttle guessing.

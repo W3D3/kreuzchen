@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::config::{load, parse_entry, write_atomic, write_config};
+use crate::sync::Sync;
 use crate::{new_key, Entry, Practice, Registry};
 
 /// Largest accepted questionnaire upload.
@@ -27,6 +28,8 @@ pub(crate) struct AdminState {
     pub token: [u8; 32],
     /// Held for each whole read-modify-write, so admin requests never interleave.
     pub write: Arc<Mutex<()>>,
+    /// `Some` with a `type: github` source: the files are read-only here, the repo is the truth.
+    pub sync: Option<Arc<Sync>>,
 }
 
 type Fail = (StatusCode, String);
@@ -39,6 +42,7 @@ pub(crate) fn router(st: AdminState) -> Router {
         .route("/praxen", post(add_practice))
         .route("/praxen/{user}", delete(remove_practice))
         .route("/praxen/{user}/schluessel", post(rekey_practice))
+        .route("/sync", get(sync_status).post(sync_now))
         .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
         .layer(from_fn_with_state(st.clone(), auth))
@@ -112,11 +116,37 @@ async fn list(State(st): State<AdminState>) -> Json<serde_json::Value> {
     Json(json!({"praxen": praxen, "fragebogen": fragebogen}))
 }
 
+const GIT_MODE: &str = "Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen";
+
+fn files_writable(st: &AdminState) -> Result<(), Fail> {
+    match st.sync {
+        Some(_) => Err((StatusCode::CONFLICT, GIT_MODE.into())),
+        None => Ok(()),
+    }
+}
+
+async fn sync_status(State(st): State<AdminState>) -> Json<serde_json::Value> {
+    Json(match &st.sync {
+        Some(sync) => sync.status_json(),
+        None => json!({"source": "local"}),
+    })
+}
+
+async fn sync_now(State(st): State<AdminState>) -> Result<Json<serde_json::Value>, Fail> {
+    let sync = st.sync.as_ref().ok_or((
+        StatusCode::CONFLICT,
+        "Nur verfügbar, wenn die Fragebögen aus GitHub kommen".to_string(),
+    ))?;
+    sync.run().await;
+    Ok(Json(sync.status_json()))
+}
+
 fn parse_upload(body: Bytes) -> Result<Entry, Fail> {
     parse_entry("Datei", body.to_vec(), PathBuf::new()).map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 
 async fn upload(State(st): State<AdminState>, body: Bytes) -> Result<Response, Fail> {
+    files_writable(&st)?;
     let new = parse_upload(body)?;
     let _w = st.write.lock().await;
     let reg = reload(&st)?;
@@ -147,6 +177,7 @@ async fn replace(
     Path(id): Path<String>,
     body: Bytes,
 ) -> Result<Json<serde_json::Value>, Fail> {
+    files_writable(&st)?;
     let new = parse_upload(body)?;
     if new.id != id {
         return Err((
@@ -167,6 +198,7 @@ async fn replace(
 }
 
 async fn remove(State(st): State<AdminState>, Path(id): Path<String>) -> Result<StatusCode, Fail> {
+    files_writable(&st)?;
     let _w = st.write.lock().await;
     let reg = reload(&st)?;
     let old = reg
@@ -179,7 +211,7 @@ async fn remove(State(st): State<AdminState>, Path(id): Path<String>) -> Result<
         practices
             .iter_mut()
             .for_each(|p| p.fragebogen.retain(|f| *f != id));
-        write_config(&reg.dir, practices).map_err(internal)?;
+        write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
     }
     std::fs::rename(&old.path, bak(&old.path)).map_err(internal)?;
     reload(&st)?;
@@ -211,7 +243,7 @@ async fn assign(
             p.fragebogen.retain(|f| *f != id);
         }
     }
-    write_config(&reg.dir, practices).map_err(internal)?;
+    write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
     let reg = reload(&st)?;
     Ok(Json(entry_json(&reg, &reg.entries[&id])))
 }
@@ -280,7 +312,7 @@ async fn add_practice(
         key_hash,
         fragebogen: new.fragebogen,
     });
-    write_config(&reg.dir, practices).map_err(internal)?;
+    write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
     reload(&st)?;
     Ok((StatusCode::CREATED, key_response(&new.user, key)).into_response())
 }
@@ -298,7 +330,7 @@ async fn rekey_practice(
         .ok_or((StatusCode::NOT_FOUND, String::new()))?;
     let (key, key_hash) = generate_key().await?;
     p.key_hash = key_hash;
-    write_config(&reg.dir, practices).map_err(internal)?;
+    write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
     reload(&st)?;
     Ok(key_response(&user, key))
 }
@@ -314,7 +346,7 @@ async fn remove_practice(
     }
     let mut practices = reg.practices.clone();
     practices.retain(|p| p.user != user);
-    write_config(&reg.dir, practices).map_err(internal)?;
+    write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
     reload(&st)?;
     Ok(StatusCode::NO_CONTENT)
 }

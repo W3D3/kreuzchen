@@ -14,7 +14,8 @@ use tokio::sync::{Mutex, Semaphore};
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::admin::{self, AdminState};
-use crate::{Practice, Registry};
+use crate::sync::Sync;
+use crate::{Practice, Registry, Source};
 
 #[derive(Clone)]
 struct AppState {
@@ -27,8 +28,20 @@ struct AppState {
 }
 
 /// `admin_token`: `None` (or empty) leaves every `/admin` route unmounted, so they answer 404.
-pub fn router(reg: Registry, admin_token: Option<&str>) -> Router {
+/// With a `type: github` source this also starts the sync loop (needs a Tokio runtime); `github_token`
+/// is optional for public repos.
+pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&str>) -> Router {
+    let source = reg.source.clone();
     let reg = Arc::new(RwLock::new(Arc::new(reg)));
+    let write = Arc::new(Mutex::new(()));
+    let sync = match source {
+        Source::Local => None,
+        Source::Github(gh) => {
+            let sync = Arc::new(Sync::new(gh, github_token, reg.clone(), write.clone()));
+            sync.clone().spawn();
+            Some(sync)
+        }
+    };
     let dummy_hash = Argon2::default()
         .hash_password(b"dummy", &SaltString::generate(&mut OsRng))
         .expect("hash dummy")
@@ -53,7 +66,8 @@ pub fn router(reg: Registry, admin_token: Option<&str>) -> Router {
             admin::router(AdminState {
                 reg,
                 token: admin::digest(token),
-                write: Arc::new(Mutex::new(())),
+                write,
+                sync,
             }),
         );
     }

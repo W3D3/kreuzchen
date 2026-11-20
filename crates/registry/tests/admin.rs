@@ -34,7 +34,7 @@ fn setup(token: Option<&str>) -> (Router, tempfile::TempDir) {
     for id in ["fragebogen_a", "fragebogen_b"] {
         fs::write(dir.path().join(format!("definitionen/{id}.yaml")), def(id)).unwrap();
     }
-    (router(load(dir.path()).unwrap(), token), dir)
+    (router(load(dir.path()).unwrap(), token, None), dir)
 }
 
 fn basic() -> String {

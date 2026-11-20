@@ -10,9 +10,13 @@ services:
       # the server stays read-only. Generate one with e.g. `openssl rand -base64 32`, keep it in
       # an .env file next to this one, and serve only over HTTPS: it is a bearer secret.
       KREUZCHEN_ADMIN_TOKEN: ${KREUZCHEN_ADMIN_TOKEN:-}
+      # Only for a `type: github` source in config.yaml: a fine-grained token for the (private!)
+      # questionnaire repo with Contents: read-only. Optional for a public repo.
+      KREUZCHEN_GITHUB_TOKEN: ${KREUZCHEN_GITHUB_TOKEN:-}
     volumes:
-      # Writable so admin changes can be saved; the directory must belong to uid 65532
-      # (`sudo chown -R 65532:65532 ./example`). Append :ro to keep it read-only without admin.
+      # Writable so admin changes and GitHub syncs can be saved; the directory must belong to
+      # uid 65532 (`sudo chown -R 65532:65532 ./example`). Append :ro to keep it read-only
+      # without admin (not with a `type: github` source).
       - ./example:/data
     ports:
       - "127.0.0.1:8080:8080"
