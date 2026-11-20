@@ -28,14 +28,14 @@ struct AppState {
 }
 
 /// `admin_token`: `None` (or empty) leaves every `/admin` route unmounted, so they answer 404.
-/// With `quelle: github` this also starts the sync loop (needs a Tokio runtime); `github_token`
+/// With a `type: github` source this also starts the sync loop (needs a Tokio runtime); `github_token`
 /// is optional for public repos.
 pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&str>) -> Router {
     let source = reg.source.clone();
     let reg = Arc::new(RwLock::new(Arc::new(reg)));
     let write = Arc::new(Mutex::new(()));
     let sync = match source {
-        Source::Lokal => None,
+        Source::Local => None,
         Source::Github(gh) => {
             let sync = Arc::new(Sync::new(gh, github_token, reg.clone(), write.clone()));
             sync.clone().spawn();

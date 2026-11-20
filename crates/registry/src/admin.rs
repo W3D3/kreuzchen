@@ -28,7 +28,7 @@ pub(crate) struct AdminState {
     pub token: [u8; 32],
     /// Held for each whole read-modify-write, so admin requests never interleave.
     pub write: Arc<Mutex<()>>,
-    /// `Some` with `quelle: github`: the files are read-only here, the repo is the truth.
+    /// `Some` with a `type: github` source: the files are read-only here, the repo is the truth.
     pub sync: Option<Arc<Sync>>,
 }
 
@@ -128,7 +128,7 @@ fn files_writable(st: &AdminState) -> Result<(), Fail> {
 async fn sync_status(State(st): State<AdminState>) -> Json<serde_json::Value> {
     Json(match &st.sync {
         Some(sync) => sync.status_json(),
-        None => json!({"quelle": "lokal"}),
+        None => json!({"source": "local"}),
     })
 }
 

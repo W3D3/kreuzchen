@@ -1,7 +1,7 @@
 //! GitHub as the source of the questionnaires: resolve the branch head, download its tarball when
-//! it moved, validate every YAML file in `pfad` and publish the result atomically.
+//! it moved, validate every YAML file in `path` and publish the result atomically.
 //!
-//! On disk: `github/<sha>-<millis>/` holds one published set, `github/aktuell` names the live one.
+//! On disk: `github/<sha>-<millis>/` holds one published set, `github/current` names the live one.
 //! `load` reads only through that pointer, so a set is either fully published or not at all.
 
 use std::collections::HashSet;
@@ -20,10 +20,10 @@ use tokio::sync::Mutex;
 use crate::config::{is_yaml, load, parse_entry, write_atomic, GitHub};
 use crate::{Registry, MAX_UPLOAD};
 
-const POINTER: &str = "aktuell";
+const POINTER: &str = "current";
 const MAX_TARBALL: usize = 64 * 1024 * 1024;
 
-/// The directory `github/aktuell` points at; `None` before the first sync.
+/// The directory `github/current` points at; `None` before the first sync.
 pub(crate) fn published(data: &Path) -> Option<PathBuf> {
     let root = data.join("github");
     let name = fs::read_to_string(root.join(POINTER)).ok()?;
@@ -43,8 +43,8 @@ fn is_sha(s: &str) -> bool {
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Invalid {
-    datei: String,
-    fehler: String,
+    file: String,
+    error: String,
 }
 
 #[derive(Clone, Default)]
@@ -52,9 +52,9 @@ struct Status {
     /// Commit of the published set.
     sha: Option<String>,
     /// Unix seconds of the last successful check against GitHub.
-    stand: Option<u64>,
-    fehler: Option<String>,
-    ungueltig: Vec<Invalid>,
+    checked_at: Option<u64>,
+    error: Option<String>,
+    invalid: Vec<Invalid>,
 }
 
 // No Debug: it holds the token.
@@ -100,9 +100,9 @@ impl Sync {
         }
     }
 
-    /// Syncs now, then every `intervall_minuten`, for as long as the server runs.
+    /// Syncs now, then every `interval_minutes`, for as long as the server runs.
     pub fn spawn(self: Arc<Self>) {
-        let every = Duration::from_secs(self.gh.intervall_minuten * 60);
+        let every = Duration::from_secs(self.gh.interval_minutes * 60);
         tokio::spawn(async move {
             loop {
                 self.run().await;
@@ -128,14 +128,14 @@ impl Sync {
                         invalid.len()
                     );
                     st.sha = Some(sha);
-                    st.ungueltig = invalid;
+                    st.invalid = invalid;
                 }
-                st.stand = Some(now());
-                st.fehler = None;
+                st.checked_at = Some(now());
+                st.error = None;
             }
             Err(e) => {
                 eprintln!("sync {}@{}: {e}", self.gh.repo, self.gh.branch);
-                st.fehler = Some(e);
+                st.error = Some(e);
             }
         }
     }
@@ -143,14 +143,14 @@ impl Sync {
     pub fn status_json(&self) -> serde_json::Value {
         let st = self.status.lock().unwrap().clone();
         json!({
-            "quelle": "github",
+            "source": "github",
             "repo": self.gh.repo,
             "branch": self.gh.branch,
-            "pfad": self.gh.pfad,
+            "path": self.gh.path,
             "sha": st.sha,
-            "stand": st.stand,
-            "fehler": st.fehler,
-            "ungueltig": st.ungueltig,
+            "checked_at": st.checked_at,
+            "error": st.error,
+            "invalid": st.invalid,
         })
     }
 
@@ -169,13 +169,13 @@ impl Sync {
             return Err("GitHub lieferte keinen Commit für den Branch".into());
         }
         // The first run after a start always downloads: the invalid list is not kept on disk.
-        if prev.stand.is_some() && prev.sha.as_deref() == Some(&sha) {
+        if prev.checked_at.is_some() && prev.sha.as_deref() == Some(&sha) {
             return Ok(None);
         }
         let tarball = self
             .get("tarball", &sha, "application/vnd.github+json", MAX_TARBALL)
             .await?;
-        let files = extract(&tarball, &self.gh.pfad)?;
+        let files = extract(&tarball, &self.gh.path)?;
         let _write = self.write.lock().await;
         let data = self.reg.read().unwrap().dir.clone();
         let invalid = publish(&data, &sha, files)?;
@@ -244,10 +244,10 @@ fn now() -> u64 {
 
 type Files = Vec<(String, Result<Vec<u8>, String>)>;
 
-/// The YAML files directly in `pfad` of a GitHub tarball, whose entries all sit in one top folder.
-fn extract(tarball: &[u8], pfad: &str) -> Result<Files, String> {
+/// The YAML files directly in `folder` of a GitHub tarball, whose entries all sit in one top folder.
+fn extract(tarball: &[u8], folder: &str) -> Result<Files, String> {
     let bad = |e: std::io::Error| format!("Archiv von GitHub unlesbar: {e}");
-    let want: Vec<&str> = pfad.split('/').filter(|s| !s.is_empty()).collect();
+    let want: Vec<&str> = folder.split('/').filter(|s| !s.is_empty()).collect();
     let mut files = Vec::new();
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tarball));
     for entry in archive.entries().map_err(bad)? {
@@ -286,7 +286,7 @@ fn extract(tarball: &[u8], pfad: &str) -> Result<Files, String> {
 }
 
 /// Writes the valid `files` (an invalid one falls back to its published version) to a new snapshot
-/// and points `github/aktuell` at it. Returns the invalid files.
+/// and points `github/current` at it. Returns the invalid files.
 fn publish(data: &Path, sha: &str, files: Files) -> Result<Vec<Invalid>, String> {
     let io = |e: std::io::Error| format!("github/: nicht schreibbar: {e}");
     let root = data.join("github");
@@ -297,10 +297,10 @@ fn publish(data: &Path, sha: &str, files: Files) -> Result<Vec<Invalid>, String>
     for (name, new) in files {
         let entry = match new.and_then(|b| parse_entry(&name, b, PathBuf::new())) {
             Ok(e) => e,
-            Err(fehler) => {
+            Err(error) => {
                 invalid.push(Invalid {
-                    datei: name.clone(),
-                    fehler,
+                    file: name.clone(),
+                    error,
                 });
                 let last = old.as_ref().and_then(|d| fs::read(d.join(&name)).ok());
                 match last.and_then(|b| parse_entry(&name, b, PathBuf::new()).ok()) {
@@ -311,8 +311,8 @@ fn publish(data: &Path, sha: &str, files: Files) -> Result<Vec<Invalid>, String>
         };
         if !ids.insert(entry.id.clone()) {
             invalid.push(Invalid {
-                fehler: format!("{name}: doppelte id {:?}", entry.id),
-                datei: name,
+                error: format!("{name}: doppelte id {:?}", entry.id),
+                file: name,
             });
             continue;
         }

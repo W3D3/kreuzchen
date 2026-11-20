@@ -52,8 +52,8 @@ async fn serve(args: &[String]) -> Result<(), String> {
         }
     }
     let reg = kreuzchen_registry::load(&data)?;
-    let quelle = match &reg.source {
-        Source::Lokal => "lokal".to_owned(),
+    let source = match &reg.source {
+        Source::Local => "local".to_owned(),
         Source::Github(gh) => format!("github {}@{}", gh.repo, gh.branch),
     };
     let token = std::env::var("KREUZCHEN_ADMIN_TOKEN").ok();
@@ -65,7 +65,7 @@ async fn serve(args: &[String]) -> Result<(), String> {
         .await
         .map_err(|e| format!("Port {port}: {e}"))?;
     eprintln!(
-        "listening on 0.0.0.0:{port}, data {}, admin {}, quelle {quelle}",
+        "listening on 0.0.0.0:{port}, data {}, admin {}, source {source}",
         data.display(),
         if admin { "on" } else { "off" }
     );

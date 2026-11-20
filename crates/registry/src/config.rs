@@ -20,11 +20,11 @@ pub struct Practice {
 
 /// Where the questionnaires come from. One per deployment, never both.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "typ", rename_all = "lowercase", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Source {
     /// `definitionen/`, managed through `/admin`.
     #[default]
-    Lokal,
+    Local,
     /// A folder in a GitHub repo, synced into `github/` (see `sync`).
     Github(GitHub),
 }
@@ -36,9 +36,9 @@ pub struct GitHub {
     pub repo: String,
     pub branch: String,
     /// Folder of the YAML files inside the repo; empty for the top level.
-    pub pfad: String,
+    pub path: String,
     #[serde(default = "default_interval")]
-    pub intervall_minuten: u64,
+    pub interval_minutes: u64,
     #[serde(default = "default_api", skip_serializing_if = "is_default_api")]
     pub api_url: String,
 }
@@ -59,13 +59,13 @@ fn is_default_api(url: &str) -> bool {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    #[serde(default, skip_serializing_if = "is_lokal")]
-    pub quelle: Source,
+    #[serde(default, skip_serializing_if = "is_local")]
+    pub source: Source,
     pub praxen: Vec<Practice>,
 }
 
-fn is_lokal(s: &Source) -> bool {
-    *s == Source::Lokal
+fn is_local(s: &Source) -> bool {
+    *s == Source::Local
 }
 
 #[derive(Debug, Clone)]
@@ -148,10 +148,10 @@ pub fn load(data: &Path) -> Result<Registry, String> {
     let config: Config =
         serde_norway::from_str(text).map_err(|e| format!("{}: {e}", cfg_path.display()))?;
 
-    let dir = match &config.quelle {
-        Source::Lokal => Some(data.join("definitionen")),
+    let dir = match &config.source {
+        Source::Local => Some(data.join("definitionen")),
         Source::Github(gh) => {
-            check_github(gh).map_err(|e| format!("{}: quelle: {e}", cfg_path.display()))?;
+            check_github(gh).map_err(|e| format!("{}: source: {e}", cfg_path.display()))?;
             crate::sync::published(data)
         }
     };
@@ -176,7 +176,7 @@ pub fn load(data: &Path) -> Result<Registry, String> {
         PasswordHash::new(&p.key_hash)
             .map_err(|e| format!("Benutzer {:?}: ungültiger key_hash: {e}", p.user))?;
         // From GitHub a questionnaire may vanish with the next sync; its assignments then wait.
-        if config.quelle != Source::Lokal {
+        if config.source != Source::Local {
             continue;
         }
         if let Some(id) = p.fragebogen.iter().find(|id| !entries.contains_key(*id)) {
@@ -188,7 +188,7 @@ pub fn load(data: &Path) -> Result<Registry, String> {
     }
     Ok(Registry {
         dir: data.to_owned(),
-        source: config.quelle,
+        source: config.source,
         practices: config.praxen,
         entries,
     })
@@ -228,8 +228,8 @@ fn check_github(gh: &GitHub) -> Result<(), String> {
     if gh.branch.is_empty() {
         return Err("branch fehlt".into());
     }
-    if gh.intervall_minuten == 0 {
-        return Err("intervall_minuten muss mindestens 1 sein".into());
+    if gh.interval_minutes == 0 {
+        return Err("interval_minutes muss mindestens 1 sein".into());
     }
     if !(gh.api_url.starts_with("https://") || gh.api_url.starts_with("http://")) {
         return Err(format!(
@@ -256,9 +256,9 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// Rewrites `config.yaml` with `practices`, atomically. Comments in the file are not kept.
-pub fn write_config(dir: &Path, quelle: &Source, practices: Vec<Practice>) -> Result<(), String> {
+pub fn write_config(dir: &Path, source: &Source, practices: Vec<Practice>) -> Result<(), String> {
     let config = Config {
-        quelle: quelle.clone(),
+        source: source.clone(),
         praxen: practices,
     };
     let text = serde_norway::to_string(&config).map_err(|e| e.to_string())?;

@@ -119,7 +119,7 @@ fn data_dir(api_url: &str) -> tempfile::TempDir {
     fs::write(
         dir.path().join("config.yaml"),
         format!(
-            "quelle:\n  typ: github\n  repo: o/r\n  branch: main\n  pfad: /fragebogen/\n  api_url: {api_url}\n\
+            "source:\n  type: github\n  repo: o/r\n  branch: main\n  path: /fragebogen/\n  api_url: {api_url}\n\
              praxen:\n  - user: praxis_a\n    key_hash: {key_hash:?}\n    fragebogen: [fb_a, fb_b, fb_c]\n"
         ),
     )
@@ -146,7 +146,7 @@ async fn setup(fail_first: bool) -> Env {
     let app = router(load(dir.path()).unwrap(), Some(ADMIN), Some(GH_TOKEN));
     for _ in 0..500 {
         let s = status(&app).await;
-        if !s["stand"].is_null() || !s["fehler"].is_null() {
+        if !s["checked_at"].is_null() || !s["error"].is_null() {
             return Env { app, mock, dir };
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -211,7 +211,7 @@ async fn practice_ids(app: &Router) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn first_sync_publishes_only_yaml_directly_in_pfad() {
+async fn first_sync_publishes_only_yaml_directly_in_path() {
     let env = setup(false).await;
     assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
     let (s, body) = practice(&env.app, "/v1/fragebogen/fb_a").await;
@@ -219,13 +219,13 @@ async fn first_sync_publishes_only_yaml_directly_in_pfad() {
     assert_eq!(body, def("fb_a", "1"));
 
     let st = status(&env.app).await;
-    assert_eq!(st["quelle"], "github");
+    assert_eq!(st["source"], "github");
     assert_eq!(st["repo"], "o/r");
     assert_eq!(st["branch"], "main");
     assert_eq!(st["sha"], SHA1);
-    assert!(st["stand"].as_u64().unwrap() > 0);
-    assert!(st["fehler"].is_null());
-    assert_eq!(st["ungueltig"], serde_json::json!([]));
+    assert!(st["checked_at"].as_u64().unwrap() > 0);
+    assert!(st["error"].is_null());
+    assert_eq!(st["invalid"], serde_json::json!([]));
 
     // The admin list shows the same set; a restart serves it before reaching GitHub.
     let (_, list) = admin(&env.app, "GET", "/admin/api/fragebogen", "").await;
@@ -259,15 +259,15 @@ async fn new_head_is_published_and_invalid_files_keep_their_last_good_version() 
     }
     let st = sync_now(&env.app).await;
     assert_eq!(st["sha"], SHA2);
-    assert!(st["fehler"].is_null());
-    let bad: Vec<_> = st["ungueltig"]
+    assert!(st["error"].is_null());
+    let bad: Vec<_> = st["invalid"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|i| i["datei"].as_str().unwrap())
+        .map(|i| i["file"].as_str().unwrap())
         .collect();
     assert_eq!(bad, ["a.yaml", "c.yaml"]);
-    assert!(st["ungueltig"][0]["fehler"]
+    assert!(st["invalid"][0]["error"]
         .as_str()
         .unwrap()
         .contains("a.yaml"));
@@ -306,8 +306,8 @@ async fn failed_fetch_keeps_the_set_and_never_shows_the_token() {
         m.head = SHA2.into();
     }
     let st = sync_now(&env.app).await;
-    let fehler = st["fehler"].as_str().unwrap();
-    assert!(fehler.contains("502"), "{fehler}");
+    let error = st["error"].as_str().unwrap();
+    assert!(error.contains("502"), "{error}");
     assert_eq!(st["sha"], SHA1);
     assert!(!st.to_string().contains(GH_TOKEN));
     assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
@@ -315,7 +315,7 @@ async fn failed_fetch_keeps_the_set_and_never_shows_the_token() {
     // Missing tarball: same, the published set stays.
     env.mock.lock().unwrap().fail = false;
     let st = sync_now(&env.app).await;
-    assert!(st["fehler"].as_str().unwrap().contains("404"));
+    assert!(st["error"].as_str().unwrap().contains("404"));
     assert_eq!(st["sha"], SHA1);
     assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
 }
@@ -392,7 +392,7 @@ async fn git_mode_manages_practices_and_keeps_the_source() {
 }
 
 #[tokio::test]
-async fn lokal_mode_reports_its_source_and_refuses_sync() {
+async fn local_mode_reports_its_source_and_refuses_sync() {
     let key_hash = Argon2::default()
         .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
         .unwrap()
@@ -405,7 +405,7 @@ async fn lokal_mode_reports_its_source_and_refuses_sync() {
     )
     .unwrap();
     let app = router(load(dir.path()).unwrap(), Some(ADMIN), Some(GH_TOKEN));
-    assert_eq!(status(&app).await, serde_json::json!({"quelle": "lokal"}));
+    assert_eq!(status(&app).await, serde_json::json!({"source": "local"}));
     let (s, _) = admin(&app, "POST", "/admin/api/sync", "").await;
     assert_eq!(s, StatusCode::CONFLICT);
     let (s, _) = admin(&app, "POST", "/admin/api/fragebogen", &def("neu", "1")).await;
@@ -446,7 +446,7 @@ async fn server_log_never_contains_the_token() {
     child.kill().unwrap();
     child.wait().unwrap();
     let log = log.join("\n");
-    assert!(log.contains("quelle github o/r@main"), "{log}");
+    assert!(log.contains("source github o/r@main"), "{log}");
     assert!(log.contains("sync o/r@main: GitHub antwortet 502"), "{log}");
     assert!(!log.contains(GH_TOKEN), "{log}");
     assert_eq!(mock.lock().unwrap().auth, [format!("Bearer {GH_TOKEN}")]);

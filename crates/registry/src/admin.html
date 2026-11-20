@@ -79,11 +79,11 @@
   .err { color: var(--danger); font-size: .9rem; }
   .key { font: 1rem/1.4 var(--mono); padding: .7rem .8rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; word-break: break-all; user-select: all; }
   .warn { background: var(--accent-soft); border-radius: 8px; padding: .7rem .9rem; font-size: .9rem; }
-  .quelle { padding: .9rem 1rem; margin-bottom: 1rem; display: grid; gap: .6rem; }
-  .quelle .row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-  .quelle .row > div { flex: 1; }
-  .quelle ul { margin: .2rem 0 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
-  .quelle pre { white-space: pre-wrap; margin: .1rem 0 0; font: .8rem/1.45 var(--mono); color: var(--danger); }
+  .source { padding: .9rem 1rem; margin-bottom: 1rem; display: grid; gap: .6rem; }
+  .source .row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .source .row > div { flex: 1; }
+  .source ul { margin: .2rem 0 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
+  .source pre { white-space: pre-wrap; margin: .1rem 0 0; font: .8rem/1.45 var(--mono); color: var(--danger); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -122,15 +122,15 @@
         <div><h2>Fragebögen</h2><p class="muted">Häkchen bestimmen, welche Praxen einen Fragebogen in ihrer Bibliothek sehen.</p></div>
         <button class="btn primary" id="hochladen">Fragebogen hochladen</button>
       </div>
-      <div class="card quelle" id="quelle" hidden>
+      <div class="card source" id="source" hidden>
         <div class="row">
-          <div><strong>Quelle:</strong> <span id="quelle-text"></span></div>
+          <div><strong>Quelle:</strong> <span id="source-text"></span></div>
           <button class="btn" id="sync">Jetzt synchronisieren</button>
         </div>
-        <p class="err" id="sync-fehler" hidden></p>
-        <div id="ungueltig-block" hidden>
+        <p class="err" id="sync-error" hidden></p>
+        <div id="invalid-block" hidden>
           <p class="hint">Nicht übernommen – es gilt die zuletzt gültige Version, falls es eine gab:</p>
-          <ul id="ungueltig"></ul>
+          <ul id="invalid-list"></ul>
         </div>
         <p class="hint">Die Fragebögen werden im Repository gepflegt. Hochladen, Ersetzen und Löschen sind hier abgeschaltet; die Sichtbarkeit legen Sie weiterhin hier fest.</p>
       </div>
@@ -183,7 +183,7 @@ const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 let data = { praxen: [], fragebogen: [] };
 let git = false;
-const GIT_MODUS = "Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen.";
+const GIT_MODE = "Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen.";
 
 const SUMMARY = {
   0: "Der Server ist nicht erreichbar. Bitte Verbindung prüfen und erneut versuchen.",
@@ -252,49 +252,49 @@ $("tab-praxen").onclick = () => zeigeTab("praxen");
 async function laden() {
   let sync;
   [data, sync] = await Promise.all([api("GET", "/fragebogen"), api("GET", "/sync")]);
-  zeichneQuelle(sync);
+  drawSource(sync);
   $("n-fragebogen").textContent = data.fragebogen.length;
   $("n-praxen").textContent = data.praxen.length;
   zeichneFragebogen();
   zeichnePraxen();
 }
 
-function zeichneQuelle(s) {
-  git = s.quelle === "github";
-  $("quelle").hidden = !git;
+function drawSource(s) {
+  git = s.source === "github";
+  $("source").hidden = !git;
   $("hochladen").disabled = git;
-  $("hochladen").title = git ? GIT_MODUS : "";
+  $("hochladen").title = git ? GIT_MODE : "";
   if (!git) return;
-  const pfad = s.pfad.replace(/^\/+|\/+$/g, "");
-  const stand = s.sha ? ", Stand " + s.sha.slice(0, 7) : ", noch nicht synchronisiert";
-  $("quelle-text").textContent = "GitHub " + s.repo + " @ " + s.branch + (pfad ? " (" + pfad + ")" : "") + stand + (s.stand ? ", " + vor(s.stand) : "");
-  $("sync-fehler").hidden = !s.fehler;
-  $("sync-fehler").textContent = "Letzte Synchronisierung fehlgeschlagen: " + s.fehler + ". Der bisherige Stand bleibt online.";
-  $("ungueltig-block").hidden = !s.ungueltig.length;
-  $("ungueltig").replaceChildren(...s.ungueltig.map((i) => el("li", {}, el("strong", { className: "mono", textContent: i.datei }), el("pre", { textContent: i.fehler }))));
+  const path = s.path.replace(/^\/+|\/+$/g, "");
+  const synced = s.sha ? ", Stand " + s.sha.slice(0, 7) : ", noch nicht synchronisiert";
+  $("source-text").textContent = "GitHub " + s.repo + " @ " + s.branch + (path ? " (" + path + ")" : "") + synced + (s.checked_at ? ", " + ago(s.checked_at) : "");
+  $("sync-error").hidden = !s.error;
+  $("sync-error").textContent = "Letzte Synchronisierung fehlgeschlagen: " + s.error + ". Der bisherige Stand bleibt online.";
+  $("invalid-block").hidden = !s.invalid.length;
+  $("invalid-list").replaceChildren(...s.invalid.map((i) => el("li", {}, el("strong", { className: "mono", textContent: i.file }), el("pre", { textContent: i.error }))));
 }
 
-function vor(sekunden) {
-  const min = Math.floor((Date.now() / 1000 - sekunden) / 60);
+function ago(seconds) {
+  const min = Math.floor((Date.now() / 1000 - seconds) / 60);
   if (min < 1) return "gerade eben";
   if (min < 60) return "vor " + min + " Min.";
   if (min < 24 * 60) return "vor " + Math.floor(min / 60) + " Std.";
-  return "am " + new Date(sekunden * 1000).toLocaleString("de");
+  return "am " + new Date(seconds * 1000).toLocaleString("de");
 }
 
 $("sync").onclick = async () => {
-  const b = $("sync");
-  b.disabled = true;
-  b.textContent = "Synchronisiere …";
+  const button = $("sync");
+  button.disabled = true;
+  button.textContent = "Synchronisiere …";
   fehlerWeg();
   try {
     const s = await api("POST", "/sync");
     await laden();
-    toast(s.fehler ? "Synchronisierung fehlgeschlagen; der bisherige Stand bleibt online." : "Synchronisiert, Stand " + s.sha.slice(0, 7) + ".");
+    toast(s.error ? "Synchronisierung fehlgeschlagen; der bisherige Stand bleibt online." : "Synchronisiert, Stand " + s.sha.slice(0, 7) + ".");
   } catch (e) { fehler("Synchronisierung fehlgeschlagen", e); }
   finally {
-    b.disabled = false;
-    b.textContent = "Jetzt synchronisieren";
+    button.disabled = false;
+    button.textContent = "Jetzt synchronisieren";
   }
 };
 
@@ -317,8 +317,8 @@ function knopf(text, klasse, aktion, title = "") {
 }
 
 // Questionnaire files come from the repo in git mode: the button stays visible but disabled.
-function dateiKnopf(text, klasse, aktion, title = "") {
-  const b = knopf(text, klasse, aktion, git ? GIT_MODUS : title);
+function fileButton(text, cls, action, title = "") {
+  const b = knopf(text, cls, action, git ? GIT_MODE : title);
   b.disabled = git;
   return b;
 }
@@ -340,8 +340,8 @@ function zeichneFragebogen() {
       el("td", { textContent: f.version }),
       td,
       el("td", { className: "actions" },
-        dateiKnopf("Ersetzen …", "", () => dateiWaehlen((file) => senden("PUT", "/fragebogen/" + encodeURIComponent(f.id), file, "„" + f.title + "“ ersetzt")), "Neue Version hochladen; die alte bleibt als .bak erhalten"),
-        dateiKnopf("Löschen", "ghost quiet-danger", () => fragebogenLoeschen(f))));
+        fileButton("Ersetzen …", "", () => dateiWaehlen((file) => senden("PUT", "/fragebogen/" + encodeURIComponent(f.id), file, "„" + f.title + "“ ersetzt")), "Neue Version hochladen; die alte bleibt als .bak erhalten"),
+        fileButton("Löschen", "ghost quiet-danger", () => fragebogenLoeschen(f))));
   })));
 }
 

@@ -112,14 +112,14 @@ fn hash_matches_app() {
 
 #[test]
 fn github_source_reads_only_the_published_set() {
-    let quelle =
-        "quelle:\n  typ: github\n  repo: owner/fragen\n  branch: main\n  pfad: fragebogen\n";
-    let cfg = quelle.to_string() + &config(&[("praxis1", KEY_HASH, &["noch_nicht_da"])]);
+    let source =
+        "source:\n  type: github\n  repo: owner/fragen\n  branch: main\n  path: fragebogen\n";
+    let cfg = source.to_string() + &config(&[("praxis1", KEY_HASH, &["noch_nicht_da"])]);
     let r = load(setup(&cfg, &ab()).path()).unwrap();
     assert!(r.entries.is_empty(), "definitionen/ is ignored");
     match r.source {
         kreuzchen_registry::Source::Github(gh) => {
-            assert_eq!(gh.intervall_minuten, 5);
+            assert_eq!(gh.interval_minutes, 5);
             assert_eq!(gh.api_url, "https://api.github.com");
         }
         s => panic!("{s:?}"),
@@ -128,30 +128,30 @@ fn github_source_reads_only_the_published_set() {
 
 #[test]
 fn refuses_bad_github_source() {
-    for (quelle, needle) in [
+    for (source, needle) in [
         (
-            "typ: github\n  repo: nur-ein-teil\n  branch: main\n  pfad: x",
+            "type: github\n  repo: nur-ein-teil\n  branch: main\n  path: x",
             "nur-ein-teil",
         ),
         (
-            "typ: github\n  repo: o/../r\n  branch: main\n  pfad: x",
+            "type: github\n  repo: o/../r\n  branch: main\n  path: x",
             "o/../r",
         ),
         (
-            "typ: github\n  repo: o/r\n  branch: \"\"\n  pfad: x",
+            "type: github\n  repo: o/r\n  branch: \"\"\n  path: x",
             "branch",
         ),
         (
-            "typ: github\n  repo: o/r\n  branch: main\n  pfad: x\n  intervall_minuten: 0",
-            "intervall",
+            "type: github\n  repo: o/r\n  branch: main\n  path: x\n  interval_minutes: 0",
+            "interval",
         ),
         (
-            "typ: github\n  repo: o/r\n  branch: main\n  pfad: x\n  tokn: geheim",
+            "type: github\n  repo: o/r\n  branch: main\n  path: x\n  tokn: geheim",
             "tokn",
         ),
-        ("typ: gitlab", "gitlab"),
+        ("type: gitlab", "gitlab"),
     ] {
-        let cfg = format!("quelle:\n  {quelle}\n") + &config(&[]);
+        let cfg = format!("source:\n  {source}\n") + &config(&[]);
         let e = err(setup(&cfg, &ab()).path());
         assert!(e.contains(needle), "{needle}: {e}");
     }
