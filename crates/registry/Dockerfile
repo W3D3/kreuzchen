@@ -1,5 +1,8 @@
 FROM rust:1 AS build
 RUN rustup target add x86_64-unknown-linux-musl
+# ring (TLS for the GitHub sync) compiles C for the musl target.
+RUN apt-get update && apt-get install -y --no-install-recommends musl-tools && rm -rf /var/lib/apt/lists/*
+ENV CC_x86_64_unknown_linux_musl=musl-gcc
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates/engine crates/engine
