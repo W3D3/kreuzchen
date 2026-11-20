@@ -62,13 +62,13 @@ it("errorList accepts arrays and multi-line strings", () => {
 
 describe("dirty tracking", () => {
   it("an opened file is clean until the form changes", () => {
-    const d = openDoc("a.yaml", "h", "id: x", template());
+    const d = openDoc("a.yaml", "h", "x", "id: x", template());
     expect(isDirty(d)).toBe(false);
     d.def!.title = "Anders";
     expect(isDirty(d)).toBe(true);
   });
   it("a file that does not parse opens in the YAML view", () => {
-    expect(openDoc("a.yaml", "h", "id: [", null).mode).toBe("yaml");
+    expect(openDoc("a.yaml", "h", null, "id: [", null).mode).toBe("yaml");
   });
   it("a new draft counts as unsaved", () => {
     expect(isDirty(newDoc())).toBe(true);

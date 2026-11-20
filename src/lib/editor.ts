@@ -4,6 +4,7 @@ import type { Definition, FieldValue, KeyRef } from "./types";
 export interface Doc {
   file: string | null; // null until the first save
   hash: string | null; // hash of the file as last read or written
+  id: string | null; // the id in that file; drafts and saved results find it by this
   mode: "form" | "yaml";
   def: Definition | null; // what the form view edits
   yaml: string; // the YAML view's text; in form view, the text `def` was parsed from
@@ -11,11 +12,11 @@ export interface Doc {
   dirty: boolean; // set once the YAML text was edited
 }
 
-export function openDoc(file: string, hash: string, yaml: string, def: Definition | null): Doc {
-  return { file, hash, mode: def ? "form" : "yaml", def, yaml, snapshot: def ? JSON.stringify(def) : "", dirty: false };
+export function openDoc(file: string, hash: string, id: string | null, yaml: string, def: Definition | null): Doc {
+  return { file, hash, id, mode: def ? "form" : "yaml", def, yaml, snapshot: def ? JSON.stringify(def) : "", dirty: false };
 }
 
-export const newDoc = (): Doc => ({ file: null, hash: null, mode: "form", def: template(), yaml: "", snapshot: "", dirty: false });
+export const newDoc = (): Doc => ({ file: null, hash: null, id: null, mode: "form", def: template(), yaml: "", snapshot: "", dirty: false });
 
 /** True when the form no longer matches the text it was parsed from. */
 export const formChanged = (d: Doc) => d.mode === "form" && JSON.stringify(d.def) !== d.snapshot;

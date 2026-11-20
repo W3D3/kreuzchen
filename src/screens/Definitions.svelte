@@ -32,7 +32,7 @@
     run(async () => {
       const yaml = await readDefinitionSource(e.file, e.locked);
       const def = await yamlToDefinition(yaml).catch(() => null);
-      onedit(openDoc(e.file, e.hash, yaml, def));
+      onedit(openDoc(e.file, e.hash, e.summary?.id ?? null, yaml, def));
     });
 
   const duplicate = (e: DefinitionEntry) =>

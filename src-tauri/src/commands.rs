@@ -282,6 +282,7 @@ pub fn save_definition(
     locked: bool,
     yaml: String,
     expected_hash: Option<String>,
+    id_change_confirmed: bool,
 ) -> Result<String, String> {
     refuse_locked(locked)?;
     editor::save(
@@ -290,6 +291,7 @@ pub fn save_definition(
         &file,
         &yaml,
         expected_hash.as_deref(),
+        id_change_confirmed,
     )
 }
 
