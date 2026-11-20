@@ -368,6 +368,30 @@ async fn git_mode_blocks_file_changes_but_not_assignments() {
 }
 
 #[tokio::test]
+async fn git_mode_manages_practices_and_keeps_the_source() {
+    let env = setup(false).await;
+    let neu = r#"{"user": "praxis_neu", "fragebogen": ["fb_b"]}"#;
+    let (s, b) = admin(&env.app, "POST", "/admin/api/praxen", neu).await;
+    assert_eq!(s, StatusCode::CREATED, "{b}");
+    let (s, b) = admin(
+        &env.app,
+        "POST",
+        "/admin/api/praxen/praxis_neu/schluessel",
+        "",
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    let (s, _) = admin(&env.app, "DELETE", "/admin/api/praxen/praxis_a", "").await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+
+    let reg = load(env.dir.path()).unwrap();
+    assert!(matches!(reg.source, Source::Github(ref gh) if gh.repo == "o/r"));
+    let users: Vec<_> = reg.practices.iter().map(|p| p.user.as_str()).collect();
+    assert_eq!(users, ["praxis_neu"]);
+    assert_eq!(reg.entries.len(), 2, "the synced set is untouched");
+}
+
+#[tokio::test]
 async fn lokal_mode_reports_its_source_and_refuses_sync() {
     let key_hash = Argon2::default()
         .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
