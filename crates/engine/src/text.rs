@@ -1,9 +1,9 @@
-use crate::{Grading, Input, Questionnaire, ResultRow};
+use crate::{Grading, Questionnaire, ResultRow};
 use std::fmt::Write;
 
 impl Questionnaire {
     /// Plain-text result for copying; layout is documented by `tests/text.rs`.
-    pub fn plain_text(&self, _input: &Input, g: &Grading) -> String {
+    pub fn plain_text(&self, g: &Grading) -> String {
         let d = &self.def;
         let mut lines = vec![format!("{} (Version {})", d.title, d.version)];
         lines.extend(g.fields.iter().map(|f| format!("{}: {}", f.label, f.value)));
@@ -58,7 +58,11 @@ impl Questionnaire {
 /// German notation with at most two decimals: `55`, `3,5`, `3,67`.
 pub fn number(v: f64) -> String {
     let s = format!("{v:.2}");
-    s.trim_end_matches('0')
-        .trim_end_matches('.')
-        .replace('.', ",")
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    // `{:.2}` keeps the sign of values that round to zero.
+    if s == "-0" {
+        "0".into()
+    } else {
+        s.replace('.', ",")
+    }
 }

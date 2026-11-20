@@ -2,12 +2,12 @@ use kreuzchen_engine::{load, Grading, Input, NormValue, Questionnaire, ResultRow
 
 const YAML: &str = include_str!("../../../examples/definitionen/beispiel_normen.yaml");
 
-fn grade(q: &Questionnaire, answers: &[(&str, usize)]) -> (Grading, Input) {
+fn grade(q: &Questionnaire, answers: &[(&str, usize)]) -> Grading {
     let input = Input {
         fields: Default::default(),
         answers: answers.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
     };
-    (q.grade(&input).unwrap(), input)
+    q.grade(&input).unwrap()
 }
 
 /// All six items answered with the same answer index.
@@ -40,11 +40,11 @@ fn t(value: i64, band: &str) -> Option<NormValue> {
 fn looks_up_listed_raw_scores() {
     let q = load(YAML).unwrap();
     // A = 0 + 3 + 0, B = 0 + 0 + 3, gesamt = 6.
-    let (g, _) = grade(&q, &all(0));
+    let g = grade(&q, &all(0));
     assert_eq!(norm(&g, "A"), t(45, "unauffällig"));
     assert_eq!(norm(&g, "gesamt"), t(50, "unauffällig"));
     // A = 3 + 0 + 3, gesamt = 12.
-    let (g, _) = grade(&q, &all(3));
+    let g = grade(&q, &all(3));
     assert_eq!(norm(&g, "A"), t(60, "auffällig"));
     assert_eq!(norm(&g, "gesamt"), t(66, "auffällig"));
 }
@@ -55,22 +55,22 @@ fn gap_uses_next_lower_listed_raw_score() {
     // A = 1 + 3 + 0 = 4, B = 3, gesamt = 7: not listed, takes the row for 6.
     let mut answers = all(0);
     answers[0].1 = 1;
-    let (g, _) = grade(&q, &answers);
+    let g = grade(&q, &answers);
     assert_eq!(norm(&g, "gesamt"), t(50, "unauffällig"));
 }
 
 #[test]
 fn rows_without_a_table_have_no_norm() {
     let yaml = YAML.replacen("    A: { 0: 30", "    # A: { 0: 30", 1);
-    let (g, _) = grade(&load(&yaml).unwrap(), &all(0));
+    let g = grade(&load(&yaml).unwrap(), &all(0));
     assert_eq!(norm(&g, "A"), None);
 }
 
 #[test]
 fn copy_text_shows_norm_and_band() {
     let q = load(YAML).unwrap();
-    let (g, input) = grade(&q, &all(3));
-    let text = q.plain_text(&input, &g);
+    let g = grade(&q, &all(3));
+    let text = q.plain_text(&g);
     assert!(
         text.contains("Gesamtrohwert: 12 (T = 66, auffällig) (Cut-off 10) – über Cut-off\n"),
         "{text}"
@@ -88,9 +88,9 @@ fn per_scale_missing_count() {
             .filter(|(i, _)| *i != k)
             .collect::<Vec<_>>()
     };
-    let (g, _) = grade(&q, &without("2"));
+    let g = grade(&q, &without("2"));
     assert!(g.caveats.contains(&a_missing), "{:?}", g.caveats);
-    let (g, _) = grade(&q, &without("4"));
+    let g = grade(&q, &without("4"));
     assert!(!g.caveats.contains(&a_missing), "{:?}", g.caveats);
 }
 

@@ -5,4 +5,4 @@ mod sync;
 
 pub use admin::MAX_UPLOAD;
 pub use api::router;
-pub use config::{hash, load, new_key, safe_id, Config, Entry, GitHub, Practice, Registry, Source};
+pub use config::{load, new_key, safe_id, Config, Entry, GitHub, Practice, Registry, Source};

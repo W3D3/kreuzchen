@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use kreuzchen_registry::{hash, load};
+use kreuzchen_engine::hash;
+use kreuzchen_registry::load;
 use tempfile::TempDir;
 
 const BEISPIEL: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
@@ -100,14 +101,6 @@ fn refuses_bad_key_hash() {
 fn refuses_unsafe_id() {
     let dir = setup(&config(&[]), &[("x.yaml", def("../x"))]);
     assert!(err(dir.path()).contains("../x"));
-}
-
-#[test]
-fn hash_matches_app() {
-    assert_eq!(
-        hash(b"abc"),
-        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-    );
 }
 
 #[test]

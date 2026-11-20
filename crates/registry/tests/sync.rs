@@ -15,7 +15,8 @@ use axum::routing::get;
 use axum::Router;
 use base64::Engine;
 use http_body_util::BodyExt;
-use kreuzchen_registry::{hash, load, router, Source};
+use kreuzchen_engine::hash;
+use kreuzchen_registry::{load, router, Source};
 use tower::ServiceExt;
 
 const BEISPIEL: &str = include_str!("../../../examples/definitionen/beispiel.yaml");

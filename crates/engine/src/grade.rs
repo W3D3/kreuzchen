@@ -308,7 +308,7 @@ impl Questionnaire {
             .map(|f| {
                 let value = match input.fields.get(&f.id).or(f.default.as_ref()) {
                     Some(FieldValue::Bool(b)) => (if *b { "Ja" } else { "Nein" }).to_string(),
-                    Some(FieldValue::Num(n)) => n.to_string(), // f64 Display omits ".0"
+                    Some(FieldValue::Num(n)) => crate::number(*n),
                     Some(FieldValue::Text(s)) if !s.is_empty() => s.clone(),
                     None if matches!(f.kind, FieldKind::Checkbox) => "Nein".into(),
                     _ => "–".into(),

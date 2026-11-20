@@ -13,7 +13,7 @@ fn text(answers: &[(&str, usize)], fields: &[(&str, FieldValue)]) -> String {
         answers: answers.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
     };
     let g = q.grade(&input).unwrap();
-    q.plain_text(&input, &g)
+    q.plain_text(&g)
 }
 
 #[test]
@@ -52,4 +52,16 @@ fn missing_text() {
     assert!(t.contains("Fehlende Antworten: 3 (Fragen 2, 3, 4)"), "{t}");
     assert!(t.contains("Zusatzfrage: –"), "{t}");
     assert!(t.contains("Alter: –"), "{t}");
+}
+
+#[test]
+fn number_fields_use_a_decimal_comma() {
+    let t = text(&[], &[("alter", FieldValue::Num(7.5))]);
+    assert!(t.contains("Alter: 7,5\n"), "{t}");
+}
+
+#[test]
+fn tiny_negative_numbers_print_as_zero() {
+    assert_eq!(kreuzchen_engine::number(-0.001), "0");
+    assert_eq!(kreuzchen_engine::number(-0.5), "-0,5");
 }

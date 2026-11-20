@@ -1,8 +1,9 @@
 use crate::{
     Paths,
-    definitions::{DefinitionEntry, YAML, check_name, hash, load_text, scan},
+    definitions::{DefinitionEntry, YAML, check_name, load_text, scan},
     store::write_atomic,
 };
+use kreuzchen_engine::hash;
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path, sync::OnceLock, time::Duration};
