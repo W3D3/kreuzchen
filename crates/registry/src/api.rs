@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, SaltString};
 use argon2::{Argon2, PasswordVerifier};
 use axum::extract::{Path, Request, State};
-use axum::http::{header, HeaderName, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -77,8 +77,9 @@ pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&st
     ))
 }
 
-fn credentials(req: &Request) -> (String, String) {
-    req.headers()
+/// `(user, key)` from a Basic `Authorization` header; empty strings when absent or malformed.
+pub fn credentials(headers: &HeaderMap) -> (String, String) {
+    headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Basic "))
@@ -90,7 +91,7 @@ fn credentials(req: &Request) -> (String, String) {
 
 // No WWW-Authenticate: the app sends credentials preemptively and browsers must not prompt.
 async fn auth(State(st): State<AppState>, mut req: Request, next: Next) -> Response {
-    let (user, key) = credentials(&req);
+    let (user, key) = credentials(req.headers());
     let reg = st.reg.read().unwrap().clone();
     let practice = reg.practices.iter().find(|p| p.user == user).cloned();
     let hash = practice

@@ -2,10 +2,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use axum::extract::Request;
-use axum::http::header;
 use axum::middleware::{from_fn, Next};
 use axum::response::Response;
-use base64::Engine;
 use kreuzchen_registry::Source;
 
 const USAGE: &str = "usage: kreuzchen-registry serve [--data DIR] [--port N] | key";
@@ -72,17 +70,10 @@ async fn serve(args: &[String]) -> Result<(), String> {
     axum::serve(listener, app).await.map_err(|e| e.to_string())
 }
 
-/// Logs `user path status`; only the user part of the Basic header is ever decoded.
+/// Logs `user path status`; the key from the Basic header is dropped, never logged.
 async fn log(req: Request, next: Next) -> Response {
-    let user = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Basic "))
-        .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
-        .and_then(|b| String::from_utf8(b).ok())
-        .and_then(|s| s.split_once(':').map(|(u, _)| u.to_owned()))
-        .unwrap_or_else(|| "-".into());
+    let (user, _) = kreuzchen_registry::credentials(req.headers());
+    let user = if user.is_empty() { "-".into() } else { user };
     let path = req.uri().path().to_owned();
     let res = next.run(req).await;
     eprintln!("{}", log_line(&user, &path, res.status().as_u16()));
