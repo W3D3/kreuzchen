@@ -3,7 +3,10 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use argon2::password_hash::PasswordHash;
+use argon2::password_hash::rand_core::{OsRng, RngCore};
+use argon2::password_hash::{PasswordHash, PasswordHasher, SaltString};
+use argon2::Argon2;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -45,6 +48,19 @@ pub fn hash(bytes: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// A new practice key (32 random bytes, base64url) and its argon2id hash; only the hash is stored.
+pub fn new_key() -> (String, String) {
+    let mut bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    let key = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    // Same parameters as the API's dummy hash, so login timing matches.
+    let hash = Argon2::default()
+        .hash_password(key.as_bytes(), &SaltString::generate(&mut OsRng))
+        .expect("hash key")
+        .to_string();
+    (key, hash)
 }
 
 /// `^[A-Za-z0-9_-]+$`

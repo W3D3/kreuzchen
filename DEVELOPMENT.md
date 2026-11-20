@@ -74,7 +74,7 @@ definitionen/*.yaml  # questionnaire definitions, one file each
 
 A sample is in [`crates/registry/example/`](crates/registry/example/). Its `config.yaml` ships with a placeholder `key_hash` that the server rejects ("ungültiger key_hash") until you replace it with one from `kreuzchen-registry key`. Run it with `kreuzchen-registry serve [--data DIR] [--port N]` (defaults `/data` and `8080`, bound to `0.0.0.0`). The server exits non-zero if the config or any definition is invalid. Each request is logged to stderr as `user path status`; keys are never logged.
 
-Add a practice:
+Add a practice (or use **Praxen → Praxis anlegen** in `/admin`, see [Admin](#admin)):
 
 1. `kreuzchen-registry key` prints `key:` (give it to the practice, it is shown once) and `key_hash:` (argon2id).
 2. Add an entry to `praxen` in `config.yaml` with a unique `user`, the `key_hash` and the `fragebogen` ids the practice may fetch.
@@ -85,7 +85,7 @@ Add a practice:
 
 Set `KREUZCHEN_ADMIN_TOKEN` to a long random secret (`openssl rand -base64 32`) to enable it. Unset or empty, every `/admin` route answers 404 and the server stays read-only, as before. The startup line says `admin on` or `admin off`.
 
-`/admin` is a German page built into the binary. It asks for the token, keeps it in `sessionStorage` (gone when the tab closes), lists all questionnaires with the practices that see them, and can upload, replace and delete questionnaires and tick which practices see each one. It cannot create practices or change keys; that stays a `config.yaml` edit plus restart.
+`/admin` is a German page built into the binary. It asks for the token and keeps it in `sessionStorage` (gone when the tab closes). It follows the app's colours, light and dark. The **Fragebögen** tab uploads, replaces and deletes questionnaires and ticks which practices see each one. The **Praxen** tab adds practices, issues a new key and deletes practices. A new key is generated on the server exactly like `kreuzchen-registry key`. Only its argon2id hash goes into `config.yaml`; the plaintext key is in the response once, shown once in a dialog with a copy button, and never logged or stored.
 
 API (`Authorization: Bearer <token>`; practice Basic credentials are rejected here, and the token is rejected on `/v1`):
 
@@ -96,6 +96,9 @@ API (`Authorization: Bearer <token>`; practice Basic credentials are rejected he
 | `PUT /admin/api/fragebogen/{id}` (YAML body) | Replaces the file; the previous version goes to `<file>.bak`. The id in the file must match. |
 | `DELETE /admin/api/fragebogen/{id}` | Removes it from every practice in `config.yaml`, then renames the file to `<file>.bak`. |
 | `PUT /admin/api/fragebogen/{id}/praxen` (JSON `["user"…]`) | Sets exactly these practices as the ones that see it. |
+| `POST /admin/api/praxen` (JSON `{"user", "fragebogen": [id…]}`) | Adds a practice; `user` is 1–64 of `a–z 0–9 _ -`. `409` if it exists. Returns `201 {"user", "key"}`. |
+| `POST /admin/api/praxen/{user}/schluessel` | New key; the old one stops working at once. Returns `{"user", "key"}`. |
+| `DELETE /admin/api/praxen/{user}` | Removes the practice; its key stops working at once. |
 
 Uploads are capped at 1 MiB (`413`) and checked exactly like files at startup (engine parse and validation, safe id); on any error the response is `400` with the message and nothing is written. Each write goes to a `.tmp` file that is then renamed over the target, admin requests run one at a time, and after each write the server reloads the data directory, so practices see the change on their next list or download. Only one backup per file is kept; the next replace or delete overwrites it.
 
