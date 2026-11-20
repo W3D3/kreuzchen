@@ -147,8 +147,21 @@ fn read_all<T: DeserializeOwned>(dir: &Path) -> Vec<(String, T)> {
         .collect()
 }
 
+/// The part of a `SavedRecord` the list shows; serde skips the rest instead of building it.
+#[derive(Deserialize)]
+struct Listed {
+    kennung: String,
+    created_at: String,
+    questionnaire: ListedQ,
+}
+
+#[derive(Deserialize)]
+struct ListedQ {
+    title: String,
+}
+
 pub fn list(dir: &Path) -> Vec<SavedSummary> {
-    let mut out: Vec<SavedSummary> = read_all::<SavedRecord>(dir)
+    let mut out: Vec<SavedSummary> = read_all::<Listed>(dir)
         .into_iter()
         .map(|(name, rec)| SavedSummary {
             name,
@@ -206,6 +219,14 @@ pub fn import(dir: &Path, src: &Path) -> Result<String, String> {
     let rec: SavedRecord = serde_json::from_slice(&bytes).map_err(|_| BAD_FILE.to_string())?;
     if rec.format != 1 {
         return Err(BAD_FILE.into());
+    }
+    if let Some((name, _)) = read_all::<SavedRecord>(dir)
+        .into_iter()
+        .find(|(_, r)| *r == rec)
+    {
+        return Err(format!(
+            "Diese Auswertung ist schon gespeichert (Datei „{name}“)."
+        ));
     }
     save(dir, &rec)
 }
@@ -304,11 +325,35 @@ mod tests {
         save(d.path(), &rec("2026-01-01T10:00:00")).unwrap();
         save(d.path(), &rec("2026-02-01T10:00:00")).unwrap();
         fs::write(d.path().join("junk.json"), "{}").unwrap();
+        // Only the listed fields are read: the rest of a record may be anything.
+        let slim = r#"{"kennung":"K","created_at":"2026-03-01T10:00:00","questionnaire":{"title":"T"},"input":0}"#;
+        fs::write(d.path().join("slim.json"), slim).unwrap();
         let l = list(d.path());
-        assert_eq!(l.len(), 2);
+        assert_eq!(l.len(), 3);
+        assert_eq!((l[0].kennung.as_str(), l[0].title.as_str()), ("K", "T"));
+        let l = &l[1..];
         assert_eq!(l[0].created_at, "2026-02-01T10:00:00");
         assert_eq!(l[0].name, "2026-02-01T10-00-00_beispiel.json");
         assert_eq!(l[0].title, "Beispiel");
+    }
+
+    #[test]
+    fn importing_the_same_record_twice_is_refused() {
+        let (d, src) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let file = src.path().join("export.json");
+        fs::write(&file, serde_json::to_vec(&rec(T)).unwrap()).unwrap();
+        let name = import(d.path(), &file).unwrap();
+        assert_eq!(
+            import(d.path(), &file),
+            Err(format!(
+                "Diese Auswertung ist schon gespeichert (Datei „{name}“)."
+            ))
+        );
+        let mut other = rec(T);
+        other.kennung = "anders".into();
+        fs::write(&file, serde_json::to_vec(&other).unwrap()).unwrap();
+        assert!(import(d.path(), &file).is_ok());
+        assert_eq!(list(d.path()).len(), 2);
     }
 
     #[test]
@@ -326,8 +371,8 @@ mod tests {
         let name = save(d.path(), &rec(T)).unwrap();
         let out = d.path().join("export.txt");
         export(d.path(), &name, &out).unwrap();
+        delete(d.path(), &name).unwrap();
         let new = import(d.path(), &out).unwrap();
-        assert_ne!(new, name);
         assert_eq!(load::<SavedRecord>(d.path(), &new).unwrap(), rec(T));
     }
 

@@ -118,8 +118,9 @@ pub fn save_result(
 }
 
 #[tauri::command]
-pub fn list_results(paths: State<Paths>) -> Vec<SavedSummary> {
-    store::list(&paths.results)
+// Async so reading thousands of records stays off the UI thread; `Result` because it borrows `State`.
+pub async fn list_results(paths: State<'_, Paths>) -> Result<Vec<SavedSummary>, String> {
+    Ok(store::list(&paths.results))
 }
 
 #[tauri::command]
