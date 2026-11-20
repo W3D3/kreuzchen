@@ -49,7 +49,8 @@
   const title = $derived(opened?.definition.title ?? record?.questionnaire.title ?? "");
   const anyMet = $derived(g.rules.some((r) => r.met));
   // Same notation as the engine's copy text: `55`, `3,5`, `3,67`.
-  const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false, signDisplay: "negative" });
+  // Values that round to zero keep their sign; `signDisplay` would fix that but throws on older WebKitGTK.
+  const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false }).replace(/^-0$/, "0");
   // Index into the --band-N colours; any other label gets a neutral chip.
   const bands = ["unauffällig", "mild", "moderat", "schwer"];
 
