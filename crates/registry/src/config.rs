@@ -8,7 +8,6 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, SaltString};
 use argon2::Argon2;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -86,14 +85,6 @@ pub struct Registry {
     pub entries: BTreeMap<String, Entry>,
 }
 
-/// Lowercase hex SHA-256, identical to the app's `definitions::hash`.
-pub fn hash(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
-
 /// A new practice key (32 random bytes, base64url) and its argon2id hash; only the hash is stored.
 pub fn new_key() -> (String, String) {
     let mut bytes = [0u8; 32];
@@ -132,7 +123,7 @@ pub fn parse_entry(name: &str, bytes: Vec<u8>, path: PathBuf) -> Result<Entry, S
         return Err(format!("{name}: unzulässige id {:?}", d.id));
     }
     Ok(Entry {
-        hash: hash(&bytes),
+        hash: kreuzchen_engine::hash(&bytes),
         id: d.id,
         title: d.title,
         version: d.version,

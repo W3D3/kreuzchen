@@ -242,13 +242,7 @@ fn derived_mean_keeps_decimals() {
     });
     assert_eq!(mean, Some(1.5));
     let q = load(&yaml).unwrap();
-    let input = Input {
-        fields: Default::default(),
-        answers: answers.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
-    };
-    assert!(q
-        .plain_text(&input, &g)
-        .contains("Gesamtsumme: 1,5 (Cut-off 7)\n"));
+    assert!(q.plain_text(&g).contains("Gesamtsumme: 1,5 (Cut-off 7)\n"));
 }
 
 #[test]

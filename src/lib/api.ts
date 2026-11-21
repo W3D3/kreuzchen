@@ -25,8 +25,9 @@ export const definitionToYaml = (def: Definition) => invoke<string>("definition_
 export const yamlToDefinition = (yaml: string) => invoke<Definition>("yaml_to_definition", { yaml });
 export const gradeDraft = (yaml: string, input: Input) => invoke<Graded>("grade_draft", { yaml, input });
 export const readDefinitionSource = (file: string, locked: boolean) => invoke<string>("read_definition_source", { file, locked });
-export const saveDefinition = (file: string, locked: boolean, yaml: string, expectedHash: string | null) =>
-  invoke<string>("save_definition", { file, locked, yaml, expectedHash });
+/** `idChangeConfirmed` must be set when the id differs from the one in the saved file. */
+export const saveDefinition = (file: string, locked: boolean, yaml: string, expectedHash: string | null, idChangeConfirmed: boolean) =>
+  invoke<string>("save_definition", { file, locked, yaml, expectedHash, idChangeConfirmed });
 export const deleteDefinition = (file: string, locked: boolean) => invoke<void>("delete_definition", { file, locked });
 export const duplicateDefinition = (file: string, locked: boolean) => invoke<string>("duplicate_definition", { file, locked });
 export const registryConnection = () => invoke<ConnectionInfo | null>("registry_connection");

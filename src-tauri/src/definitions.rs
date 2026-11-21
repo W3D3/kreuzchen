@@ -1,6 +1,5 @@
-use kreuzchen_engine::{Questionnaire, load, needs_newer_app, schema::Definition};
+use kreuzchen_engine::{Questionnaire, hash, load, needs_newer_app, schema::Definition};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
 #[derive(Serialize)]
@@ -29,13 +28,6 @@ pub struct OpenedDefinition {
     pub hash: String,
     pub definition: Definition,
     pub locked: bool,
-}
-
-pub fn hash(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
 }
 
 pub fn check_hash(current: &str, expected: &str) -> Result<(), String> {
@@ -253,12 +245,6 @@ mod tests {
     fn open_rejects_colon() {
         let d = tempfile::tempdir().unwrap();
         assert!(open(d.path(), "C:x.yaml").is_err());
-    }
-
-    #[test]
-    fn hash_changes_with_content() {
-        assert_ne!(hash(b"a"), hash(b"b"));
-        assert_eq!(hash(b"a"), hash(b"a"));
     }
 
     #[test]

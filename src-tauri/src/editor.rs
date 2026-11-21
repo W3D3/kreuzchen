@@ -1,5 +1,6 @@
-use crate::definitions::{YAML, check_name, hash, load_text, scan, scan_all};
+use crate::definitions::{DefinitionEntry, YAML, check_name, load_text, scan, scan_all};
 use crate::store::write_atomic;
+use kreuzchen_engine::hash;
 use std::{collections::HashSet, fs, path::Path};
 
 pub fn read_source(dir: &Path, file: &str) -> Result<String, String> {
@@ -9,13 +10,16 @@ pub fn read_source(dir: &Path, file: &str) -> Result<String, String> {
 
 /// Validates `yaml` and writes it to `dir/file`, returning the new hash.
 /// With `expected_hash` the file must still match it; without, it must not exist yet.
-/// Refuses an id installed in `registry`: ids must be unique across both folders.
+/// Refuses an id used by another file in `dir` or `registry`: ids must be unique across both folders.
+/// Changing the id of an existing file needs `id_change_confirmed`, since its drafts and
+/// saved results find it by the old id.
 pub fn save(
     dir: &Path,
     registry: &Path,
     file: &str,
     yaml: &str,
     expected_hash: Option<&str>,
+    id_change_confirmed: bool,
 ) -> Result<String, String> {
     check_name(file, YAML)?;
     let id = load_text(yaml)?.def.id;
@@ -36,6 +40,23 @@ pub fn save(
             return Err(format!("Die Datei „{file}“ gibt es schon."));
         }
         _ => {}
+    }
+    let id_of = |e: &DefinitionEntry| e.summary.as_ref().map(|s| s.id.clone());
+    let local = scan(dir);
+    if let Some(other) = local
+        .iter()
+        .find(|e| e.file != file && id_of(e).as_ref() == Some(&id))
+    {
+        return Err(format!(
+            "Die ID „{id}“ hat schon der Fragebogen in „{}“.",
+            other.file
+        ));
+    }
+    let old = local.iter().find(|e| e.file == file).and_then(id_of);
+    if let Some(old) = old.filter(|old| *old != id && !id_change_confirmed) {
+        return Err(format!(
+            "Die ID soll von „{old}“ zu „{id}“ geändert werden. Das muss erst bestätigt werden."
+        ));
     }
     write_atomic(dir, file, yaml.as_bytes())?;
     Ok(hash(yaml.as_bytes()))
@@ -98,7 +119,7 @@ mod tests {
     fn save_with_current_hash_writes_and_returns_new_hash() {
         let (d, h) = dir_with_fixture();
         let new = FIXTURE.replace("Beispiel-Fragebogen", "Anders");
-        let got = save(d.path(), &empty(), "b.yaml", &new, Some(&h)).unwrap();
+        let got = save(d.path(), &empty(), "b.yaml", &new, Some(&h), false).unwrap();
         assert_eq!(got, hash(new.as_bytes()));
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), new);
         assert!(!d.path().join("b.yaml.tmp").exists());
@@ -108,7 +129,7 @@ mod tests {
     fn save_with_stale_hash_is_refused() {
         let (d, _) = dir_with_fixture();
         assert_eq!(
-            save(d.path(), &empty(), "b.yaml", FIXTURE, Some("alt")),
+            save(d.path(), &empty(), "b.yaml", FIXTURE, Some("alt"), false),
             Err("Die Datei wurde inzwischen geändert.".into())
         );
     }
@@ -117,7 +138,7 @@ mod tests {
     fn save_with_hash_of_deleted_file_is_refused() {
         let (d, h) = dir_with_fixture();
         delete(d.path(), "b.yaml").unwrap();
-        assert!(save(d.path(), &empty(), "b.yaml", FIXTURE, Some(&h)).is_err());
+        assert!(save(d.path(), &empty(), "b.yaml", FIXTURE, Some(&h), false).is_err());
         assert!(!d.path().join("b.yaml").exists());
     }
 
@@ -126,7 +147,7 @@ mod tests {
         let (d, _) = dir_with_fixture();
         let new = FIXTURE.replace("Beispiel-Fragebogen", "Anders");
         assert_eq!(
-            save(d.path(), &empty(), "b.yaml", &new, None),
+            save(d.path(), &empty(), "b.yaml", &new, None, false),
             Err("Die Datei „b.yaml“ gibt es schon.".into())
         );
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), FIXTURE);
@@ -135,7 +156,7 @@ mod tests {
     #[test]
     fn create_new_file() {
         let d = tempfile::tempdir().unwrap();
-        save(d.path(), &empty(), "neu.yaml", FIXTURE, None).unwrap();
+        save(d.path(), &empty(), "neu.yaml", FIXTURE, None, false).unwrap();
         assert_eq!(read_source(d.path(), "neu.yaml").unwrap(), FIXTURE);
     }
 
@@ -143,9 +164,9 @@ mod tests {
     fn invalid_yaml_is_refused_and_file_untouched() {
         let (d, h) = dir_with_fixture();
         let bad = FIXTURE.replace("scale: Y, key: normal", "scale: Z, key: normal");
-        let e = save(d.path(), &empty(), "b.yaml", &bad, Some(&h)).unwrap_err();
+        let e = save(d.path(), &empty(), "b.yaml", &bad, Some(&h), false).unwrap_err();
         assert!(e.contains("Skala „Z“"), "{e}");
-        let e = save(d.path(), &empty(), "b.yaml", "id: [", Some(&h)).unwrap_err();
+        let e = save(d.path(), &empty(), "b.yaml", "id: [", Some(&h), false).unwrap_err();
         assert!(e.starts_with("Zeile"), "{e}");
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), FIXTURE);
     }
@@ -197,11 +218,42 @@ mod tests {
     }
 
     #[test]
+    fn save_refuses_id_of_another_local_file() {
+        let (d, h) = dir_with_fixture();
+        fs::write(d.path().join("a.yaml"), FIXTURE).unwrap();
+        let err = Err("Die ID „beispiel“ hat schon der Fragebogen in „a.yaml“.".to_string());
+        assert_eq!(
+            save(d.path(), &empty(), "neu.yaml", FIXTURE, None, false),
+            err
+        );
+        assert!(!d.path().join("neu.yaml").exists());
+        let edited = FIXTURE.replace("Beispiel-Fragebogen", "Anders");
+        assert_eq!(
+            save(d.path(), &empty(), "b.yaml", &edited, Some(&h), true),
+            err
+        );
+        assert_eq!(read_source(d.path(), "b.yaml").unwrap(), FIXTURE);
+    }
+
+    #[test]
+    fn id_change_needs_confirmation() {
+        let (d, h) = dir_with_fixture();
+        let renamed = FIXTURE.replace("id: beispiel", "id: beispiel_neu");
+        assert_eq!(
+            save(d.path(), &empty(), "b.yaml", &renamed, Some(&h), false),
+            Err("Die ID soll von „beispiel“ zu „beispiel_neu“ geändert werden. Das muss erst bestätigt werden.".into())
+        );
+        assert_eq!(read_source(d.path(), "b.yaml").unwrap(), FIXTURE);
+        save(d.path(), &empty(), "b.yaml", &renamed, Some(&h), true).unwrap();
+        assert_eq!(read_source(d.path(), "b.yaml").unwrap(), renamed);
+    }
+
+    #[test]
     fn save_refuses_registry_id() {
         let (registry, _) = dir_with_fixture();
         let d = tempfile::tempdir().unwrap();
         assert_eq!(
-            save(d.path(), registry.path(), "neu.yaml", FIXTURE, None),
+            save(d.path(), registry.path(), "neu.yaml", FIXTURE, None, false),
             Err("Die ID „beispiel“ gehört zu einem Fragebogen aus der Bibliothek.".into())
         );
         assert!(!d.path().join("neu.yaml").exists());
@@ -235,7 +287,7 @@ mod tests {
             ".yaml",
         ] {
             assert_eq!(
-                save(d.path(), &empty(), name, FIXTURE, None).unwrap_err(),
+                save(d.path(), &empty(), name, FIXTURE, None, false).unwrap_err(),
                 e,
                 "{name}"
             );
@@ -247,6 +299,7 @@ mod tests {
                 "{name}"
             );
         }
-        assert!(save(d.path(), &empty(), "Neu.YML", FIXTURE, None).is_ok());
+        delete(d.path(), "b.yaml").unwrap();
+        assert!(save(d.path(), &empty(), "Neu.YML", FIXTURE, None, false).is_ok());
     }
 }

@@ -56,7 +56,7 @@ pub fn grade(
     let (q, current) = definitions::open(paths.dir(locked), &file)?;
     definitions::check_hash(&current, &hash)?;
     let grading = q.grade(&input).map_err(|e| e.to_string())?;
-    let text = q.plain_text(&input, &grading);
+    let text = q.plain_text(&grading);
     Ok(Graded { grading, text })
 }
 
@@ -118,8 +118,9 @@ pub fn save_result(
 }
 
 #[tauri::command]
-pub fn list_results(paths: State<Paths>) -> Vec<SavedSummary> {
-    store::list(&paths.results)
+// Async so reading thousands of records stays off the UI thread; `Result` because it borrows `State`.
+pub async fn list_results(paths: State<'_, Paths>) -> Result<Vec<SavedSummary>, String> {
+    Ok(store::list(&paths.results))
 }
 
 #[tauri::command]
@@ -254,7 +255,7 @@ pub fn yaml_to_definition(yaml: String) -> Result<Definition, String> {
 pub fn grade_draft(yaml: String, input: Input) -> Result<Graded, String> {
     let q = definitions::load_text(&yaml)?;
     let grading = q.grade(&input).map_err(|e| e.to_string())?;
-    let text = q.plain_text(&input, &grading);
+    let text = q.plain_text(&grading);
     Ok(Graded { grading, text })
 }
 
@@ -282,6 +283,7 @@ pub fn save_definition(
     locked: bool,
     yaml: String,
     expected_hash: Option<String>,
+    id_change_confirmed: bool,
 ) -> Result<String, String> {
     refuse_locked(locked)?;
     editor::save(
@@ -290,6 +292,7 @@ pub fn save_definition(
         &file,
         &yaml,
         expected_hash.as_deref(),
+        id_change_confirmed,
     )
 }
 

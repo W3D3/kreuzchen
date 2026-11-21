@@ -18,6 +18,7 @@
   import { loadAutoSaveResult } from "../lib/settings";
   import { formatCreatedAt, localTimestamp, pdfName } from "../lib/kennung";
   import { compactItems } from "../lib/ranges";
+  import { meter } from "../lib/meter";
   import type { Graded, Input, Norms, OpenedDefinition, SavedRecord } from "../lib/types";
 
   let { opened, record = null, norms = null, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, oneditor }: {
@@ -48,10 +49,10 @@
   const title = $derived(opened?.definition.title ?? record?.questionnaire.title ?? "");
   const anyMet = $derived(g.rules.some((r) => r.met));
   // Same notation as the engine's copy text: `55`, `3,5`, `3,67`.
-  const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false });
+  // Values that round to zero keep their sign; `signDisplay` would fix that but throws on older WebKitGTK.
+  const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false }).replace(/^-0$/, "0");
   // Index into the --band-N colours; any other label gets a neutral chip.
   const bands = ["unauffällig", "mild", "moderat", "schwer"];
-  const meter = (value: number, cutoff: number) => Math.min(value / (cutoff * 2), 1) * 100;
 
   let banner = $state<string | null>(null);
   let status = $state("");
@@ -200,7 +201,7 @@
             <span class="text-right font-mono text-[17px] whitespace-nowrap tabular-nums">
               <span class="font-bold">{num(r.value)}</span>{#if r.cutoff !== null}<span class="text-[15px] text-muted-foreground">{` / ${r.cutoff}`}</span>{/if}
             </span>
-            {#if r.cutoff}
+            {#if r.cutoff !== null}
               <div class="flex items-center gap-2.5">
                 <div class="relative h-2 w-20 shrink-0 rounded-full bg-muted" aria-hidden="true">
                   <div class="h-full rounded-full {r.over ? 'bg-over' : 'bg-primary'}" style:width="{meter(r.value, r.cutoff)}%"></div>

@@ -9,7 +9,16 @@ pub use text::number;
 pub use validate::Questionnaire;
 
 use schema::Definition;
+use sha2::{Digest, Sha256};
 use std::fmt;
+
+/// Lowercase hex SHA-256 of a definition file; app and Bibliothek compare these to spot updates.
+pub fn hash(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
 
 #[derive(Debug, Clone)]
 pub struct LoadError {
@@ -73,4 +82,15 @@ pub fn to_yaml(def: &Definition) -> String {
 /// Parses and validates a definition, collecting every error.
 pub fn load(yaml: &str) -> Result<Questionnaire, Vec<LoadError>> {
     validate::validate(parse_definition(yaml).map_err(|e| vec![e])?)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn hash_is_lowercase_hex_sha256() {
+        assert_eq!(
+            super::hash(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }

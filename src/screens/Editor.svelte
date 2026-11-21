@@ -10,6 +10,7 @@
   import Save from "@lucide/svelte/icons/save";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Banner from "$lib/components/Banner.svelte";
+  import { confirm } from "$lib/components/confirm.svelte";
   import X from "@lucide/svelte/icons/x";
   import type { Snippet } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -88,8 +89,17 @@
   const save = () =>
     run(async () => {
       const yaml = await currentYaml();
-      const file = doc.file ?? `${(await yamlToDefinition(yaml)).id}.yaml`;
-      doc.hash = await saveDefinition(file, false, yaml, doc.hash);
+      const id = (await yamlToDefinition(yaml)).id;
+      const file = doc.file ?? `${id}.yaml`;
+      const idChanged = doc.id !== null && doc.id !== id;
+      if (idChanged && !(await confirm({
+        title: "ID ändern",
+        message: `Die ID ändert sich von „${doc.id}“ zu „${id}“. Entwürfe und gespeicherte Auswertungen mit der alten ID finden diesen Fragebogen dann nicht mehr.`,
+        confirmLabel: "ID ändern",
+        destructive: true,
+      }))) return;
+      doc.hash = await saveDefinition(file, false, yaml, doc.hash, idChanged);
+      doc.id = id;
       doc.file = file;
       doc.yaml = yaml;
       doc.dirty = false;
