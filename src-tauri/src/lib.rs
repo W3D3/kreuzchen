@@ -5,11 +5,15 @@ use std::{
 mod commands;
 mod definitions;
 mod editor;
+mod migrate;
 mod registry;
 pub mod report;
 mod store;
 
 use tauri::Manager;
+
+/// Files the 0.4 upgrade on this start left as they were, for the banner.
+pub struct MigrationProblems(pub Vec<String>);
 
 pub struct Paths {
     /// App data folder; holds `registry.json`.
@@ -79,16 +83,20 @@ pub fn run() {
             commands::registry_rows,
             commands::registry_install,
             commands::registry_remove,
+            commands::migration_problems,
         ])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             let base = app.path().app_data_dir()?;
+            let problems = migrate::run(&base);
+            problems.iter().for_each(|p| eprintln!("migration: {p}"));
+            app.manage(MigrationProblems(problems));
             let paths = Paths {
-                definitions: base.join("definitionen"),
-                results: base.join("auswertungen"),
-                drafts: base.join("entwuerfe"),
+                definitions: base.join("definitions"),
+                results: base.join("results"),
+                drafts: base.join("drafts"),
                 registry: base.join("registry"),
                 data: base,
                 pdf: app.path().app_cache_dir()?.join("pdf"),

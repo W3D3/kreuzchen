@@ -1,0 +1,19 @@
+{
+  "saved_at": "2026-11-19T09:00:00",
+  "questionnaire": {
+    "id": "beispiel",
+    "title": "Beispiel-Fragebogen",
+    "version": "1",
+    "hash": "0390fb6aacb25e59f610dcf66982e04ade42f33cbec404c9b62113113b11cdc7"
+  },
+  "input": {
+    "fields": {
+      "alter": 9.0,
+      "kennung": "TEST-003"
+    },
+    "answers": {
+      "1": 1,
+      "2": 0
+    }
+  }
+}

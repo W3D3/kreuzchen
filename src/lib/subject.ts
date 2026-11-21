@@ -1,6 +1,6 @@
 const p = (n: number) => String(n).padStart(2, "0");
 
-export const defaultKennung = (d: Date): string =>
+export const defaultSubjectId = (d: Date): string =>
   `Anonym ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 
 export const localTimestamp = (d: Date): string =>
@@ -12,5 +12,5 @@ export const formatCreatedAt = (s: string): string => {
 };
 
 /** Default file name for the PDF report, without characters Windows forbids. */
-export const pdfName = (kennung: string, title: string): string =>
-  `${[kennung, title].filter(Boolean).join(" – ")}.pdf`.replace(/[\\/:*?"<>|]/g, "-");
+export const pdfName = (subjectId: string, title: string): string =>
+  `${[subjectId, title].filter(Boolean).join(" – ")}.pdf`.replace(/[\\/:*?"<>|]/g, "-");

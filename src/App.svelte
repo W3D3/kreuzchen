@@ -14,7 +14,8 @@
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { findUpdate, updates } from "./lib/updates.svelte";
-  import { getDefinition, grade } from "./lib/api";
+  import Banner from "$lib/components/Banner.svelte";
+  import { getDefinition, grade, migrationProblems } from "./lib/api";
   import { isDirty, type Doc } from "./lib/editor";
   import { initialInput } from "./lib/input";
   import { installTech } from "./lib/tech.svelte";
@@ -38,6 +39,12 @@
 
   // Quiet check at start; the button in the bar appears only when an update exists.
   findUpdate();
+
+  // Shown once, on the start that upgraded the data of Kreuzchen 0.4.
+  let migration = $state<{ problems: string[]; folder: string } | null>(null);
+  migrationProblems().then((m) => {
+    if (m.problems.length) migration = m;
+  });
 
   /** True when there is no unsaved entry or editor draft, or the user agrees to discard it. */
   async function mayLeave(): Promise<boolean> {
@@ -108,6 +115,13 @@
     </nav>
   </header>
   <main class="mx-auto max-w-[56rem] p-6">
+    {#if migration}
+      <Banner class="mb-6">
+        Beim Übernehmen der Daten aus Kreuzchen 0.4 blieben diese Dateien unverändert:
+        {"\n" + migration.problems.map((p) => "• " + p).join("\n")}
+        {"\n"}Eine vollständige Sicherungskopie liegt im Ordner „backup-0.4-…“ in {migration.folder}.
+      </Banner>
+    {/if}
     {#if screen.name === "list"}
       <List onstart={(opened, input, draftFile, notice) => (screen = { name: "entry", opened, input, draftFile, notice })} onupdate={() => (screen = { name: "settings" })} />
     {:else if screen.name === "entry"}

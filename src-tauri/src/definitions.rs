@@ -66,7 +66,15 @@ pub fn summary(q: &Questionnaire) -> Summary {
 }
 
 fn parse(bytes: &[u8]) -> Result<Questionnaire, String> {
-    load_text(std::str::from_utf8(bytes).map_err(|_| "Datei ist nicht UTF-8".to_string())?)
+    load_file(std::str::from_utf8(bytes).map_err(|_| "Datei ist nicht UTF-8".to_string())?)
+}
+
+/// `load_text` for a file read from disk or the Bibliothek, upgrading 0.4 names in memory.
+/// shortcut: Bibliothek files stay byte-identical so their hashes match the server's; drop once
+/// no server serves 0.4 files.
+pub fn load_file(text: &str) -> Result<Questionnaire, String> {
+    let upgraded = kreuzchen_engine::migrate::upgrade(text).ok().flatten();
+    load_text(upgraded.as_deref().unwrap_or(text))
 }
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -183,13 +191,13 @@ mod tests {
     use super::*;
     use std::fs;
 
-    const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
+    const FIXTURE: &str = include_str!("../../examples/definitions/beispiel.yaml");
 
     #[test]
     fn too_new_file_names_the_version_it_needs() {
         let d = tempfile::tempdir().unwrap();
-        let yaml = FIXTURE.replacen("title:", "min_app: \"99.0.0\"\ntitle:", 1);
-        fs::write(d.path().join("neu.yaml"), &yaml).unwrap();
+        let yaml = FIXTURE.replacen("min_app: \"0.5.0\"", "min_app: \"99.0.0\"", 1);
+        fs::write(d.path().join("new.yaml"), &yaml).unwrap();
         let e = &scan(d.path())[0];
         assert_eq!(e.needs_app.as_deref(), Some("99.0.0"));
         assert!(e.summary.is_none());
@@ -211,7 +219,7 @@ mod tests {
             FIXTURE.replace("scale: Y, key: normal", "scale: Z, key: normal"),
         )
         .unwrap();
-        for f in ["README.txt", ".DS_Store", "fragebogen.yaml.bak"] {
+        for f in ["README.txt", ".DS_Store", "questionnaire.yaml.bak"] {
             fs::write(p.join(f), "x").unwrap();
         }
         fs::create_dir(p.join("x.yaml")).unwrap();
@@ -275,11 +283,11 @@ mod tests {
     fn scan_all_marks_registry_locked() {
         let (local, registry) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         fs::write(local.path().join("a.yaml"), FIXTURE).unwrap();
-        let other = FIXTURE.replace("id: beispiel", "id: fragebogen_a");
-        fs::write(registry.path().join("fragebogen_a.yaml"), other).unwrap();
+        let other = FIXTURE.replace("id: beispiel", "id: questionnaire_a");
+        fs::write(registry.path().join("questionnaire_a.yaml"), other).unwrap();
         let e = scan_all(local.path(), registry.path());
         let got: Vec<_> = e.iter().map(|e| (e.file.as_str(), e.locked)).collect();
-        assert_eq!(got, [("a.yaml", false), ("fragebogen_a.yaml", true)]);
+        assert_eq!(got, [("a.yaml", false), ("questionnaire_a.yaml", true)]);
     }
 
     #[test]

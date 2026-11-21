@@ -338,12 +338,13 @@ fn upgrade_config(text: &str) -> Result<Option<String>, String> {
         .map(|l| {
             let indent = l.len() - l.trim_start_matches([' ', '-']).len();
             let (head, rest) = l.split_at(indent);
-            if indent == 0 && rest.starts_with("praxen:") {
-                format!("practices:{}", &rest["praxen:".len()..])
-            } else if rest.starts_with("fragebogen:") {
-                format!("{head}questionnaires:{}", &rest["fragebogen:".len()..])
-            } else {
-                l.to_string()
+            match (
+                rest.strip_prefix("praxen:"),
+                rest.strip_prefix("fragebogen:"),
+            ) {
+                (Some(r), _) if indent == 0 => format!("practices:{r}"),
+                (_, Some(r)) => format!("{head}questionnaires:{r}"),
+                _ => l.to_string(),
             }
         })
         .collect::<Vec<_>>()

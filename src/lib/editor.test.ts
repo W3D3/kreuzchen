@@ -50,7 +50,7 @@ it("parseDefault follows the field type", () => {
   expect(parseDefault("checkbox", "ja")).toBe(true);
   expect(parseDefault("checkbox", "nein")).toBe(false);
   expect(parseDefault("number", "4")).toBe(4);
-  expect(parseDefault("text", "anonym")).toBe("anonym");
+  expect(parseDefault("text", "anonymous")).toBe("anonymous");
   expect(parseDefault("text", "")).toBeNull();
   expect(formatDefault(true)).toBe("ja");
 });

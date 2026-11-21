@@ -83,7 +83,7 @@ export function template(): Definition {
     shortcuts: {},
     keys: { normal: [0, 1] },
     default_answers: "ja_nein",
-    fields: [{ id: "kennung", label: "Kennung", type: "text", default: "anonym" }],
+    fields: [{ id: "subject_id", label: "Kennung", type: "text", default: "anonymous" }],
     scales: [{ id: "A", label: "Skala A", cutoff: 1 }],
     derived: [],
     sections: [{ title: "Teil 1", intro: null, items: [{ n: 1, id: null, text: "Frage 1?", answers: null, scale: "A", key: "normal" }] }],

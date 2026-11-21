@@ -1,6 +1,6 @@
 use crate::{
     Paths,
-    definitions::{DefinitionEntry, YAML, check_name, load_text, scan},
+    definitions::{DefinitionEntry, YAML, check_name, load_file, scan},
     store::write_atomic,
 };
 use kreuzchen_engine::hash;
@@ -183,7 +183,7 @@ fn client() -> &'static reqwest::Client {
     })
 }
 
-/// GET `<url>/v1/fragebogen[/<id>]` with Basic auth; the hash header and body, `None` if unreachable.
+/// GET `<url>/v1/questionnaires[/<id>]` with Basic auth; the hash header and body, `None` if unreachable.
 /// `progress` sees the body arrive chunk by chunk.
 async fn get(
     c: &Connection,
@@ -194,7 +194,7 @@ async fn get(
     url.path_segments_mut()
         .map_err(|()| BAD_URL.to_string())?
         .pop_if_empty()
-        .extend(["v1", "fragebogen"])
+        .extend(["v1", "questionnaires"])
         .extend(id);
     let Ok(mut resp) = client()
         .get(url)
@@ -300,7 +300,7 @@ pub async fn install(
         return Err("Die heruntergeladene Datei ist beschädigt.".into());
     }
     let text = std::str::from_utf8(&bytes).map_err(|_| "Datei ist nicht UTF-8".to_string())?;
-    if load_text(text)?.def.id != id {
+    if load_file(text)?.def.id != id {
         return Err("Die heruntergeladene Datei hat eine andere id.".into());
     }
     // Write first: a failed write keeps the local copy, so one of the two always exists.
@@ -322,7 +322,7 @@ mod tests {
     };
     use std::time::Instant;
 
-    const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
+    const FIXTURE: &str = include_str!("../../examples/definitions/beispiel.yaml");
 
     fn def(id: &str) -> String {
         FIXTURE.replacen("id: beispiel", &format!("id: {id}"), 1)
@@ -349,11 +349,11 @@ mod tests {
     #[test]
     fn connection_trims_credentials() {
         let d = tempfile::tempdir().unwrap();
-        let c = Connection::new("x.y", " praxis \n", "abc\n").unwrap();
+        let c = Connection::new("x.y", " practice \n", "abc\n").unwrap();
         assert_eq!(c.url, "https://x.y");
         save_connection(d.path(), &c).unwrap();
         let got = load_connection(d.path()).unwrap();
-        assert_eq!((got.user.as_str(), got.key.as_str()), ("praxis", "abc"));
+        assert_eq!((got.user.as_str(), got.key.as_str()), ("practice", "abc"));
         clear_connection(d.path());
         assert!(load_connection(d.path()).is_none());
     }
@@ -417,9 +417,9 @@ mod tests {
         let p = dir.path();
         let paths = Paths {
             data: p.into(),
-            definitions: p.join("definitionen"),
-            results: p.join("auswertungen"),
-            drafts: p.join("entwuerfe"),
+            definitions: p.join("definitions"),
+            results: p.join("results"),
+            drafts: p.join("drafts"),
             registry: p.join("registry"),
             pdf: p.join("pdf"),
         };
@@ -435,24 +435,24 @@ mod tests {
         url
     }
 
-    /// A real registry serving `fragebogen_a` to `praxis_a` / `secret`; keep the dir alive.
+    /// A real registry serving `questionnaire_a` to `practice_a` / `secret`; keep the dir alive.
     async fn registry() -> (String, tempfile::TempDir) {
         let key_hash = Argon2::default()
             .hash_password(b"secret", &SaltString::generate(&mut OsRng))
             .unwrap()
             .to_string();
         let dir = tempfile::tempdir().unwrap();
-        fs::create_dir(dir.path().join("definitionen")).unwrap();
+        fs::create_dir(dir.path().join("definitions")).unwrap();
         fs::write(
             dir.path().join("config.yaml"),
             format!(
-                "praxen:\n  - user: praxis_a\n    key_hash: {key_hash:?}\n    fragebogen: [fragebogen_a]\n"
+                "practices:\n  - user: practice_a\n    key_hash: {key_hash:?}\n    questionnaires: [questionnaire_a]\n"
             ),
         )
         .unwrap();
         fs::write(
-            dir.path().join("definitionen/fragebogen_a.yaml"),
-            def("fragebogen_a"),
+            dir.path().join("definitions/questionnaire_a.yaml"),
+            def("questionnaire_a"),
         )
         .unwrap();
         let reg = kreuzchen_registry::load(dir.path()).unwrap();
@@ -465,7 +465,7 @@ mod tests {
     fn conn(url: &str, key: &str) -> Connection {
         Connection {
             url: url.into(),
-            user: "praxis_a".into(),
+            user: "practice_a".into(),
             key: key.into(),
         }
     }
@@ -475,14 +475,14 @@ mod tests {
         let (url, _d) = registry().await;
         let c = conn(&url, "secret");
         let list = fetch_list(&c).await.unwrap();
-        let bytes = def("fragebogen_a");
+        let bytes = def("questionnaire_a");
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].id, "fragebogen_a");
+        assert_eq!(list[0].id, "questionnaire_a");
         assert_eq!(list[0].hash, hash(bytes.as_bytes()));
         let e = env();
         let mut seen = Vec::new();
         assert_eq!(
-            install(&c, &e.paths, "fragebogen_a", false, |p| seen.push(p)).await,
+            install(&c, &e.paths, "questionnaire_a", false, |p| seen.push(p)).await,
             Ok(InstallOutcome::Installed)
         );
         let len = bytes.len() as u64;
@@ -494,7 +494,7 @@ mod tests {
                 total: Some(len)
             })
         );
-        let written = fs::read(e.paths.registry.join("fragebogen_a.yaml")).unwrap();
+        let written = fs::read(e.paths.registry.join("questionnaire_a.yaml")).unwrap();
         assert_eq!(written, bytes.as_bytes());
         let r = rows(Some(&list), &scan(&e.paths.registry));
         assert_eq!(r[0].state, RowState::Current);
@@ -505,25 +505,25 @@ mod tests {
         let (url, _d) = registry().await;
         let c = conn(&url, "secret");
         let e = env();
-        let local = e.paths.definitions.join("meine_kopie.yaml");
-        let installed = e.paths.registry.join("fragebogen_a.yaml");
-        fs::write(&local, def("fragebogen_a")).unwrap();
+        let local = e.paths.definitions.join("meine_copy.yaml");
+        let installed = e.paths.registry.join("questionnaire_a.yaml");
+        fs::write(&local, def("questionnaire_a")).unwrap();
         assert_eq!(
-            install(&c, &e.paths, "fragebogen_a", false, |_| {}).await,
+            install(&c, &e.paths, "questionnaire_a", false, |_| {}).await,
             Ok(InstallOutcome::NeedsReplaceConfirm)
         );
         assert!(local.exists() && !installed.exists());
         // A failed write (registry folder missing) keeps the local copy.
         fs::remove_dir(&e.paths.registry).unwrap();
         assert!(
-            install(&c, &e.paths, "fragebogen_a", true, |_| {})
+            install(&c, &e.paths, "questionnaire_a", true, |_| {})
                 .await
                 .is_err()
         );
         assert!(local.exists());
         fs::create_dir(&e.paths.registry).unwrap();
         assert_eq!(
-            install(&c, &e.paths, "fragebogen_a", true, |_| {}).await,
+            install(&c, &e.paths, "questionnaire_a", true, |_| {}).await,
             Ok(InstallOutcome::Installed)
         );
         assert!(!local.exists() && installed.exists());
@@ -533,9 +533,9 @@ mod tests {
     async fn fake(list: Vec<RemoteEntry>, header: String, bytes: String) -> Connection {
         use axum::{Json, routing::get};
         let app = axum::Router::new()
-            .route("/v1/fragebogen", get(move || async move { Json(list) }))
+            .route("/v1/questionnaires", get(move || async move { Json(list) }))
             .route(
-                "/v1/fragebogen/{id}",
+                "/v1/questionnaires/{id}",
                 get(move || async move { ([("x-kreuzchen-hash", header)], bytes) }),
             );
         conn(&serve(app).await, "x")
@@ -543,19 +543,19 @@ mod tests {
 
     fn entry_a(hash: String) -> RemoteEntry {
         RemoteEntry {
-            id: "fragebogen_a".into(),
+            id: "questionnaire_a".into(),
             title: "A".into(),
             version: "1".into(),
             hash,
         }
     }
 
-    /// Installs `fragebogen_a` over an existing "alt" file; returns the error, checks the file kept.
+    /// Installs `questionnaire_a` over an existing "alt" file; returns the error, checks the file kept.
     async fn install_fails(c: Connection) -> String {
         let e = env();
-        let old = e.paths.registry.join("fragebogen_a.yaml");
+        let old = e.paths.registry.join("questionnaire_a.yaml");
         fs::write(&old, "alt").unwrap();
-        let err = install(&c, &e.paths, "fragebogen_a", false, |_| {})
+        let err = install(&c, &e.paths, "questionnaire_a", false, |_| {})
             .await
             .unwrap_err();
         assert_eq!(fs::read(&old).unwrap(), b"alt");
@@ -565,7 +565,7 @@ mod tests {
 
     #[tokio::test]
     async fn install_keeps_old_file_on_bad_hash() {
-        let bytes = def("fragebogen_a");
+        let bytes = def("questionnaire_a");
         let h = hash(bytes.as_bytes());
         let c = fake(vec![entry_a(h)], "falsch".into(), bytes).await;
         assert_eq!(
@@ -576,7 +576,7 @@ mod tests {
 
     #[tokio::test]
     async fn install_rejects_list_hash_mismatch() {
-        let bytes = def("fragebogen_a");
+        let bytes = def("questionnaire_a");
         let h = hash(bytes.as_bytes());
         let c = fake(vec![entry_a("anders".into())], h, bytes).await;
         assert_eq!(
@@ -587,7 +587,7 @@ mod tests {
 
     #[tokio::test]
     async fn install_rejects_other_def_id() {
-        let bytes = def("fragebogen_b");
+        let bytes = def("questionnaire_b");
         let h = hash(bytes.as_bytes());
         let c = fake(vec![entry_a(h.clone())], h, bytes).await;
         assert_eq!(
@@ -598,7 +598,7 @@ mod tests {
 
     #[tokio::test]
     async fn install_rejects_id_not_in_list() {
-        let bytes = def("fragebogen_a");
+        let bytes = def("questionnaire_a");
         let h = hash(bytes.as_bytes());
         let c = fake(vec![], h, bytes).await;
         assert_eq!(
