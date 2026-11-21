@@ -119,7 +119,8 @@ fn replace_value(text: &str, key: &str, old: &str, new: &str) -> String {
     out
 }
 
-/// Sets the top-level `min_app`, after `schema:` when there is none yet.
+/// Sets the top-level `min_app`, after `schema:` when there is none yet. An existing line is
+/// replaced whole: its comment described the old value.
 fn set_min_app(text: &str) -> String {
     let line = format!("min_app: \"{MIN_APP}\"");
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
