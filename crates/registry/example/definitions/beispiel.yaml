@@ -1,4 +1,5 @@
 schema: 1
+min_app: "0.5.0"
 id: beispiel
 version: "1"
 title: Beispiel-Fragebogen
@@ -11,7 +12,7 @@ keys:
   umgepolt: [3, 2, 1, 0]
 default_answers: haeufigkeit
 fields:
-  - { id: kennung, label: Kennung, type: text, default: anonym }
+  - { id: subject_id, label: Kennung, type: text, default: anonymous }
   - { id: alter, label: Alter, type: number }
   - { id: erwachsen, label: Volljährig, type: checkbox }
 scales:
@@ -34,7 +35,7 @@ result: [gesamt, X, Y, zusatz]
 rules:
   - { id: r1, label: "Regel 1: Gesamtsumme über Cut-off", when: gesamt.over }
   - { id: r2, label: "Regel 2: Gesamtsumme und Skala X über Cut-off", when: r1 and X.over }
-  - { id: vollstaendig, label: "Höchstens 1 Antwort fehlt", when: fehlend <= 1 }
+  - { id: vollstaendig, label: "Höchstens 1 Antwort fehlt", when: missing <= 1 }
 caveats:
   - { when: erwachsen, text: "Nur für Kinder normiert." }
   - { when: zusatz == "Ja", text: "Zusatzfrage mit Ja beantwortet." }

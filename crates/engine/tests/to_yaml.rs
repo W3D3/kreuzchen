@@ -1,6 +1,6 @@
 use kreuzchen_engine::{load, parse_definition, to_yaml};
 
-const YAML: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const YAML: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 
 #[test]
 fn beispiel_round_trips() {

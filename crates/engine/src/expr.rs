@@ -235,6 +235,24 @@ pub fn parse(src: &str) -> Result<Expr, String> {
     }
 }
 
+/// `src` with every name `to` maps replaced; the rest (spacing, strings, keywords) stays as written.
+pub fn rename(src: &str, to: impl Fn(&str) -> Option<String>) -> Result<String, String> {
+    let c: Vec<char> = src.chars().collect();
+    let (mut out, mut at) = (String::new(), 0);
+    for (start, tok) in tokenize(src)? {
+        if let Tok::Name(n) = tok {
+            if let Some(new) = to(&n) {
+                out.extend(&c[at..start]);
+                out.push_str(&new);
+                // Names are ASCII and written without spaces, so their length is their span.
+                at = start + n.len();
+            }
+        }
+    }
+    out.extend(&c[at..]);
+    Ok(out)
+}
+
 fn kind(v: &Value) -> &'static str {
     match v {
         Value::Num(_) => "Zahl",
@@ -265,7 +283,7 @@ pub fn eval(e: &Expr, env: &BTreeMap<String, Value>) -> Result<Value, String> {
     run(e, env, false)
 }
 
-/// Skips the right side of `and`/`or` once the left decides, so `alter.gesetzt and alter > 24`
+/// Skips the right side of `and`/`or` once the left decides, so `age.present and age > 24`
 /// grades when no age is entered.
 pub fn eval_short(e: &Expr, env: &BTreeMap<String, Value>) -> Result<Value, String> {
     run(e, env, true)
@@ -404,12 +422,22 @@ mod tests {
 
     #[test]
     fn names_collects() {
-        let n = names(&parse("gesamt.over and not k1 or fehlend <= 1").unwrap());
-        let want: BTreeSet<String> = ["gesamt.over", "k1", "fehlend"]
+        let n = names(&parse("total.over and not k1 or missing <= 1").unwrap());
+        let want: BTreeSet<String> = ["total.over", "k1", "missing"]
             .iter()
             .map(|s| s.to_string())
             .collect();
         assert_eq!(n, want);
+    }
+
+    #[test]
+    fn rename_touches_names_only() {
+        let to = |n: &str| (n == "fehlend").then(|| "missing".to_string());
+        assert_eq!(
+            rename(r#"fehlend>1 and x == "fehlend" or  fehlend_x"#, to).unwrap(),
+            r#"missing>1 and x == "fehlend" or  fehlend_x"#
+        );
+        assert!(rename("ä", to).is_err());
     }
 
     #[test]

@@ -89,7 +89,7 @@ type Scored = (f64, bool);
 pub(crate) struct EnvSource<'a, E> {
     /// Sum and over-cutoff flag of a scale.
     pub scale: &'a dyn Fn(&Scale) -> Scored,
-    /// Unanswered items of a scale, exposed as `id.fehlend`.
+    /// Unanswered items of a scale, exposed as `id.missing`.
     pub scale_missing: &'a dyn Fn(&Scale) -> f64,
     /// Value of a field; `None` leaves it out of the environment.
     pub field: &'a dyn Fn(&Field) -> Option<Value>,
@@ -103,7 +103,7 @@ pub(crate) struct EnvSource<'a, E> {
 }
 
 /// Builds the expression environment in the one order both validation and grading use:
-/// scales, derived, fields, item ids, `fehlend`, then rules (later rules see earlier ones).
+/// scales, derived, fields, item ids, `missing`, then rules (later rules see earlier ones).
 pub(crate) fn build_env<E>(
     def: &Definition,
     src: EnvSource<'_, E>,
@@ -112,7 +112,7 @@ pub(crate) fn build_env<E>(
     for s in &def.scales {
         add_scored(&mut env, &s.id, (src.scale)(s), s.cutoff);
         env.insert(
-            format!("{}.fehlend", s.id),
+            format!("{}.missing", s.id),
             Value::Num((src.scale_missing)(s)),
         );
     }
@@ -123,7 +123,7 @@ pub(crate) fn build_env<E>(
     for f in &def.fields {
         let v = (src.field)(f);
         if f.kind == FieldKind::Number {
-            env.insert(format!("{}.gesetzt", f.id), Value::Bool(v.is_some()));
+            env.insert(format!("{}.present", f.id), Value::Bool(v.is_some()));
         }
         if let Some(v) = v {
             env.insert(f.id.clone(), v);
@@ -134,7 +134,7 @@ pub(crate) fn build_env<E>(
             env.insert(id.clone(), Value::Str((src.item)(i)));
         }
     }
-    env.insert("fehlend".to_string(), Value::Num(src.missing));
+    env.insert("missing".to_string(), Value::Num(src.missing));
     for r in &def.rules {
         let met = (src.rule)(r, &env)?;
         env.insert(r.id.clone(), Value::Bool(met));
@@ -142,13 +142,13 @@ pub(crate) fn build_env<E>(
     Ok(env)
 }
 
-/// `^[A-Za-z_][A-Za-z0-9_]*$`, minus expression keywords and `fehlend`.
+/// `^[A-Za-z_][A-Za-z0-9_]*$`, minus expression keywords and `missing`.
 fn valid_name(n: &str) -> bool {
     let mut c = n.chars();
     c.next()
         .is_some_and(|f| f.is_ascii_alphabetic() || f == '_')
         && c.all(|x| x.is_ascii_alphanumeric() || x == '_')
-        && !["and", "or", "not", "true", "false", "fehlend"].contains(&n)
+        && !["and", "or", "not", "true", "false", "missing"].contains(&n)
 }
 
 pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>> {

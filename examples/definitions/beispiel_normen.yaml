@@ -1,5 +1,6 @@
 # Example with norm tables. All values are invented; they only show the format.
 schema: 1
+min_app: "0.5.0"
 id: beispiel_normen
 version: "1"
 title: Beispiel mit Normwerten
@@ -10,7 +11,7 @@ keys:
   umgepolt: [3, 2, 1, 0]
 default_answers: haeufigkeit
 fields:
-  - { id: kennung, label: Kennung, type: text, default: anonym }
+  - { id: subject_id, label: Kennung, type: text, default: anonymous }
 scales:
   - { id: A, label: Skala A }
   - { id: B, label: Skala B }
@@ -26,10 +27,10 @@ sections:
       - { n: 5, scale: B, key: normal, text: "Frage fünf?" }
       - { n: 6, scale: B, key: umgepolt, text: "Frage sechs?" }
 result: [gesamt, A, B]
-# Limits on missing answers, per scale (`A.fehlend`) and in total (`fehlend`).
+# Limits on missing answers, per scale (`A.missing`) and in total (`missing`).
 caveats:
-  - { when: A.fehlend > 0, text: "Skala A: fehlende Antworten, Skala nicht auswertbar." }
-  - { when: fehlend > 1, text: "Mehr als 1 fehlende Antwort." }
+  - { when: A.missing > 0, text: "Skala A: fehlende Antworten, Skala nicht auswertbar." }
+  - { when: missing > 1, text: "Mehr als 1 fehlende Antwort." }
 verdict:
   - { when: gesamt.over, text: "Auffällig" }
   - { else: "Unauffällig" }
