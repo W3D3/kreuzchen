@@ -207,11 +207,16 @@ verdict:
         let new = upgrade(OLD).unwrap().unwrap();
         assert!(new.contains("# Fictional test questionnaire."), "{new}");
         assert!(new.contains("default: anonymous }  # who"), "{new}");
-        assert!(new.contains("schema: 1\nmin_app: \"0.5.0\"\nid: t"), "{new}");
-        assert!(new.contains("when: A.missing > 0 or missing > 1 }"), "{new}");
-        assert!(new.contains(
-            "when: not alter.present and subject_id == \"anonym\", text: \"fehlend\" }"
-        ));
+        assert!(
+            new.contains("schema: 1\nmin_app: \"0.5.0\"\nid: t"),
+            "{new}"
+        );
+        assert!(
+            new.contains("when: A.missing > 0 or missing > 1 }"),
+            "{new}"
+        );
+        assert!(new
+            .contains("when: not alter.present and subject_id == \"anonym\", text: \"fehlend\" }"));
         assert!(new.contains("{ id: subject_id, label: Kennung,"), "{new}");
         assert!(new.contains("text: \"fehlend?\""), "{new}");
         crate::load(&new).unwrap_or_else(|e| panic!("{e:?}"));

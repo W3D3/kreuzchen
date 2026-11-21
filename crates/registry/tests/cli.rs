@@ -46,11 +46,13 @@ fn http(port: u16, method: &str, path: &str, auth: &str, body: &str) -> String {
 fn practice_keys_are_never_logged_or_stored() {
     use std::io::Read;
     let dir = tempfile::tempdir().unwrap();
-    std::fs::create_dir(dir.path().join("definitionen")).unwrap();
+    std::fs::create_dir(dir.path().join("definitions")).unwrap();
     let (_, hash) = kreuzchen_registry::new_key();
     std::fs::write(
         dir.path().join("config.yaml"),
-        format!("praxen:\n  - user: praxis_a\n    key_hash: {hash:?}\n    fragebogen: []\n"),
+        format!(
+            "practices:\n  - user: practice_a\n    key_hash: {hash:?}\n    questionnaires: []\n"
+        ),
     )
     .unwrap();
     let port = std::net::TcpListener::bind("127.0.0.1:0")
@@ -80,15 +82,15 @@ fn practice_keys_are_never_logged_or_stored() {
     let added = http(
         port,
         "POST",
-        "/admin/api/praxen",
+        "/admin/api/practices",
         bearer,
-        r#"{"user":"praxis_b"}"#,
+        r#"{"user":"practice_b"}"#,
     );
     assert!(added.starts_with("HTTP/1.1 201"), "{added}");
     let rekeyed = http(
         port,
         "POST",
-        "/admin/api/praxen/praxis_a/schluessel",
+        "/admin/api/practices/practice_a/key",
         bearer,
         "",
     );
@@ -96,9 +98,9 @@ fn practice_keys_are_never_logged_or_stored() {
     let keys = [key_in(&added), key_in(&rekeyed)];
     let basic = format!(
         "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode(format!("praxis_b:{}", keys[0]))
+        base64::engine::general_purpose::STANDARD.encode(format!("practice_b:{}", keys[0]))
     );
-    assert!(http(port, "GET", "/v1/fragebogen", &basic, "").starts_with("HTTP/1.1 200"));
+    assert!(http(port, "GET", "/v1/questionnaires", &basic, "").starts_with("HTTP/1.1 200"));
 
     server.kill().unwrap();
     let mut log = String::new();
@@ -109,8 +111,8 @@ fn practice_keys_are_never_logged_or_stored() {
         .read_to_string(&mut log)
         .unwrap();
     server.wait().unwrap();
-    assert!(log.contains("/admin/api/praxen 201"), "{log}");
-    assert!(log.contains("praxis_b /v1/fragebogen 200"), "{log}");
+    assert!(log.contains("/admin/api/practices 201"), "{log}");
+    assert!(log.contains("practice_b /v1/questionnaires 200"), "{log}");
     assert!(!log.contains("cli-test-token"), "{log}");
     let cfg = std::fs::read_to_string(dir.path().join("config.yaml")).unwrap();
     for key in &keys {

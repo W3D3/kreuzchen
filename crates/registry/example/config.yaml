@@ -1,12 +1,12 @@
-# Questionnaires come from definitionen/ (source type local, the default). To take them from a
+# Questionnaires come from definitions/ (source type local, the default). To take them from a
 # private GitHub repo instead (token in KREUZCHEN_GITHUB_TOKEN), see DEVELOPMENT.md:
 # source:
 #   type: github
-#   repo: owner/fragebogen
+#   repo: owner/questionnaires
 #   branch: main
-#   path: fragebogen
-praxen:
-  - user: praxis_beispiel
+#   path: questionnaires
+practices:
+  - user: practice_example
     # Create with: kreuzchen-registry key
-    key_hash: "$argon2id$v=19$m=19456,t=2,p=1$PLATZHALTER$PLATZHALTER"
-    fragebogen: [beispiel]
+    key_hash: "$argon2id$v=19$m=19456,t=2,p=1$PLACEHOLDER$PLACEHOLDER"
+    questionnaires: [beispiel]

@@ -435,10 +435,10 @@ mod tests {
         url
     }
 
-    /// A real registry serving `fragebogen_a` to `praxis_a` / `geheim`; keep the dir alive.
+    /// A real registry serving `fragebogen_a` to `praxis_a` / `secret`; keep the dir alive.
     async fn registry() -> (String, tempfile::TempDir) {
         let key_hash = Argon2::default()
-            .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
+            .hash_password(b"secret", &SaltString::generate(&mut OsRng))
             .unwrap()
             .to_string();
         let dir = tempfile::tempdir().unwrap();
@@ -473,7 +473,7 @@ mod tests {
     #[tokio::test]
     async fn install_end_to_end() {
         let (url, _d) = registry().await;
-        let c = conn(&url, "geheim");
+        let c = conn(&url, "secret");
         let list = fetch_list(&c).await.unwrap();
         let bytes = def("fragebogen_a");
         assert_eq!(list.len(), 1);
@@ -503,7 +503,7 @@ mod tests {
     #[tokio::test]
     async fn install_asks_before_replacing_local() {
         let (url, _d) = registry().await;
-        let c = conn(&url, "geheim");
+        let c = conn(&url, "secret");
         let e = env();
         let local = e.paths.definitions.join("meine_kopie.yaml");
         let installed = e.paths.registry.join("fragebogen_a.yaml");

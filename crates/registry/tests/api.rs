@@ -11,27 +11,27 @@ use kreuzchen_engine::hash;
 use kreuzchen_registry::{load, router};
 use tower::ServiceExt;
 
-const BEISPIEL: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const EXAMPLE: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 
 fn def(id: &str) -> String {
-    BEISPIEL.replacen("id: beispiel", &format!("id: {id:?}"), 1)
+    EXAMPLE.replacen("id: beispiel", &format!("id: {id:?}"), 1)
 }
 
 fn app() -> (Router, tempfile::TempDir) {
     let key_hash = Argon2::default()
-        .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
+        .hash_password(b"secret", &SaltString::generate(&mut OsRng))
         .unwrap()
         .to_string();
     let dir = tempfile::tempdir().unwrap();
-    fs::create_dir(dir.path().join("definitionen")).unwrap();
+    fs::create_dir(dir.path().join("definitions")).unwrap();
     fs::write(
         dir.path().join("config.yaml"),
-        format!("praxen:\n  - user: praxis_a\n    key_hash: {key_hash:?}\n    fragebogen: [fragebogen_a]\n"),
+        format!("practices:\n  - user: practice_a\n    key_hash: {key_hash:?}\n    questionnaires: [questionnaire_a]\n"),
     )
     .unwrap();
-    for id in ["fragebogen_a", "fragebogen_b"] {
+    for id in ["questionnaire_a", "questionnaire_b"] {
         fs::write(
-            dir.path().join("definitionen").join(format!("{id}.yaml")),
+            dir.path().join("definitions").join(format!("{id}.yaml")),
             def(id),
         )
         .unwrap();
@@ -63,7 +63,7 @@ async fn get(app: &Router, uri: &str, auth: Option<String>) -> (Response<Body>, 
 }
 
 fn ok() -> Option<String> {
-    Some(basic("praxis_a", "geheim"))
+    Some(basic("practice_a", "secret"))
 }
 
 fn no_store(r: &Response<Body>) {
@@ -85,10 +85,10 @@ async fn list_requires_auth() {
     let mut seen = vec![];
     for a in [
         None,
-        Some(basic("nobody", "geheim")),
-        Some(basic("praxis_a", "falsch")),
+        Some(basic("nobody", "secret")),
+        Some(basic("practice_a", "wrong")),
     ] {
-        let (r, b) = get(&app, "/v1/fragebogen", a).await;
+        let (r, b) = get(&app, "/v1/questionnaires", a).await;
         assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
         assert!(b.is_empty());
         no_store(&r);
@@ -108,12 +108,12 @@ async fn list_requires_auth() {
 #[tokio::test]
 async fn list_shows_only_entitled() {
     let (app, d) = app();
-    let bytes = fs::read(d.path().join("definitionen/fragebogen_a.yaml")).unwrap();
-    let (r, b) = get(&app, "/v1/fragebogen", ok()).await;
+    let bytes = fs::read(d.path().join("definitions/questionnaire_a.yaml")).unwrap();
+    let (r, b) = get(&app, "/v1/questionnaires", ok()).await;
     assert_eq!(r.status(), StatusCode::OK);
     no_store(&r);
-    let e = &load(d.path()).unwrap().entries["fragebogen_a"];
-    let want = serde_json::json!([{"id": "fragebogen_a", "title": e.title, "version": e.version, "hash": hash(&bytes)}]);
+    let e = &load(d.path()).unwrap().entries["questionnaire_a"];
+    let want = serde_json::json!([{"id": "questionnaire_a", "title": e.title, "version": e.version, "hash": hash(&bytes)}]);
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&b).unwrap(),
         want
@@ -123,8 +123,8 @@ async fn list_shows_only_entitled() {
 #[tokio::test]
 async fn download_entitled() {
     let (app, d) = app();
-    let bytes = fs::read(d.path().join("definitionen/fragebogen_a.yaml")).unwrap();
-    let (r, b) = get(&app, "/v1/fragebogen/fragebogen_a", ok()).await;
+    let bytes = fs::read(d.path().join("definitions/questionnaire_a.yaml")).unwrap();
+    let (r, b) = get(&app, "/v1/questionnaires/questionnaire_a", ok()).await;
     assert_eq!(r.status(), StatusCode::OK);
     assert_eq!(r.headers()["content-type"], "application/yaml");
     assert_eq!(r.headers()["x-kreuzchen-hash"], hash(&bytes).as_str());
@@ -135,8 +135,8 @@ async fn download_entitled() {
 #[tokio::test]
 async fn not_entitled_equals_missing() {
     let (app, _d) = app();
-    for id in ["fragebogen_b", "gibtsnicht"] {
-        let (r, b) = get(&app, &format!("/v1/fragebogen/{id}"), ok()).await;
+    for id in ["questionnaire_b", "missing_user"] {
+        let (r, b) = get(&app, &format!("/v1/questionnaires/{id}"), ok()).await;
         assert_eq!(r.status(), StatusCode::NOT_FOUND);
         assert!(b.is_empty());
         no_store(&r);
@@ -146,7 +146,7 @@ async fn not_entitled_equals_missing() {
 #[tokio::test]
 async fn unmatched_v1_paths_require_auth() {
     let (app, _d) = app();
-    for uri in ["/v1/fragebogen/a/b", "/v1/nope"] {
+    for uri in ["/v1/questionnaires/a/b", "/v1/nope"] {
         let (r, b) = get(&app, uri, None).await;
         assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
         assert!(b.is_empty());
@@ -155,4 +155,28 @@ async fn unmatched_v1_paths_require_auth() {
         assert!(b.is_empty());
         no_store(&r);
     }
+}
+
+#[tokio::test]
+async fn old_paths_of_the_0_4_app_still_work() {
+    let (app, _d) = app();
+    for (old, new) in [
+        ("/v1/fragebogen", "/v1/questionnaires"),
+        (
+            "/v1/fragebogen/questionnaire_a",
+            "/v1/questionnaires/questionnaire_a",
+        ),
+    ] {
+        let (r_old, b_old) = get(&app, old, ok()).await;
+        let (r_new, b_new) = get(&app, new, ok()).await;
+        assert_eq!(r_old.status(), StatusCode::OK, "{old}");
+        assert_eq!(
+            (b_old, r_old.headers().get("x-kreuzchen-hash")),
+            (b_new, r_new.headers().get("x-kreuzchen-hash"))
+        );
+    }
+    let (r, _) = get(&app, "/v1/fragebogen", None).await;
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    let (r, _) = get(&app, "/v1/fragebogen/questionnaire_b", ok()).await;
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
 }
