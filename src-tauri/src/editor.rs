@@ -3,9 +3,13 @@ use crate::store::write_atomic;
 use kreuzchen_engine::hash;
 use std::{collections::HashSet, fs, path::Path};
 
+/// The file's text, with 0.4 names upgraded as `load_file` does, so the editor shows, checks
+/// and saves what the list loads. The hash for saving stays that of the file on disk.
 pub fn read_source(dir: &Path, file: &str) -> Result<String, String> {
     check_name(file, YAML)?;
-    fs::read_to_string(dir.join(file)).map_err(|e| format!("Datei nicht lesbar: {e}"))
+    let text =
+        fs::read_to_string(dir.join(file)).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
+    Ok(kreuzchen_engine::migrate::upgraded(&text).into_owned())
 }
 
 /// Validates `yaml` and writes it to `dir/file`, returning the new hash.
@@ -127,6 +131,29 @@ mod tests {
         assert_eq!(got, hash(new.as_bytes()));
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), new);
         assert!(!d.path().join("b.yaml.tmp").exists());
+    }
+
+    #[test]
+    fn a_0_4_file_arriving_after_the_migration_opens_and_saves_upgraded() {
+        let d = tempfile::tempdir().unwrap();
+        let old = include_str!("../../fixtures/app-data-0.4.0/definitionen/beispiel.yaml");
+        fs::write(d.path().join("b.yaml"), old).unwrap();
+        let src = read_source(d.path(), "b.yaml").unwrap();
+        assert!(src.contains("when: missing <= 1") && src.contains("id: subject_id"));
+        assert!(
+            src.starts_with("# Fictional example questionnaire"),
+            "comments kept"
+        );
+        let got = save(
+            d.path(),
+            &empty(),
+            "b.yaml",
+            &src,
+            Some(&hash(old.as_bytes())),
+            false,
+        );
+        assert_eq!(got, Ok(hash(src.as_bytes())));
+        assert_eq!(fs::read_to_string(d.path().join("b.yaml")).unwrap(), src);
     }
 
     #[test]

@@ -70,11 +70,11 @@ fn parse(bytes: &[u8]) -> Result<Questionnaire, String> {
 }
 
 /// `load_text` for a file read from disk or the Bibliothek, upgrading 0.4 names in memory.
-/// shortcut: Bibliothek files stay byte-identical so their hashes match the server's; drop once
-/// no server serves 0.4 files.
+/// shortcut: Bibliothek files stay byte-identical so their hashes match the server's, and a 0.4
+/// file can still arrive after the migration (a copy from a 0.4 colleague); drop with
+/// `kreuzchen_engine::migrate`. `editor::read_source` shows the same upgraded text.
 pub fn load_file(text: &str) -> Result<Questionnaire, String> {
-    let upgraded = kreuzchen_engine::migrate::upgrade(text).ok().flatten();
-    load_text(upgraded.as_deref().unwrap_or(text))
+    load_text(&kreuzchen_engine::migrate::upgraded(text))
 }
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");

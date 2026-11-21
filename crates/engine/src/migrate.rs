@@ -70,10 +70,16 @@ pub fn upgrade_definition(def: &Definition) -> Result<Option<Definition>, String
     let mut new = def.clone();
     let subject = def.fields.iter().any(|f| f.id == SUBJECT.0);
     let names = declared(def);
-    for taken in ["missing", SUBJECT.1] {
-        if names.contains(&taken) && (taken == "missing" || subject) {
-            return Err(format!("Name „{taken}“ ist schon vergeben"));
-        }
+    let taken = |n: &str| {
+        names
+            .contains(&n)
+            .then(|| format!("Name „{n}“ ist schon vergeben"))
+    };
+    if let Some(e) = taken("missing") {
+        return Err(e);
+    }
+    if let Some(e) = taken(SUBJECT.1).filter(|_| subject) {
+        return Err(e);
     }
     for (wher, e) in expressions(&mut new) {
         *e = expr::rename(e, |n| rename_name(n, subject)).map_err(|m| format!("{wher}: {m}"))?;
@@ -136,6 +142,15 @@ fn set_min_app(text: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+/// `yaml` upgraded when it is a 0.4 file that can be upgraded, else unchanged: the read-side
+/// shortcut for files kept byte-identical (Bibliothek downloads, files arriving after migration).
+pub fn upgraded(yaml: &str) -> std::borrow::Cow<'_, str> {
+    match upgrade(yaml) {
+        Ok(Some(new)) => new.into(),
+        _ => yaml.into(),
+    }
 }
 
 /// Upgrades a 0.4 definition text. `Ok(None)`: nothing to upgrade. `Err`: cannot be upgraded,

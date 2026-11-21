@@ -76,7 +76,8 @@ fn steps(data: &Path, problems: &mut Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
-/// Backups, temp files, and what the webview keeps here (caches, storage, WebKit/WebView2 data).
+/// What the webview keeps directly in the data folder (caches, storage, WebKit/WebView2 data),
+/// earlier backups and temp files. Only checked at the top: deeper down every file is the user's.
 fn skip_in_backup(name: &str) -> bool {
     let n = name.to_lowercase();
     n.starts_with(BACKUP)
@@ -87,17 +88,18 @@ fn skip_in_backup(name: &str) -> bool {
             .any(|w| n.contains(w))
 }
 
-fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+/// Copies `from` into `to`; `top` leaves out what `skip_in_backup` names.
+fn copy_dir(from: &Path, to: &Path, top: bool) -> std::io::Result<()> {
     fs::create_dir_all(to)?;
     for e in fs::read_dir(from)? {
         let e = e?;
         let name = e.file_name();
-        if skip_in_backup(&name.to_string_lossy()) {
+        if top && skip_in_backup(&name.to_string_lossy()) {
             continue;
         }
         let t = e.file_type()?;
         if t.is_dir() {
-            copy_dir(&e.path(), &to.join(&name))?;
+            copy_dir(&e.path(), &to.join(&name), false)?;
         } else if t.is_file() {
             fs::copy(e.path(), to.join(&name))?;
         }
@@ -121,7 +123,7 @@ fn backup(data: &Path) -> Result<(), String> {
     }
     let name = format!("{BACKUP}{}", utc_stamp(SystemTime::now()));
     let partial = data.join(format!("{name}{PARTIAL}"));
-    copy_dir(data, &partial)
+    copy_dir(data, &partial, true)
         .and_then(|()| fs::rename(&partial, data.join(&name)))
         .map_err(|e| format!("Sicherungskopie fehlgeschlagen: {e}"))
 }
@@ -302,13 +304,15 @@ mod tests {
 
     fn old_data() -> tempfile::TempDir {
         let d = tempfile::tempdir().unwrap();
-        copy_dir(Path::new(FIXTURE), d.path()).unwrap();
+        copy_dir(Path::new(FIXTURE), d.path(), false).unwrap();
         // What the OS keeps in the app data folder must not land in the backup.
         for dir in ["WebKitCache", "CacheStorage", "storage", "mediakeys"] {
             fs::create_dir(d.path().join(dir)).unwrap();
             fs::write(d.path().join(dir).join("blob"), "x").unwrap();
         }
         fs::write(d.path().join("hsts-storage.sqlite"), "x").unwrap();
+        // A user file whose name only looks like webview data must still be backed up.
+        fs::write(d.path().join("auswertungen/x_cachexie.json"), "{}").unwrap();
         d
     }
 

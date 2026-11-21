@@ -116,8 +116,7 @@ pub fn parse_entry(name: &str, bytes: Vec<u8>, path: PathBuf) -> Result<Entry, S
     let text = std::str::from_utf8(&bytes).map_err(|_| format!("{name}: nicht UTF-8"))?;
     // shortcut: 0.4 files (a Bibliothek repo not switched yet) load through an in-memory
     // upgrade while their bytes are served unchanged; drop once no 0.4 files are published.
-    let upgraded = kreuzchen_engine::migrate::upgrade(text).ok().flatten();
-    let q = kreuzchen_engine::load(upgraded.as_deref().unwrap_or(text)).map_err(|errs| {
+    let q = kreuzchen_engine::load(&kreuzchen_engine::migrate::upgraded(text)).map_err(|errs| {
         let msgs: Vec<_> = errs.iter().map(|e| e.to_string()).collect();
         format!("{name}: {}", msgs.join("; "))
     })?;
