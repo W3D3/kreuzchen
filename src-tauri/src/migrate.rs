@@ -347,6 +347,10 @@ mod tests {
         assert_eq!(read(backup.join("definitionen/beispiel.yaml")), old_def);
         assert!(backup.join("auswertungen").join(RESULT).exists());
         assert!(backup.join("registry.json").exists());
+        assert!(
+            backup.join("auswertungen/x_cachexie.json").exists(),
+            "nested user file backed up"
+        );
         for skipped in [
             "WebKitCache",
             "CacheStorage",
