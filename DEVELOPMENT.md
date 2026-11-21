@@ -27,9 +27,9 @@ Update bundles are signed with a minisign key. The public key is in `src-tauri/t
 
 ## The `local/` folder
 
-`local/` is gitignored. It holds copyrighted material (source PDFs and their definitions) that must never be committed or bundled. Commits, PRs, docs and code never name specific questionnaires; committed tests and examples use only the invented definitions in `examples/definitionen/`.
+`local/` is gitignored. It holds copyrighted material (source PDFs and their definitions) that must never be committed or bundled. Commits, PRs, docs and code never name specific questionnaires; committed tests and examples use only the invented definitions in `examples/definitions/`.
 
-`crates/engine/tests/local.rs` checks that every `local/definitionen/*.yaml` loads, and grades the hand-scored cases in `local/faelle/<definition name>/*.json`:
+`crates/engine/tests/local.rs` checks that every `local/definitions/*.yaml` loads, and grades the hand-scored cases in `local/cases/<definition name>/*.json`:
 
 ```json
 { "input": { "fields": {}, "answers": { "1": 0, "2": 3 } }, "expect": { "gesamt": 42 }, "verdict": "…" }
@@ -39,11 +39,11 @@ Update bundles are signed with a minisign key. The public key is in `src-tauri/t
 
 ## Questionnaire format
 
-The reference example is [`examples/definitionen/beispiel.yaml`](examples/definitionen/beispiel.yaml). Top-level keys:
+The reference example is [`examples/definitions/beispiel.yaml`](examples/definitions/beispiel.yaml). Top-level keys:
 
 - `schema`, `id`, `version`, `title`: format version (currently `1`), a unique ID, the definition version and the display title.
 - `cutoff_compare`: optional, how scores are compared with cut-offs, `">="` (default) or `">"`.
-- `min_app`: optional, the oldest Kreuzchen version that can open the file, e.g. `"0.4.0"`. Set it when the file uses a newer feature: older versions then show „Update nötig“ instead of an error. Versions before 0.4.0 do not know this key.
+- `min_app`: optional, the oldest Kreuzchen version that can open the file, e.g. `"0.4.0"`. Set it when the file uses a newer feature: older versions then show „Update nötig“ instead of an error. Versions before 0.4.0 do not know this key. Files using the English expression names of 0.5.0 (`missing`, `X.present`, field `subject_id`) declare `min_app: "0.5.0"`.
 - `answer_sets`: named lists of answer labels, in order; the position is the answer value. `default_answers` names the set used by items that do not set `answers`.
 - `shortcuts`: optional entry keys per answer set, one character per answer in order, e.g. `ja_nein: nj`. Sets without an entry use `0`, `1`, `2`, ….
 - `keys`: named scoring tables. An item's `key` is a table name or an inline list mapping answer position to points (reverse-keyed items use e.g. `[3, 2, 1, 0]`).
@@ -52,24 +52,40 @@ The reference example is [`examples/definitionen/beispiel.yaml`](examples/defini
 - `derived`: computed values with an `id` and a `value` expression (e.g. `X + Y`), optionally with a `cutoff`.
 - `sections`: the questionnaire pages, each with a `title`, optional `intro` and `items`. Items have a number `n` or an `id`, `text`, and optionally `scale`, `key` and `answers`.
 - `result`: the IDs shown in the result table, in order.
-- `norms`: optional norm tables (e.g. T-values). `name` is the label (default `T`), `bands` the severity labels by lower bound (`{ from: 60, label: mild }`, ascending), and `tables` maps a scale or derived ID to `{ raw score: norm value }`. A raw score that is not listed takes the next lower listed one, as with a printed table that skips rows. Example: [`examples/definitionen/beispiel_normen.yaml`](examples/definitionen/beispiel_normen.yaml).
+- `norms`: optional norm tables (e.g. T-values). `name` is the label (default `T`), `bands` the severity labels by lower bound (`{ from: 60, label: mild }`, ascending), and `tables` maps a scale or derived ID to `{ raw score: norm value }`. A raw score that is not listed takes the next lower listed one, as with a printed table that skips rows. Example: [`examples/definitions/beispiel_normen.yaml`](examples/definitions/beispiel_normen.yaml).
 - `rules`: named boolean expressions (`id`, `label`, `when`) that may reference earlier rules.
 - `caveats`: notes shown when their `when` expression is true.
 - `verdict`: ordered list; the first entry whose `when` is true gives the text; the entry with `else` is the fallback.
 
-Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, `fehlend` is the number of unanswered items, and `X.fehlend` the unanswered items of scale `X`. A number field `F` that may stay empty is checked with `F.gesetzt`, e.g. `alter.gesetzt and alter > 24`: `and`/`or` stop once the left side decides. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`.
+Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, `missing` is the number of unanswered items, and `X.missing` the unanswered items of scale `X`. A number field `F` that may stay empty is checked with `F.present`, e.g. `age.present and age > 24`: `and`/`or` stop once the left side decides. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`.
+
+### Upgrading 0.4 data
+
+Up to 0.4.0, folder names, keys and expression names were German. 0.5.0 uses English names only and converts old data once (`crates/engine/src/migrate.rs`, `src-tauri/src/migrate.rs`, `migrate` in `crates/registry/src/config.rs`; all marked `shortcut:` for removal once no 0.4 data is left).
+
+| 0.4 | 0.5 |
+| --- | --- |
+| `fehlend`, `X.fehlend`, `X.gesetzt` | `missing`, `X.missing`, `X.present` |
+| field `id: kennung`, default `anonym`; record key `kennung` | `subject_id`, `anonymous`; `subject_id` |
+| app folders `definitionen/`, `auswertungen/`, `entwuerfe/` | `definitions/`, `results/`, `drafts/` |
+| server `config.yaml` `praxen:` / `fragebogen:`, folder `definitionen/` | `practices:` / `questionnaires:`, `definitions/` |
+
+- Definitions: expressions are rewritten with the engine's tokenizer, so only names change, never text in strings. The file is edited in place (comments stay) and re-parsed; if that does not give exactly the upgraded definition, it is re-serialized instead. `min_app: "0.5.0"` is added. A file that does not parse, or already uses `missing` or `subject_id` as a name, stays as it is. To upgrade files by hand: `cargo run -p kreuzchen-engine --example upgrade -- <file.yaml>…` (also validates them).
+- App, first start of 0.5.0: copies the data folder (without caches) to `backup-0.4-<UTC time>/` inside it, renames the folders (merging into existing new ones without overwriting; a taken name gets `-0.4`), rewrites results and drafts (keys, and the definition hash for definitions it upgrades), then upgrades local definitions, and writes `migrated-0.5.0`. Each write is atomic and each step skips finished work, so a crash is completed by the next start. Unconvertible files are listed in a banner. Importing a 0.4 export upgrades it too.
+- Bibliothek files (`registry/`) are not rewritten: their hash must keep matching the server's, or the app would show "Update verfügbar" and saved results would count as outdated. They are upgraded in memory when loaded. Once the Bibliothek publishes the English version (with `min_app: "0.5.0"`), it arrives as a normal update.
+- Server start: renames `definitionen/`, and rewrites the keys in `config.yaml` (comments and key hashes kept, previous file as `config.yaml.bak`). Definition files keep their bytes, so apps see no update; files in the old format, from disk or a GitHub repo, load through the in-memory upgrade and are served unchanged, so 0.4.0 apps keep working.
 
 ## Registry server
 
-`crates/registry` (`kreuzchen-registry`) serves questionnaire definitions to practices over HTTP: `GET /healthz`, `GET /v1/fragebogen` and `GET /v1/fragebogen/{id}` (HTTP Basic auth, read-only). With an admin token set, it also serves an admin page and API under `/admin` (see [Admin](#admin)).
+`crates/registry` (`kreuzchen-registry`) serves questionnaire definitions to practices over HTTP: `GET /healthz`, `GET /v1/questionnaires` and `GET /v1/questionnaires/{id}` (HTTP Basic auth, read-only). `/v1/fragebogen[/{id}]` answers the same for the 0.4.0 app, until no 0.4.0 clients are left. With an admin token set, it also serves an admin page and API under `/admin` (see [Admin](#admin)).
 
 The app never shows the word "registry". Users see the server as the **Bibliotheksserver** and its questionnaires as the **Bibliothek**. Internal names (`registry/`, `registry.json`, command names, the binary and image) stay as they are.
 
 Layout of the data directory (`/data` in the container, `--data DIR` otherwise):
 
 ```
-config.yaml          # practices: user, key_hash, allowed fragebogen ids; optional source
-definitionen/*.yaml  # questionnaire definitions, one file each (source type local, the default)
+config.yaml          # practices: user, key_hash, allowed questionnaire ids; optional source
+definitions/*.yaml   # questionnaire definitions, one file each (source type local, the default)
 github/              # synced snapshot (source type github), written by the server only
 ```
 
@@ -78,8 +94,8 @@ A sample is in [`crates/registry/example/`](crates/registry/example/). Its `conf
 Add a practice (or use **Praxen → Praxis anlegen** in `/admin`, see [Admin](#admin)):
 
 1. `kreuzchen-registry key` prints `key:` (give it to the practice, it is shown once) and `key_hash:` (argon2id).
-2. Add an entry to `praxen` in `config.yaml` with a unique `user`, the `key_hash` and the `fragebogen` ids the practice may fetch.
-3. Put new definitions in `definitionen/` if needed.
+2. Add an entry to `practices` in `config.yaml` with a unique `user`, the `key_hash` and the `questionnaires` ids the practice may fetch.
+3. Put new definitions in `definitions/` if needed.
 4. Restart the server; hand edits on disk are read at startup (and before each `/admin` write, which builds on them; a broken edit makes the admin write fail without changing anything). Changes made through `/admin` apply at once.
 
 ### Admin
@@ -92,14 +108,14 @@ API (`Authorization: Bearer <token>`; practice Basic credentials are rejected he
 
 | Request | Effect |
 |---|---|
-| `GET /admin/api/fragebogen` | `{"praxen": [user…], "fragebogen": [{id, title, version, hash, praxen}…]}` |
-| `POST /admin/api/fragebogen` (YAML body) | Adds `definitionen/<id>.yaml`. `409` if the id exists. |
-| `PUT /admin/api/fragebogen/{id}` (YAML body) | Replaces the file; the previous version goes to `<file>.bak`. The id in the file must match. |
-| `DELETE /admin/api/fragebogen/{id}` | Removes it from every practice in `config.yaml`, then renames the file to `<file>.bak`. |
-| `PUT /admin/api/fragebogen/{id}/praxen` (JSON `["user"…]`) | Sets exactly these practices as the ones that see it. |
-| `POST /admin/api/praxen` (JSON `{"user", "fragebogen": [id…]}`) | Adds a practice; `user` is 1–64 of `a–z 0–9 _ -`. `409` if it exists. Returns `201 {"user", "key"}`. |
-| `POST /admin/api/praxen/{user}/schluessel` | New key; the old one stops working at once. Returns `{"user", "key"}`. |
-| `DELETE /admin/api/praxen/{user}` | Removes the practice; its key stops working at once. |
+| `GET /admin/api/questionnaires` | `{"practices": [user…], "questionnaires": [{id, title, version, hash, practices}…]}` |
+| `POST /admin/api/questionnaires` (YAML body) | Adds `definitions/<id>.yaml`. `409` if the id exists. |
+| `PUT /admin/api/questionnaires/{id}` (YAML body) | Replaces the file; the previous version goes to `<file>.bak`. The id in the file must match. |
+| `DELETE /admin/api/questionnaires/{id}` | Removes it from every practice in `config.yaml`, then renames the file to `<file>.bak`. |
+| `PUT /admin/api/questionnaires/{id}/practices` (JSON `["user"…]`) | Sets exactly these practices as the ones that see it. |
+| `POST /admin/api/practices` (JSON `{"user", "questionnaires": [id…]}`) | Adds a practice; `user` is 1–64 of `a–z 0–9 _ -`. `409` if it exists. Returns `201 {"user", "key"}`. |
+| `POST /admin/api/practices/{user}/key` | New key; the old one stops working at once. Returns `{"user", "key"}`. |
+| `DELETE /admin/api/practices/{user}` | Removes the practice; its key stops working at once. |
 | `GET /admin/api/sync` | `{"source": "local"}`, or with GitHub `{source, repo, branch, path, sha, checked_at, error, invalid: [{file, error}…]}` (`sha`: commit of the published set; `checked_at`: Unix seconds of the last successful check). |
 | `POST /admin/api/sync` | Syncs now and returns the same status. `409` with a `local` source. |
 
@@ -111,16 +127,16 @@ The data directory must be writable by the server (uid `65532` in the image): `s
 
 ### GitHub as the source
 
-Instead of managing questionnaires through `/admin`, a deployment can take them from a folder in a GitHub repo. It is one or the other: with a `type: github` source, `definitionen/` is ignored, and upload, replace and delete answer `409` ("Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen"). Practices, key hashes and the questionnaire-to-practice assignments stay in `config.yaml` on the server and are never read from git; assigning still works in `/admin`.
+Instead of managing questionnaires through `/admin`, a deployment can take them from a folder in a GitHub repo. It is one or the other: with a `type: github` source, `definitions/` is ignored, and upload, replace and delete answer `409` ("Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen"). Practices, key hashes and the questionnaire-to-practice assignments stay in `config.yaml` on the server and are never read from git; assigning still works in `/admin`.
 
 ```yaml
 source:
   type: github             # default: local
-  repo: owner/fragebogen
+  repo: owner/questionnaires
   branch: main
-  path: fragebogen         # folder of the YAML files in the repo; "" for the top level
+  path: questionnaires     # folder of the YAML files in the repo; "" for the top level
   interval_minutes: 5      # optional, default 5
-praxen:
+practices:
   - ...
 ```
 
