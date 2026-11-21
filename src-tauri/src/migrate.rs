@@ -218,7 +218,7 @@ fn upgrade_definitions(dir: &Path, problems: &mut Vec<String>) -> Vec<(String, S
         match upgrade(&text) {
             Ok(Some(new)) => out.push((file, text, new)),
             Ok(None) => {}
-            Err(m) => problems.push(format!("Fragebogen „{file}“ unverändert gelassen: {m}")),
+            Err(m) => problems.push(format!("Fragebogen „{file}“: {m}")),
         }
     }
     out
@@ -238,7 +238,7 @@ fn upgrade_records(
             .ok()
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         else {
-            problems.push(format!("„{file}“ ist nicht lesbar und bleibt unverändert"));
+            problems.push(format!("„{file}“: keine gültige JSON-Datei"));
             continue;
         };
         if upgrade_record(&mut v, hashes) {

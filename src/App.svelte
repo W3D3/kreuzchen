@@ -116,11 +116,7 @@
   </header>
   <main class="mx-auto max-w-[56rem] p-6">
     {#if migration}
-      <Banner class="mb-6">
-        Beim Übernehmen der Daten aus Kreuzchen 0.4 blieben diese Dateien unverändert:
-        {"\n" + migration.problems.map((p) => "• " + p).join("\n")}
-        {"\n"}Eine vollständige Sicherungskopie liegt im Ordner „backup-0.4-…“ in {migration.folder}.
-      </Banner>
+      <Banner class="mb-6">{`Beim Übernehmen der Daten aus Kreuzchen 0.4 blieben diese Dateien unverändert:\n${migration.problems.map((p) => `• ${p}`).join("\n")}\nEine vollständige Sicherungskopie liegt im Ordner „backup-0.4-…“ in ${migration.folder}.`}</Banner>
     {/if}
     {#if screen.name === "list"}
       <List onstart={(opened, input, draftFile, notice) => (screen = { name: "entry", opened, input, draftFile, notice })} onupdate={() => (screen = { name: "settings" })} />
