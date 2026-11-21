@@ -19,14 +19,17 @@ use kreuzchen_engine::hash;
 use kreuzchen_registry::{load, router, Source};
 use tower::ServiceExt;
 
-const BEISPIEL: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const EXAMPLE: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 const ADMIN: &str = "admin-token-fuer-tests";
-const GH_TOKEN: &str = "github_pat_geheim_123";
+const GH_TOKEN: &str = "github_pat_secret_123";
 const SHA1: &str = "1111111111111111111111111111111111111111";
 const SHA2: &str = "2222222222222222222222222222222222222222";
 
+/// A questionnaire with the 0.4 German names, as a repo not switched yet still holds.
+const OLD: &str = include_str!("../../../fixtures/registry-data-0.4.0/definitionen/beispiel.yaml");
+
 fn def(id: &str, version: &str) -> String {
-    BEISPIEL
+    EXAMPLE
         .replacen("id: beispiel", &format!("id: {id:?}"), 1)
         .replacen("version: \"1\"", &format!("version: {version:?}"), 1)
 }
@@ -99,29 +102,32 @@ async fn github(m: Shared) -> String {
     url
 }
 
-/// What the repo holds at SHA1: two questionnaires in `fragebogen/`, decoys elsewhere.
+/// What the repo holds at SHA1: two questionnaires in `questionnaires/`, decoys elsewhere.
 fn first_commit() -> Vec<(&'static str, String)> {
     vec![
-        ("fragebogen/a.yaml", def("fb_a", "1")),
-        ("fragebogen/b.yml", def("fb_b", "1")),
-        ("fragebogen/notiz.md", "keine YAML".into()),
-        ("fragebogen/alt/c.yaml", def("fb_unterordner", "1")),
-        ("anderes/d.yaml", def("fb_anderer_ordner", "1")),
-        ("e.yaml", def("fb_wurzel", "1")),
+        ("questionnaires/a.yaml", def("fb_a", "1")),
+        (
+            "questionnaires/b.yml",
+            OLD.replacen("id: beispiel", "id: fb_b", 1),
+        ),
+        ("questionnaires/note.md", "not YAML".into()),
+        ("questionnaires/old/c.yaml", def("fb_subfolder", "1")),
+        ("other/d.yaml", def("fb_other_folder", "1")),
+        ("e.yaml", def("fb_root", "1")),
     ]
 }
 
 fn data_dir(api_url: &str) -> tempfile::TempDir {
     let key_hash = Argon2::default()
-        .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
+        .hash_password(b"secret", &SaltString::generate(&mut OsRng))
         .unwrap()
         .to_string();
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("config.yaml"),
         format!(
-            "source:\n  type: github\n  repo: o/r\n  branch: main\n  path: /fragebogen/\n  api_url: {api_url}\n\
-             praxen:\n  - user: praxis_a\n    key_hash: {key_hash:?}\n    fragebogen: [fb_a, fb_b, fb_c]\n"
+            "source:\n  type: github\n  repo: o/r\n  branch: main\n  path: /questionnaires/\n  api_url: {api_url}\n\
+             practices:\n  - user: practice_a\n    key_hash: {key_hash:?}\n    questionnaires: [fb_a, fb_b, fb_c]\n"
         ),
     )
     .unwrap();
@@ -166,7 +172,7 @@ async fn call(
         .method(method)
         .uri(uri)
         .header("authorization", auth);
-    if uri.ends_with("/praxen") {
+    if uri.ends_with("/practices") {
         r = r.header("content-type", "application/json");
     }
     let resp = app
@@ -184,7 +190,7 @@ async fn admin(app: &Router, method: &str, uri: &str, body: &str) -> (StatusCode
 }
 
 async fn practice(app: &Router, uri: &str) -> (StatusCode, String) {
-    let basic = base64::engine::general_purpose::STANDARD.encode("praxis_a:geheim");
+    let basic = base64::engine::general_purpose::STANDARD.encode("practice_a:secret");
     call(app, "GET", uri, format!("Basic {basic}"), "").await
 }
 
@@ -201,7 +207,7 @@ async fn sync_now(app: &Router) -> serde_json::Value {
 }
 
 async fn practice_ids(app: &Router) -> Vec<String> {
-    let (s, b) = practice(app, "/v1/fragebogen").await;
+    let (s, b) = practice(app, "/v1/questionnaires").await;
     assert_eq!(s, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&b).unwrap();
     v.as_array()
@@ -215,9 +221,12 @@ async fn practice_ids(app: &Router) -> Vec<String> {
 async fn first_sync_publishes_only_yaml_directly_in_path() {
     let env = setup(false).await;
     assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
-    let (s, body) = practice(&env.app, "/v1/fragebogen/fb_a").await;
+    let (s, body) = practice(&env.app, "/v1/questionnaires/fb_a").await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(body, def("fb_a", "1"));
+    // The 0.4 file loads through the upgrade, yet is served as the repo has it.
+    let (_, body) = practice(&env.app, "/v1/questionnaires/fb_b").await;
+    assert_eq!(body, OLD.replacen("id: beispiel", "id: fb_b", 1));
 
     let st = status(&env.app).await;
     assert_eq!(st["source"], "github");
@@ -229,8 +238,8 @@ async fn first_sync_publishes_only_yaml_directly_in_path() {
     assert_eq!(st["invalid"], serde_json::json!([]));
 
     // The admin list shows the same set; a restart serves it before reaching GitHub.
-    let (_, list) = admin(&env.app, "GET", "/admin/api/fragebogen", "").await;
-    assert!(list.contains("fb_a") && !list.contains("fb_wurzel"));
+    let (_, list) = admin(&env.app, "GET", "/admin/api/questionnaires", "").await;
+    assert!(list.contains("fb_a") && !list.contains("fb_root"));
     let ids: Vec<_> = load(env.dir.path()).unwrap().entries.into_keys().collect();
     assert_eq!(ids, ["fb_a", "fb_b"]);
 }
@@ -252,9 +261,9 @@ async fn new_head_is_published_and_invalid_files_keep_their_last_good_version() 
         let mut m = env.mock.lock().unwrap();
         m.head = SHA2.into();
         let files = vec![
-            ("fragebogen/a.yaml", "id: fb_a\nkaputt: [".to_string()),
-            ("fragebogen/b.yml", def("fb_b", "2")),
-            ("fragebogen/c.yaml", "id: fb_c\n".to_string()),
+            ("questionnaires/a.yaml", "id: fb_a\nkaputt: [".to_string()),
+            ("questionnaires/b.yml", def("fb_b", "2")),
+            ("questionnaires/c.yaml", "id: fb_c\n".to_string()),
         ];
         m.tarballs.insert(SHA2.into(), tarball(&files));
     }
@@ -276,15 +285,15 @@ async fn new_head_is_published_and_invalid_files_keep_their_last_good_version() 
     // a: last good version; b: new version; c: new and broken, so absent.
     assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
     assert_eq!(
-        practice(&env.app, "/v1/fragebogen/fb_a").await.1,
+        practice(&env.app, "/v1/questionnaires/fb_a").await.1,
         def("fb_a", "1")
     );
     assert_eq!(
-        practice(&env.app, "/v1/fragebogen/fb_b").await.1,
+        practice(&env.app, "/v1/questionnaires/fb_b").await.1,
         def("fb_b", "2")
     );
     assert_eq!(
-        practice(&env.app, "/v1/fragebogen/fb_c").await.0,
+        practice(&env.app, "/v1/questionnaires/fb_c").await.0,
         StatusCode::NOT_FOUND
     );
 
@@ -342,9 +351,9 @@ async fn token_is_sent_as_bearer_header() {
 async fn git_mode_blocks_file_changes_but_not_assignments() {
     let env = setup(false).await;
     let blocked = [
-        ("POST", "/admin/api/fragebogen".to_string()),
-        ("PUT", "/admin/api/fragebogen/fb_a".to_string()),
-        ("DELETE", "/admin/api/fragebogen/fb_a".to_string()),
+        ("POST", "/admin/api/questionnaires".to_string()),
+        ("PUT", "/admin/api/questionnaires/fb_a".to_string()),
+        ("DELETE", "/admin/api/questionnaires/fb_a".to_string()),
     ];
     for (method, uri) in blocked {
         let (s, b) = admin(&env.app, method, &uri, &def("fb_a", "9")).await;
@@ -355,61 +364,67 @@ async fn git_mode_blocks_file_changes_but_not_assignments() {
         );
     }
     assert_eq!(
-        practice(&env.app, "/v1/fragebogen/fb_a").await.1,
+        practice(&env.app, "/v1/questionnaires/fb_a").await.1,
         def("fb_a", "1")
     );
 
-    let (s, b) = admin(&env.app, "PUT", "/admin/api/fragebogen/fb_b/praxen", "[]").await;
+    let (s, b) = admin(
+        &env.app,
+        "PUT",
+        "/admin/api/questionnaires/fb_b/practices",
+        "[]",
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{b}");
     assert_eq!(practice_ids(&env.app).await, ["fb_a"]);
     // The rewritten config keeps the source and the assignment that waits for fb_c.
     let reg = load(env.dir.path()).unwrap();
     assert!(matches!(reg.source, Source::Github(ref gh) if gh.repo == "o/r"));
-    assert_eq!(reg.practices[0].fragebogen, ["fb_a", "fb_c"]);
+    assert_eq!(reg.practices[0].questionnaires, ["fb_a", "fb_c"]);
 }
 
 #[tokio::test]
 async fn git_mode_manages_practices_and_keeps_the_source() {
     let env = setup(false).await;
-    let neu = r#"{"user": "praxis_neu", "fragebogen": ["fb_b"]}"#;
-    let (s, b) = admin(&env.app, "POST", "/admin/api/praxen", neu).await;
+    let body = r#"{"user": "practice_new", "questionnaires": ["fb_b"]}"#;
+    let (s, b) = admin(&env.app, "POST", "/admin/api/practices", body).await;
     assert_eq!(s, StatusCode::CREATED, "{b}");
     let (s, b) = admin(
         &env.app,
         "POST",
-        "/admin/api/praxen/praxis_neu/schluessel",
+        "/admin/api/practices/practice_new/key",
         "",
     )
     .await;
     assert_eq!(s, StatusCode::OK, "{b}");
-    let (s, _) = admin(&env.app, "DELETE", "/admin/api/praxen/praxis_a", "").await;
+    let (s, _) = admin(&env.app, "DELETE", "/admin/api/practices/practice_a", "").await;
     assert_eq!(s, StatusCode::NO_CONTENT);
 
     let reg = load(env.dir.path()).unwrap();
     assert!(matches!(reg.source, Source::Github(ref gh) if gh.repo == "o/r"));
     let users: Vec<_> = reg.practices.iter().map(|p| p.user.as_str()).collect();
-    assert_eq!(users, ["praxis_neu"]);
+    assert_eq!(users, ["practice_new"]);
     assert_eq!(reg.entries.len(), 2, "the synced set is untouched");
 }
 
 #[tokio::test]
 async fn local_mode_reports_its_source_and_refuses_sync() {
     let key_hash = Argon2::default()
-        .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
+        .hash_password(b"secret", &SaltString::generate(&mut OsRng))
         .unwrap()
         .to_string();
     let dir = tempfile::tempdir().unwrap();
-    fs::create_dir(dir.path().join("definitionen")).unwrap();
+    fs::create_dir(dir.path().join("definitions")).unwrap();
     fs::write(
         dir.path().join("config.yaml"),
-        format!("praxen:\n  - user: p\n    key_hash: {key_hash:?}\n    fragebogen: []\n"),
+        format!("practices:\n  - user: p\n    key_hash: {key_hash:?}\n    questionnaires: []\n"),
     )
     .unwrap();
     let app = router(load(dir.path()).unwrap(), Some(ADMIN), Some(GH_TOKEN));
     assert_eq!(status(&app).await, serde_json::json!({"source": "local"}));
     let (s, _) = admin(&app, "POST", "/admin/api/sync", "").await;
     assert_eq!(s, StatusCode::CONFLICT);
-    let (s, _) = admin(&app, "POST", "/admin/api/fragebogen", &def("neu", "1")).await;
+    let (s, _) = admin(&app, "POST", "/admin/api/questionnaires", &def("new", "1")).await;
     assert_eq!(s, StatusCode::CREATED);
 }
 

@@ -1,7 +1,7 @@
 use kreuzchen_engine::schema::FieldValue;
 use kreuzchen_engine::{load, GradeError, Grading, Input, ResultRow};
 
-const YAML: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const YAML: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 
 fn grade_with(
     yaml: &str,
@@ -90,7 +90,7 @@ fn exactly_at_cutoff() {
         &[("1", 3), ("2", 2), ("3", 0), ("4", 3), ("zusatz", 0)],
         &[
             (
-                "kennung",
+                "subject_id",
                 FieldValue::Text("Anonym 11.11.2026 22:23".into()),
             ),
             ("alter", FieldValue::Num(9.0)),
@@ -109,7 +109,7 @@ fn exactly_at_cutoff() {
     assert_eq!(
         fields,
         [
-            ("kennung", "Kennung", "Anonym 11.11.2026 22:23"),
+            ("subject_id", "Kennung", "Anonym 11.11.2026 22:23"),
             ("alter", "Alter", "9"),
             ("erwachsen", "Volljährig", "Nein")
         ]
@@ -259,8 +259,8 @@ fn division_by_zero_is_an_error() {
 fn age_rule_works_with_and_without_an_age() {
     let yaml = YAML.replace(
         r#"  - { when: erwachsen, text: "Nur für Kinder normiert." }"#,
-        r#"  - { when: alter.gesetzt and alter >= 18, text: "Nur für Kinder normiert." }
-  - { when: not alter.gesetzt, text: "Alter fehlt." }"#,
+        r#"  - { when: alter.present and alter >= 18, text: "Nur für Kinder normiert." }
+  - { when: not alter.present, text: "Alter fehlt." }"#,
     );
     let answers = [("1", 0), ("2", 0), ("3", 0), ("4", 0), ("zusatz", 0)];
     let g = grade_with(&yaml, &answers, &[("alter", FieldValue::Num(30.0))]).unwrap();
@@ -274,14 +274,14 @@ fn age_rule_works_with_and_without_an_age() {
 #[test]
 fn min_app_is_checked_before_the_full_load() {
     use kreuzchen_engine::needs_newer_app;
-    let newer = YAML.replacen("title:", "min_app: \"0.10.0\"\ntitle:", 1);
+    let newer = YAML.replacen("min_app: \"0.5.0\"", "min_app: \"0.10.0\"", 1);
     assert_eq!(needs_newer_app(&newer, "0.9.3").as_deref(), Some("0.10.0"));
     assert_eq!(needs_newer_app(&newer, "0.10.0"), None);
-    assert_eq!(needs_newer_app(YAML, "0.1.0"), None);
+    assert_eq!(needs_newer_app(YAML, "0.5.0"), None);
     // A future key the schema rejects does not hide the version hint.
-    let future = format!("{newer}\nkuenftig: 1\n");
+    let future = format!("{newer}\nfuture_key: 1\n");
     assert!(load(&future).is_err());
     assert_eq!(needs_newer_app(&future, "0.9.3").as_deref(), Some("0.10.0"));
     assert!(load(&newer).is_ok());
-    assert!(load(&YAML.replacen("title:", "min_app: neu\ntitle:", 1)).is_err());
+    assert!(load(&YAML.replacen("min_app: \"0.5.0\"", "min_app: new", 1)).is_err());
 }

@@ -10,29 +10,29 @@ use http_body_util::BodyExt;
 use kreuzchen_registry::{load, router, MAX_UPLOAD};
 use tower::ServiceExt;
 
-const BEISPIEL: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const EXAMPLE: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 const TOKEN: &str = "admin-token-fuer-tests";
 
 fn def(id: &str) -> String {
-    BEISPIEL.replacen("id: beispiel", &format!("id: {id:?}"), 1)
+    EXAMPLE.replacen("id: beispiel", &format!("id: {id:?}"), 1)
 }
 
 fn setup(token: Option<&str>) -> (Router, tempfile::TempDir) {
     let key_hash = Argon2::default()
-        .hash_password(b"geheim", &SaltString::generate(&mut OsRng))
+        .hash_password(b"secret", &SaltString::generate(&mut OsRng))
         .unwrap()
         .to_string();
     let dir = tempfile::tempdir().unwrap();
-    fs::create_dir(dir.path().join("definitionen")).unwrap();
+    fs::create_dir(dir.path().join("definitions")).unwrap();
     fs::write(
         dir.path().join("config.yaml"),
         format!(
-            "praxen:\n  - user: praxis_a\n    key_hash: {key_hash:?}\n    fragebogen: [fragebogen_a]\n  - user: praxis_b\n    key_hash: {key_hash:?}\n    fragebogen: []\n"
+            "practices:\n  - user: practice_a\n    key_hash: {key_hash:?}\n    questionnaires: [questionnaire_a]\n  - user: practice_b\n    key_hash: {key_hash:?}\n    questionnaires: []\n"
         ),
     )
     .unwrap();
-    for id in ["fragebogen_a", "fragebogen_b"] {
-        fs::write(dir.path().join(format!("definitionen/{id}.yaml")), def(id)).unwrap();
+    for id in ["questionnaire_a", "questionnaire_b"] {
+        fs::write(dir.path().join(format!("definitions/{id}.yaml")), def(id)).unwrap();
     }
     (router(load(dir.path()).unwrap(), token, None), dir)
 }
@@ -40,7 +40,7 @@ fn setup(token: Option<&str>) -> (Router, tempfile::TempDir) {
 fn basic() -> String {
     format!(
         "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode("praxis_a:geheim")
+        base64::engine::general_purpose::STANDARD.encode("practice_a:secret")
     )
 }
 
@@ -59,7 +59,7 @@ async fn call(
     if let Some(a) = auth {
         r = r.header("authorization", a);
     }
-    if uri.ends_with("/praxen") {
+    if uri.ends_with("/practices") {
         r = r.header("content-type", "application/json");
     }
     let resp = app
@@ -83,7 +83,14 @@ async fn admin(
 
 /// What practice A currently sees.
 async fn practice_ids(app: &Router) -> Vec<String> {
-    let (s, b) = call(app, "GET", "/v1/fragebogen", Some(basic()), Body::empty()).await;
+    let (s, b) = call(
+        app,
+        "GET",
+        "/v1/questionnaires",
+        Some(basic()),
+        Body::empty(),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&b).unwrap();
     v.as_array()
@@ -97,11 +104,11 @@ async fn practice_ids(app: &Router) -> Vec<String> {
 async fn disabled_without_token() {
     for token in [None, Some("")] {
         let (app, _d) = setup(token);
-        for uri in ["/admin", "/admin/api/fragebogen"] {
+        for uri in ["/admin", "/admin/api/questionnaires"] {
             let (s, _) = call(&app, "GET", uri, Some(bearer()), Body::empty()).await;
             assert_eq!(s, StatusCode::NOT_FOUND, "{uri}");
         }
-        assert_eq!(practice_ids(&app).await, ["fragebogen_a"]);
+        assert_eq!(practice_ids(&app).await, ["questionnaire_a"]);
     }
 }
 
@@ -111,22 +118,39 @@ async fn auth_is_separate() {
     for auth in [
         None,
         Some(basic()),
-        Some("Bearer falsch".into()),
+        Some("Bearer wrong".into()),
         Some(format!("Basic {TOKEN}")),
     ] {
-        let (s, _) = call(&app, "GET", "/admin/api/fragebogen", auth, Body::empty()).await;
+        let (s, _) = call(
+            &app,
+            "GET",
+            "/admin/api/questionnaires",
+            auth,
+            Body::empty(),
+        )
+        .await;
         assert_eq!(s, StatusCode::UNAUTHORIZED);
     }
-    let (s, _) = call(&app, "GET", "/v1/fragebogen", Some(bearer()), Body::empty()).await;
+    let (s, _) = call(
+        &app,
+        "GET",
+        "/v1/questionnaires",
+        Some(bearer()),
+        Body::empty(),
+    )
+    .await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
-    let (s, b) = admin(&app, "GET", "/admin/api/fragebogen", Body::empty()).await;
+    let (s, b) = admin(&app, "GET", "/admin/api/questionnaires", Body::empty()).await;
     assert_eq!(s, StatusCode::OK);
     let v: serde_json::Value = serde_json::from_str(&b).unwrap();
-    assert_eq!(v["praxen"], serde_json::json!(["praxis_a", "praxis_b"]));
-    assert_eq!(v["fragebogen"][0]["id"], "fragebogen_a");
     assert_eq!(
-        v["fragebogen"][0]["praxen"],
-        serde_json::json!(["praxis_a"])
+        v["practices"],
+        serde_json::json!(["practice_a", "practice_b"])
+    );
+    assert_eq!(v["questionnaires"][0]["id"], "questionnaire_a");
+    assert_eq!(
+        v["questionnaires"][0]["practices"],
+        serde_json::json!(["practice_a"])
     );
     assert!(!b.contains("argon2"));
 }
@@ -143,79 +167,100 @@ async fn page_is_served_with_token_set() {
 #[tokio::test]
 async fn upload_valid_then_assign() {
     let (app, d) = setup(Some(TOKEN));
-    let (s, _) = admin(&app, "POST", "/admin/api/fragebogen", def("fragebogen_c")).await;
+    let (s, _) = admin(
+        &app,
+        "POST",
+        "/admin/api/questionnaires",
+        def("questionnaire_c"),
+    )
+    .await;
     assert_eq!(s, StatusCode::CREATED);
     assert_eq!(
-        fs::read_to_string(d.path().join("definitionen/fragebogen_c.yaml")).unwrap(),
-        def("fragebogen_c")
+        fs::read_to_string(d.path().join("definitions/questionnaire_c.yaml")).unwrap(),
+        def("questionnaire_c")
     );
-    let (s, _) = admin(&app, "POST", "/admin/api/fragebogen", def("fragebogen_c")).await;
+    let (s, _) = admin(
+        &app,
+        "POST",
+        "/admin/api/questionnaires",
+        def("questionnaire_c"),
+    )
+    .await;
     assert_eq!(s, StatusCode::CONFLICT);
 
     let (s, _) = admin(
         &app,
         "PUT",
-        "/admin/api/fragebogen/fragebogen_c/praxen",
-        r#"["praxis_a"]"#,
+        "/admin/api/questionnaires/questionnaire_c/practices",
+        r#"["practice_a"]"#,
     )
     .await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(practice_ids(&app).await, ["fragebogen_a", "fragebogen_c"]);
+    assert_eq!(
+        practice_ids(&app).await,
+        ["questionnaire_a", "questionnaire_c"]
+    );
     let reloaded = load(d.path()).unwrap();
     assert_eq!(
-        reloaded.practices[0].fragebogen,
-        ["fragebogen_a", "fragebogen_c"]
+        reloaded.practices[0].questionnaires,
+        ["questionnaire_a", "questionnaire_c"]
     );
 }
 
 #[tokio::test]
 async fn upload_invalid_is_rejected_and_not_saved() {
     let (app, d) = setup(Some(TOKEN));
-    let broken = def("fragebogen_c").replacen("title:", "titel:", 1);
+    let broken = def("questionnaire_c").replacen("title:", "titel:", 1);
     for body in [broken, "id: [".into(), def("../boese")] {
-        let (s, msg) = admin(&app, "POST", "/admin/api/fragebogen", body).await;
+        let (s, msg) = admin(&app, "POST", "/admin/api/questionnaires", body).await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert!(msg.starts_with("Datei: "), "{msg}");
     }
-    let mut files: Vec<_> = fs::read_dir(d.path().join("definitionen"))
+    let mut files: Vec<_> = fs::read_dir(d.path().join("definitions"))
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
         .collect();
     files.sort();
-    assert_eq!(files, ["fragebogen_a.yaml", "fragebogen_b.yaml"]);
+    assert_eq!(files, ["questionnaire_a.yaml", "questionnaire_b.yaml"]);
 }
 
 #[tokio::test]
 async fn upload_size_is_capped() {
     let (app, _d) = setup(Some(TOKEN));
-    let big = format!("{}\n#{}", def("fragebogen_c"), "x".repeat(MAX_UPLOAD));
-    let (s, _) = admin(&app, "POST", "/admin/api/fragebogen", big).await;
+    let big = format!("{}\n#{}", def("questionnaire_c"), "x".repeat(MAX_UPLOAD));
+    let (s, _) = admin(&app, "POST", "/admin/api/questionnaires", big).await;
     assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 #[tokio::test]
 async fn replace_keeps_backup() {
     let (app, d) = setup(Some(TOKEN));
-    let path = d.path().join("definitionen/fragebogen_a.yaml");
+    let path = d.path().join("definitions/questionnaire_a.yaml");
     let old = fs::read_to_string(&path).unwrap();
-    let new = def("fragebogen_a").replacen("version:", "# neu\nversion:", 1);
+    let new = def("questionnaire_a").replacen("version:", "# new\nversion:", 1);
 
     let (s, _) = admin(
         &app,
         "PUT",
-        "/admin/api/fragebogen/fragebogen_b",
+        "/admin/api/questionnaires/questionnaire_b",
         new.clone(),
     )
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "id mismatch");
-    let (s, _) = admin(&app, "PUT", "/admin/api/fragebogen/fragebogen_a", "id: [").await;
+    let (s, _) = admin(
+        &app,
+        "PUT",
+        "/admin/api/questionnaires/questionnaire_a",
+        "id: [",
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
     assert_eq!(fs::read_to_string(&path).unwrap(), old);
 
     let (s, _) = admin(
         &app,
         "PUT",
-        "/admin/api/fragebogen/fragebogen_a",
+        "/admin/api/questionnaires/questionnaire_a",
         new.clone(),
     )
     .await;
@@ -228,7 +273,7 @@ async fn replace_keeps_backup() {
     let (_, b) = call(
         &app,
         "GET",
-        "/v1/fragebogen/fragebogen_a",
+        "/v1/questionnaires/questionnaire_a",
         Some(basic()),
         Body::empty(),
     )
@@ -238,8 +283,8 @@ async fn replace_keeps_backup() {
     let (s, _) = admin(
         &app,
         "PUT",
-        "/admin/api/fragebogen/gibtsnicht",
-        def("gibtsnicht"),
+        "/admin/api/questionnaires/missing_user",
+        def("missing_user"),
     )
     .await;
     assert_eq!(s, StatusCode::NOT_FOUND);
@@ -248,12 +293,12 @@ async fn replace_keeps_backup() {
 #[tokio::test]
 async fn delete_unassigns_and_keeps_backup() {
     let (app, d) = setup(Some(TOKEN));
-    let path = d.path().join("definitionen/fragebogen_a.yaml");
+    let path = d.path().join("definitions/questionnaire_a.yaml");
     let old = fs::read_to_string(&path).unwrap();
     let (s, _) = admin(
         &app,
         "DELETE",
-        "/admin/api/fragebogen/fragebogen_a",
+        "/admin/api/questionnaires/questionnaire_a",
         Body::empty(),
     )
     .await;
@@ -265,12 +310,12 @@ async fn delete_unassigns_and_keeps_backup() {
     );
     assert!(practice_ids(&app).await.is_empty());
     let reloaded = load(d.path()).unwrap();
-    assert!(reloaded.practices[0].fragebogen.is_empty());
-    assert!(!reloaded.entries.contains_key("fragebogen_a"));
+    assert!(reloaded.practices[0].questionnaires.is_empty());
+    assert!(!reloaded.entries.contains_key("questionnaire_a"));
     let (s, _) = admin(
         &app,
         "DELETE",
-        "/admin/api/fragebogen/fragebogen_a",
+        "/admin/api/questionnaires/questionnaire_a",
         Body::empty(),
     )
     .await;
@@ -284,15 +329,15 @@ async fn assignment_persists_and_keeps_key_hashes() {
     let (s, _) = admin(
         &app,
         "PUT",
-        "/admin/api/fragebogen/fragebogen_b/praxen",
-        r#"["praxis_b"]"#,
+        "/admin/api/questionnaires/questionnaire_b/practices",
+        r#"["practice_b"]"#,
     )
     .await;
     assert_eq!(s, StatusCode::OK);
     let (s, _) = admin(
         &app,
         "PUT",
-        "/admin/api/fragebogen/fragebogen_a/praxen",
+        "/admin/api/questionnaires/questionnaire_a/practices",
         "[]",
     )
     .await;
@@ -300,16 +345,16 @@ async fn assignment_persists_and_keeps_key_hashes() {
     let (s, msg) = admin(
         &app,
         "PUT",
-        "/admin/api/fragebogen/fragebogen_a/praxen",
-        r#"["praxis_x"]"#,
+        "/admin/api/questionnaires/questionnaire_a/practices",
+        r#"["practice_x"]"#,
     )
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
-    assert!(msg.contains("praxis_x"));
+    assert!(msg.contains("practice_x"));
 
     let after = load(d.path()).unwrap();
-    assert!(after.practices[0].fragebogen.is_empty());
-    assert_eq!(after.practices[1].fragebogen, ["fragebogen_b"]);
+    assert!(after.practices[0].questionnaires.is_empty());
+    assert_eq!(after.practices[1].questionnaires, ["questionnaire_b"]);
     for (a, b) in before.practices.iter().zip(&after.practices) {
         assert_eq!((&a.user, &a.key_hash), (&b.user, &b.key_hash));
     }
@@ -327,13 +372,13 @@ async fn concurrent_writes_all_land() {
             let (app, id) = (app.clone(), id.clone());
             tokio::spawn(async move {
                 assert_eq!(
-                    admin(&app, "POST", "/admin/api/fragebogen", def(&id))
+                    admin(&app, "POST", "/admin/api/questionnaires", def(&id))
                         .await
                         .0,
                     StatusCode::CREATED
                 );
-                let users = r#"["praxis_a","praxis_b"]"#;
-                let uri = format!("/admin/api/fragebogen/{id}/praxen");
+                let users = r#"["practice_a","practice_b"]"#;
+                let uri = format!("/admin/api/questionnaires/{id}/practices");
                 assert_eq!(admin(&app, "PUT", &uri, users).await.0, StatusCode::OK);
             })
         })
@@ -344,9 +389,9 @@ async fn concurrent_writes_all_land() {
     let reg = load(d.path()).unwrap();
     for p in &reg.practices {
         assert!(
-            ids.iter().all(|id| p.fragebogen.contains(id)),
+            ids.iter().all(|id| p.questionnaires.contains(id)),
             "{:?}",
-            p.fragebogen
+            p.questionnaires
         );
     }
 }
@@ -357,42 +402,43 @@ async fn writes_build_on_hand_edits_since_startup() {
     let cfg = d.path().join("config.yaml");
     let hash = load(d.path()).unwrap().practices[0].key_hash.clone();
     let mut text = fs::read_to_string(&cfg).unwrap();
-    text +=
-        &format!("  - user: praxis_neu\n    key_hash: {hash:?}\n    fragebogen: [fragebogen_b]\n");
+    text += &format!(
+        "  - user: practice_new\n    key_hash: {hash:?}\n    questionnaires: [questionnaire_b]\n"
+    );
     fs::write(&cfg, text).unwrap();
 
-    let uri = "/admin/api/fragebogen/fragebogen_a/praxen";
-    let (s, _) = admin(&app, "PUT", uri, r#"["praxis_neu"]"#).await;
+    let uri = "/admin/api/questionnaires/questionnaire_a/practices";
+    let (s, _) = admin(&app, "PUT", uri, r#"["practice_new"]"#).await;
     assert_eq!(s, StatusCode::OK);
     let reg = load(d.path()).unwrap();
-    let neu = reg
+    let added = reg
         .practices
         .iter()
-        .find(|p| p.user == "praxis_neu")
+        .find(|p| p.user == "practice_new")
         .unwrap();
-    assert_eq!(neu.key_hash, hash);
-    assert_eq!(neu.fragebogen, ["fragebogen_b", "fragebogen_a"]);
+    assert_eq!(added.key_hash, hash);
+    assert_eq!(added.questionnaires, ["questionnaire_b", "questionnaire_a"]);
 }
 
 #[tokio::test]
 async fn broken_hand_edit_stops_write_before_any_change() {
     let (app, d) = setup(Some(TOKEN));
     let cfg = d.path().join("config.yaml");
-    fs::write(&cfg, "praxen: [kaputt").unwrap();
-    let path = d.path().join("definitionen/fragebogen_a.yaml");
+    fs::write(&cfg, "practices: [kaputt").unwrap();
+    let path = d.path().join("definitions/questionnaire_a.yaml");
     let (s, msg) = admin(
         &app,
         "DELETE",
-        "/admin/api/fragebogen/fragebogen_a",
+        "/admin/api/questionnaires/questionnaire_a",
         Body::empty(),
     )
     .await;
     assert_eq!(s, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(msg.contains("config.yaml"), "{msg}");
     assert!(path.exists());
-    assert_eq!(fs::read_to_string(&cfg).unwrap(), "praxen: [kaputt");
+    assert_eq!(fs::read_to_string(&cfg).unwrap(), "practices: [kaputt");
     // Practices keep being served from the last good state.
-    assert_eq!(practice_ids(&app).await, ["fragebogen_a"]);
+    assert_eq!(practice_ids(&app).await, ["questionnaire_a"]);
 }
 
 fn basic_for(user: &str, key: &str) -> String {
@@ -406,7 +452,7 @@ async fn practice_status(app: &Router, user: &str, key: &str) -> StatusCode {
     call(
         app,
         "GET",
-        "/v1/fragebogen",
+        "/v1/questionnaires",
         Some(basic_for(user, key)),
         Body::empty(),
     )
@@ -425,22 +471,31 @@ async fn add_practice_validates() {
     let cfg = fs::read_to_string(d.path().join("config.yaml")).unwrap();
     let long = "a".repeat(65);
     for (body, want) in [
-        (r#"{"user":"Praxis_C"}"#.to_owned(), StatusCode::BAD_REQUEST),
-        (r#"{"user":""}"#.to_owned(), StatusCode::BAD_REQUEST),
-        (r#"{"user":"praxis c"}"#.to_owned(), StatusCode::BAD_REQUEST),
-        (r#"{"user":"praxis:c"}"#.to_owned(), StatusCode::BAD_REQUEST),
-        (format!(r#"{{"user":"{long}"}}"#), StatusCode::BAD_REQUEST),
         (
-            r#"{"user":"praxis_c","fragebogen":["gibtsnicht"]}"#.to_owned(),
+            r#"{"user":"Practice_C"}"#.to_owned(),
+            StatusCode::BAD_REQUEST,
+        ),
+        (r#"{"user":""}"#.to_owned(), StatusCode::BAD_REQUEST),
+        (
+            r#"{"user":"practice c"}"#.to_owned(),
             StatusCode::BAD_REQUEST,
         ),
         (
-            r#"{"user":"praxis_c","key_hash":"x"}"#.to_owned(),
+            r#"{"user":"practice:c"}"#.to_owned(),
+            StatusCode::BAD_REQUEST,
+        ),
+        (format!(r#"{{"user":"{long}"}}"#), StatusCode::BAD_REQUEST),
+        (
+            r#"{"user":"practice_c","questionnaires":["missing_user"]}"#.to_owned(),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            r#"{"user":"practice_c","key_hash":"x"}"#.to_owned(),
             StatusCode::UNPROCESSABLE_ENTITY,
         ),
-        (r#"{"user":"praxis_a"}"#.to_owned(), StatusCode::CONFLICT),
+        (r#"{"user":"practice_a"}"#.to_owned(), StatusCode::CONFLICT),
     ] {
-        let (s, _) = call_json(&app, "POST", "/admin/api/praxen", body.clone()).await;
+        let (s, _) = call_json(&app, "POST", "/admin/api/practices", body.clone()).await;
         assert_eq!(s, want, "{body}");
     }
     assert_eq!(
@@ -466,8 +521,8 @@ async fn call_json(app: &Router, method: &str, uri: &str, body: String) -> (Stat
 #[tokio::test]
 async fn add_practice_stores_only_the_hash() {
     let (app, d) = setup(Some(TOKEN));
-    let body = r#"{"user":"praxis_neu-2","fragebogen":["fragebogen_b"]}"#.to_owned();
-    let (s, b) = call_json(&app, "POST", "/admin/api/praxen", body).await;
+    let body = r#"{"user":"practice_new-2","questionnaires":["questionnaire_b"]}"#.to_owned();
+    let (s, b) = call_json(&app, "POST", "/admin/api/practices", body).await;
     assert_eq!(s, StatusCode::CREATED);
     let key = key_of(&b);
     assert_eq!(key.len(), 43);
@@ -478,25 +533,25 @@ async fn add_practice_stores_only_the_hash() {
     let p = reg
         .practices
         .iter()
-        .find(|p| p.user == "praxis_neu-2")
+        .find(|p| p.user == "practice_new-2")
         .unwrap();
-    assert_eq!(p.fragebogen, ["fragebogen_b"]);
+    assert_eq!(p.questionnaires, ["questionnaire_b"]);
     assert!(p.key_hash.starts_with("$argon2id$"));
 
     assert_eq!(
-        practice_status(&app, "praxis_neu-2", &key).await,
+        practice_status(&app, "practice_new-2", &key).await,
         StatusCode::OK
     );
     let (_, list) = call(
         &app,
         "GET",
-        "/v1/fragebogen",
-        Some(basic_for("praxis_neu-2", &key)),
+        "/v1/questionnaires",
+        Some(basic_for("practice_new-2", &key)),
         Body::empty(),
     )
     .await;
-    assert!(list.contains("fragebogen_b") && !list.contains("fragebogen_a"));
-    let (_, admin_list) = admin(&app, "GET", "/admin/api/fragebogen", Body::empty()).await;
+    assert!(list.contains("questionnaire_b") && !list.contains("questionnaire_a"));
+    let (_, admin_list) = admin(&app, "GET", "/admin/api/questionnaires", Body::empty()).await;
     assert!(!admin_list.contains(&key) && !admin_list.contains("argon2"));
 }
 
@@ -504,24 +559,24 @@ async fn add_practice_stores_only_the_hash() {
 async fn new_key_replaces_old_at_once() {
     let (app, d) = setup(Some(TOKEN));
     assert_eq!(
-        practice_status(&app, "praxis_a", "geheim").await,
+        practice_status(&app, "practice_a", "secret").await,
         StatusCode::OK
     );
     let (s, b) = admin(
         &app,
         "POST",
-        "/admin/api/praxen/praxis_a/schluessel",
+        "/admin/api/practices/practice_a/key",
         Body::empty(),
     )
     .await;
     assert_eq!(s, StatusCode::OK);
     let key = key_of(&b);
     assert_eq!(
-        practice_status(&app, "praxis_a", "geheim").await,
+        practice_status(&app, "practice_a", "secret").await,
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
-        practice_status(&app, "praxis_a", &key).await,
+        practice_status(&app, "practice_a", &key).await,
         StatusCode::OK
     );
     assert!(!fs::read_to_string(d.path().join("config.yaml"))
@@ -529,14 +584,14 @@ async fn new_key_replaces_old_at_once() {
         .contains(&key));
     // Other fields of the practice are kept.
     assert_eq!(
-        load(d.path()).unwrap().practices[0].fragebogen,
-        ["fragebogen_a"]
+        load(d.path()).unwrap().practices[0].questionnaires,
+        ["questionnaire_a"]
     );
 
     let (s, _) = admin(
         &app,
         "POST",
-        "/admin/api/praxen/gibtsnicht/schluessel",
+        "/admin/api/practices/missing_user/key",
         Body::empty(),
     )
     .await;
@@ -546,16 +601,28 @@ async fn new_key_replaces_old_at_once() {
 #[tokio::test]
 async fn delete_practice() {
     let (app, d) = setup(Some(TOKEN));
-    let (s, _) = admin(&app, "DELETE", "/admin/api/praxen/praxis_a", Body::empty()).await;
+    let (s, _) = admin(
+        &app,
+        "DELETE",
+        "/admin/api/practices/practice_a",
+        Body::empty(),
+    )
+    .await;
     assert_eq!(s, StatusCode::NO_CONTENT);
     assert_eq!(
-        practice_status(&app, "praxis_a", "geheim").await,
+        practice_status(&app, "practice_a", "secret").await,
         StatusCode::UNAUTHORIZED
     );
     let reg = load(d.path()).unwrap();
     assert_eq!(reg.practices.len(), 1);
-    assert_eq!(reg.practices[0].user, "praxis_b");
-    let (s, _) = admin(&app, "DELETE", "/admin/api/praxen/praxis_a", Body::empty()).await;
+    assert_eq!(reg.practices[0].user, "practice_b");
+    let (s, _) = admin(
+        &app,
+        "DELETE",
+        "/admin/api/practices/practice_a",
+        Body::empty(),
+    )
+    .await;
     assert_eq!(s, StatusCode::NOT_FOUND);
 }
 
@@ -564,9 +631,9 @@ async fn practice_routes_need_the_admin_token() {
     let (app, d) = setup(Some(TOKEN));
     let cfg = fs::read_to_string(d.path().join("config.yaml")).unwrap();
     for (method, uri) in [
-        ("POST", "/admin/api/praxen"),
-        ("POST", "/admin/api/praxen/praxis_a/schluessel"),
-        ("DELETE", "/admin/api/praxen/praxis_a"),
+        ("POST", "/admin/api/practices"),
+        ("POST", "/admin/api/practices/practice_a/key"),
+        ("DELETE", "/admin/api/practices/practice_a"),
     ] {
         let (s, _) = call(&app, method, uri, Some(basic()), r#"{"user":"x"}"#).await;
         assert_eq!(s, StatusCode::UNAUTHORIZED, "{method} {uri}");

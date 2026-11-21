@@ -36,7 +36,7 @@ export function renameKey<V>(rec: Record<string, V>, from: string, to: string): 
   return Object.fromEntries(Object.entries(rec).map(([k, v]) => [k === from ? to : k, v]));
 }
 
-/** Picks a key name like `neu`, `neu2`, … not yet in `rec`. */
+/** Picks a key name like `new`, `new2`, … not yet in `rec`. */
 export function freshKey(rec: Record<string, unknown>, base: string): string {
   let k = base;
   for (let n = 2; k in rec; n++) k = `${base}${n}`;
@@ -77,13 +77,13 @@ export const errorList = (e: unknown): string[] => (Array.isArray(e) ? e.map(Str
 /** The smallest valid questionnaire. */
 export function template(): Definition {
   return {
-    schema: 1, id: "neu", version: "1", title: "Neuer Fragebogen", authors: null, copyright: null,
+    schema: 1, id: "new", version: "1", title: "Neuer Fragebogen", authors: null, copyright: null,
     cutoff_compare: ">=",
-    answer_sets: { ja_nein: ["Nein", "Ja"] },
+    answer_sets: { yes_no: ["Nein", "Ja"] },
     shortcuts: {},
     keys: { normal: [0, 1] },
-    default_answers: "ja_nein",
-    fields: [{ id: "kennung", label: "Kennung", type: "text", default: "anonym" }],
+    default_answers: "yes_no",
+    fields: [{ id: "subject_id", label: "Kennung", type: "text", default: "anonymous" }],
     scales: [{ id: "A", label: "Skala A", cutoff: 1 }],
     derived: [],
     sections: [{ title: "Teil 1", intro: null, items: [{ n: 1, id: null, text: "Frage 1?", answers: null, scale: "A", key: "normal" }] }],

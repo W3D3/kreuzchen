@@ -174,6 +174,24 @@ pub fn delete_draft(paths: State<Paths>, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn migration_problems(
+    paths: State<Paths>,
+    problems: State<crate::MigrationProblems>,
+) -> MigrationReport {
+    MigrationReport {
+        problems: problems.0.clone(),
+        folder: paths.data.to_string_lossy().into_owned(),
+    }
+}
+
+/// Files the 0.4 upgrade left as they were, and the data folder holding the backup.
+#[derive(Serialize)]
+pub struct MigrationReport {
+    problems: Vec<String>,
+    folder: String,
+}
+
+#[tauri::command]
 // Paths come from OS dialogs; import only accepts valid records.
 pub fn export_result(paths: State<Paths>, name: String, dest: String) -> Result<(), String> {
     store::export(&paths.results, &name, Path::new(&dest))
@@ -386,15 +404,15 @@ mod tests {
         let p = d.path();
         let paths = Paths {
             data: p.into(),
-            definitions: p.join("definitionen"),
-            results: p.join("auswertungen"),
-            drafts: p.join("entwuerfe"),
+            definitions: p.join("definitions"),
+            results: p.join("results"),
+            drafts: p.join("drafts"),
             registry: p.join("registry"),
             pdf: p.join("pdf"),
         };
         fs::create_dir(&paths.definitions).unwrap();
         fs::create_dir(&paths.registry).unwrap();
-        let yaml = include_str!("../../examples/definitionen/beispiel.yaml");
+        let yaml = include_str!("../../examples/definitions/beispiel.yaml");
         let file = paths.definitions.join("beispiel.yaml");
         fs::write(&file, yaml).unwrap();
         let hash = crate::definitions::scan(&paths.definitions)[0].hash.clone();
@@ -422,16 +440,16 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let paths = Paths {
             data: tmp.path().into(),
-            definitions: tmp.path().join("definitionen"),
-            results: tmp.path().join("auswertungen"),
-            drafts: tmp.path().join("entwuerfe"),
+            definitions: tmp.path().join("definitions"),
+            results: tmp.path().join("results"),
+            drafts: tmp.path().join("drafts"),
             registry: tmp.path().join("registry"),
             pdf: tmp.path().join("pdf"),
         };
         for dir in [&paths.definitions, &paths.results, &paths.registry] {
             fs::create_dir_all(dir).unwrap();
         }
-        let yaml = include_str!("../../examples/definitionen/beispiel_normen.yaml");
+        let yaml = include_str!("../../examples/definitions/beispiel_normen.yaml");
         let def = paths.definitions.join("beispiel_normen.yaml");
         fs::write(&def, yaml).unwrap();
         let q = kreuzchen_engine::load(yaml).unwrap();
@@ -442,7 +460,7 @@ mod tests {
         let (_, hash) = definitions::open(&paths.definitions, "beispiel_normen.yaml").unwrap();
         let save = |hash: &str| {
             let record: store::SavedRecord = serde_json::from_value(serde_json::json!({
-                "format": 1, "kennung": "K", "created_at": "2026-11-17T14:30:00",
+                "format": 1, "subject_id": "K", "created_at": "2026-11-17T14:30:00",
                 "questionnaire": { "id": "beispiel_normen", "title": "B", "version": "1", "hash": hash },
                 "input": input, "grading": q.grade(&input).unwrap(), "text": "",
             }))
@@ -476,7 +494,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("pdf");
 
-        // Two evaluations of the same Kennung and questionnaire share a name.
+        // Two evaluations of the same subject id and questionnaire share a name.
         let a = write_temp_pdf(&dir, "K – Test.pdf", b"child A").unwrap();
         let b = write_temp_pdf(&dir, "K – Test.pdf", b"child B").unwrap();
         assert_eq!(a, dir.join("K – Test.pdf"));

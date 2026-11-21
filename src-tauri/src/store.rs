@@ -13,7 +13,7 @@ pub struct QRef {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SavedRecord {
     pub format: u32,
-    pub kennung: String,
+    pub subject_id: String,
     pub created_at: String,
     pub questionnaire: QRef,
     pub input: Input,
@@ -32,7 +32,7 @@ pub struct Draft {
 #[derive(Serialize, Debug, PartialEq)]
 pub struct DraftSummary {
     pub name: String,
-    pub kennung: String,
+    pub subject_id: String,
     pub title: String,
     pub saved_at: String,
     pub answered: usize,
@@ -41,7 +41,7 @@ pub struct DraftSummary {
 #[derive(Serialize, Debug, PartialEq)]
 pub struct SavedSummary {
     pub name: String,
-    pub kennung: String,
+    pub subject_id: String,
     pub title: String,
     pub created_at: String,
 }
@@ -150,7 +150,7 @@ fn read_all<T: DeserializeOwned>(dir: &Path) -> Vec<(String, T)> {
 /// The part of a `SavedRecord` the list shows; serde skips the rest instead of building it.
 #[derive(Deserialize)]
 struct Listed {
-    kennung: String,
+    subject_id: String,
     created_at: String,
     questionnaire: ListedQ,
 }
@@ -165,7 +165,7 @@ pub fn list(dir: &Path) -> Vec<SavedSummary> {
         .into_iter()
         .map(|(name, rec)| SavedSummary {
             name,
-            kennung: rec.kennung,
+            subject_id: rec.subject_id,
             title: rec.questionnaire.title,
             created_at: rec.created_at,
         })
@@ -179,7 +179,7 @@ pub fn list_drafts(dir: &Path) -> Vec<DraftSummary> {
         .into_iter()
         .map(|(name, d)| DraftSummary {
             name,
-            kennung: match d.input.fields.get("kennung") {
+            subject_id: match d.input.fields.get("subject_id") {
                 Some(FieldValue::Text(k)) => k.clone(),
                 _ => String::new(),
             },
@@ -216,7 +216,11 @@ pub fn export(dir: &Path, name: &str, dest: &Path) -> Result<(), String> {
 
 pub fn import(dir: &Path, src: &Path) -> Result<String, String> {
     let bytes = fs::read(src).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
-    let rec: SavedRecord = serde_json::from_slice(&bytes).map_err(|_| BAD_FILE.to_string())?;
+    let mut v: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| BAD_FILE.to_string())?;
+    // A 0.4 export still says `kennung`; its definition hash is the one it was graded with.
+    crate::migrate::upgrade_record(&mut v, &Default::default());
+    let rec: SavedRecord = serde_json::from_value(v).map_err(|_| BAD_FILE.to_string())?;
     if rec.format != 1 {
         return Err(BAD_FILE.into());
     }
@@ -239,7 +243,7 @@ mod tests {
     fn rec(created_at: &str) -> SavedRecord {
         SavedRecord {
             format: 1,
-            kennung: "A/B: *x".into(),
+            subject_id: "A/B: *x".into(),
             created_at: created_at.into(),
             questionnaire: QRef {
                 id: "beispiel".into(),
@@ -293,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn name_from_timestamp_not_kennung() {
+    fn name_from_timestamp_not_subject_id() {
         let d = tempfile::tempdir().unwrap();
         assert_eq!(
             save(d.path(), &rec(T)).unwrap(),
@@ -326,11 +330,11 @@ mod tests {
         save(d.path(), &rec("2026-02-01T10:00:00")).unwrap();
         fs::write(d.path().join("junk.json"), "{}").unwrap();
         // Only the listed fields are read: the rest of a record may be anything.
-        let slim = r#"{"kennung":"K","created_at":"2026-03-01T10:00:00","questionnaire":{"title":"T"},"input":0}"#;
+        let slim = r#"{"subject_id":"K","created_at":"2026-03-01T10:00:00","questionnaire":{"title":"T"},"input":0}"#;
         fs::write(d.path().join("slim.json"), slim).unwrap();
         let l = list(d.path());
         assert_eq!(l.len(), 3);
-        assert_eq!((l[0].kennung.as_str(), l[0].title.as_str()), ("K", "T"));
+        assert_eq!((l[0].subject_id.as_str(), l[0].title.as_str()), ("K", "T"));
         let l = &l[1..];
         assert_eq!(l[0].created_at, "2026-02-01T10:00:00");
         assert_eq!(l[0].name, "2026-02-01T10-00-00_beispiel.json");
@@ -350,10 +354,34 @@ mod tests {
             ))
         );
         let mut other = rec(T);
-        other.kennung = "anders".into();
+        other.subject_id = "other".into();
         fs::write(&file, serde_json::to_vec(&other).unwrap()).unwrap();
         assert!(import(d.path(), &file).is_ok());
         assert_eq!(list(d.path()).len(), 2);
+    }
+
+    #[test]
+    fn importing_a_0_4_export_upgrades_it() {
+        let (d, src) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let old = include_str!(
+            "../../fixtures/app-data-0.4.0/auswertungen/2026-11-17T14-30-00_beispiel.json"
+        );
+        let file = src.path().join("export.json");
+        fs::write(&file, old).unwrap();
+        let name = import(d.path(), &file).unwrap();
+        let rec: SavedRecord = load(d.path(), &name).unwrap();
+        assert_eq!(rec.subject_id, "Anonym 17.11.2026 14:30");
+        assert!(rec.input.fields.contains_key("subject_id"));
+        assert_eq!(rec.grading.fields[0].id, "subject_id");
+        let old: serde_json::Value = serde_json::from_str(old).unwrap();
+        assert_eq!(rec.questionnaire.hash, old["questionnaire"]["hash"]);
+        assert_eq!(list(d.path())[0].subject_id, "Anonym 17.11.2026 14:30");
+        // Importing it again is a duplicate, though the file still has the old keys.
+        assert!(
+            import(d.path(), &file)
+                .unwrap_err()
+                .contains("schon gespeichert")
+        );
     }
 
     #[test]
@@ -391,7 +419,7 @@ mod tests {
             saved_at: saved_at.into(),
             questionnaire: r.questionnaire,
             input: Input {
-                fields: BTreeMap::from([("kennung".into(), FieldValue::Text("K1".into()))]),
+                fields: BTreeMap::from([("subject_id".into(), FieldValue::Text("K1".into()))]),
                 answers: answers.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
             },
         }
@@ -425,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn drafts_list_newest_first_with_kennung_and_count() {
+    fn drafts_list_newest_first_with_subject_id_and_count() {
         let d = tempfile::tempdir().unwrap();
         save_draft(d.path(), None, &draft("2026-01-01T10:00:00", &[("1", 0)])).unwrap();
         save_draft(
@@ -442,7 +470,7 @@ mod tests {
             l[0],
             DraftSummary {
                 name: "2026-02-01T10-00-00_beispiel.json".into(),
-                kennung: "K1".into(),
+                subject_id: "K1".into(),
                 title: "Beispiel".into(),
                 saved_at: "2026-02-01T10:00:00".into(),
                 answered: 2,

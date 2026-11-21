@@ -252,7 +252,7 @@
         </div>
       {/each}
       <div class="mt-1 flex items-center justify-between">
-        {@render add("Antwortsatz", () => (d.answer_sets[freshKey(d.answer_sets, "antworten")] = ["Nein", "Ja"]))}
+        {@render add("Antwortsatz", () => (d.answer_sets[freshKey(d.answer_sets, "answers")] = ["Nein", "Ja"]))}
         <div class="flex items-center gap-3">
           <Label for="f-defans" class={lbl}>Standard-Antwortsatz</Label>
           <SelectBox id="f-defans" label="Standard-Antwortsatz" class="w-44" mono bind:value={d.default_answers} options={[{ value: null, label: "(keiner)" }, ...setOptions]} />
@@ -270,7 +270,7 @@
           <IconButton label="Entfernen" icon={Trash2} variant="destructive" onclick={() => delete d.keys[name]} />
         </div>
       {/each}
-      {@render add("Schlüssel", () => (d.keys[freshKey(d.keys, "schluessel")] = [0, 1]))}
+      {@render add("Schlüssel", () => (d.keys[freshKey(d.keys, "key")] = [0, 1]))}
     {/snippet}
     {@render card("keys", "Schlüssel (Punkte je Antwort)", null, keys)}
 

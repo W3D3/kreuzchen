@@ -1,7 +1,7 @@
 use kreuzchen_engine::schema::FieldValue;
 use kreuzchen_engine::{load, Input};
 
-const YAML: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const YAML: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 
 fn text(answers: &[(&str, usize)], fields: &[(&str, FieldValue)]) -> String {
     let q = load(YAML).unwrap();
@@ -22,7 +22,7 @@ fn exactly_at_cutoff_text() {
         &[("1", 3), ("2", 2), ("3", 0), ("4", 3), ("zusatz", 0)],
         &[
             (
-                "kennung",
+                "subject_id",
                 FieldValue::Text("Anonym 11.11.2026 22:23".into()),
             ),
             ("alter", FieldValue::Num(9.0)),

@@ -1,6 +1,6 @@
 use kreuzchen_engine::{load, Grading, Input, NormValue, Questionnaire, ResultRow};
 
-const YAML: &str = include_str!("../../../examples/definitionen/beispiel_normen.yaml");
+const YAML: &str = include_str!("../../../examples/definitions/beispiel_normen.yaml");
 
 fn grade(q: &Questionnaire, answers: &[(&str, usize)]) -> Grading {
     let input = Input {

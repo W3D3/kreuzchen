@@ -1,6 +1,6 @@
 use kreuzchen_engine::load;
 
-const FIXTURE: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const FIXTURE: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 
 fn errs_multi(reps: &[(&str, &str)]) -> Vec<String> {
     let mut y = FIXTURE.to_string();
@@ -142,7 +142,7 @@ fn rejects_bad_names() {
     for (from, to, bad) in [
         ("id: zusatz,", "id: \"zu satz\",", "zu satz"),
         ("id: erwachsen,", "id: and,", "and"),
-        ("id: kennung,", "id: fehlend,", "fehlend"),
+        ("id: subject_id,", "id: missing,", "missing"),
         ("id: alter,", "id: A.over,", "A.over"),
     ] {
         assert!(errs(from, to).contains(&msg(bad)), "{bad}");

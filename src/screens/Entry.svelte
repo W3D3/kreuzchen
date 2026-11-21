@@ -12,7 +12,7 @@
   import { deleteDraft, grade, gradeDraft, saveDraft } from "../lib/api";
   import { createAutosave } from "../lib/autosave";
   import { entryItems } from "../lib/input";
-  import { localTimestamp } from "../lib/kennung";
+  import { localTimestamp } from "../lib/subject";
   import { entryKey } from "../lib/keyboard";
   import type { Graded, Input, OpenedDefinition } from "../lib/types";
 
@@ -200,7 +200,7 @@
     <Card.Root class="py-4">
       <Card.Content class="flex flex-wrap gap-4">
         {#each def.fields as f (f.id)}
-          {@const label = f.id === "kennung" ? "Kennung (keine Patientennamen)" : f.label}
+          {@const label = f.id === "subject_id" ? "Kennung (keine Patientennamen)" : f.label}
           {#if f.type === "checkbox"}
             <div class="flex items-center gap-2.5 self-end py-2.5">
               <!-- Not bind:checked: the field is undefined until first ticked, which the Checkbox rejects. -->

@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 pub struct Practice {
     pub user: String,
     pub key_hash: String,
-    pub fragebogen: Vec<String>,
+    pub questionnaires: Vec<String>,
 }
 
 /// Where the questionnaires come from. One per deployment, never both.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Source {
-    /// `definitionen/`, managed through `/admin`.
+    /// `definitions/`, managed through `/admin`.
     #[default]
     Local,
     /// A folder in a GitHub repo, synced into `github/` (see `sync`).
@@ -60,7 +60,7 @@ fn is_default_api(url: &str) -> bool {
 pub struct Config {
     #[serde(default, skip_serializing_if = "is_local")]
     pub source: Source,
-    pub praxen: Vec<Practice>,
+    pub practices: Vec<Practice>,
 }
 
 fn is_local(s: &Source) -> bool {
@@ -114,7 +114,9 @@ fn load_entry(path: &Path) -> Result<Entry, String> {
 /// Parses and validates a definition exactly as `load` does; `name` prefixes error messages.
 pub fn parse_entry(name: &str, bytes: Vec<u8>, path: PathBuf) -> Result<Entry, String> {
     let text = std::str::from_utf8(&bytes).map_err(|_| format!("{name}: nicht UTF-8"))?;
-    let q = kreuzchen_engine::load(text).map_err(|errs| {
+    // shortcut: 0.4 files (a Bibliothek repo not switched yet) load through an in-memory
+    // upgrade while their bytes are served unchanged; drop once no 0.4 files are published.
+    let q = kreuzchen_engine::load(&kreuzchen_engine::migrate::upgraded(text)).map_err(|errs| {
         let msgs: Vec<_> = errs.iter().map(|e| e.to_string()).collect();
         format!("{name}: {}", msgs.join("; "))
     })?;
@@ -140,7 +142,7 @@ pub fn load(data: &Path) -> Result<Registry, String> {
         serde_norway::from_str(text).map_err(|e| format!("{}: {e}", cfg_path.display()))?;
 
     let dir = match &config.source {
-        Source::Local => Some(data.join("definitionen")),
+        Source::Local => Some(data.join("definitions")),
         Source::Github(gh) => {
             check_github(gh).map_err(|e| format!("{}: source: {e}", cfg_path.display()))?;
             crate::sync::published(data)
@@ -160,7 +162,7 @@ pub fn load(data: &Path) -> Result<Registry, String> {
     }
 
     let mut users = HashSet::new();
-    for p in &config.praxen {
+    for p in &config.practices {
         if !users.insert(p.user.as_str()) {
             return Err(format!("doppelter Benutzer {:?}", p.user));
         }
@@ -170,7 +172,11 @@ pub fn load(data: &Path) -> Result<Registry, String> {
         if config.source != Source::Local {
             continue;
         }
-        if let Some(id) = p.fragebogen.iter().find(|id| !entries.contains_key(*id)) {
+        if let Some(id) = p
+            .questionnaires
+            .iter()
+            .find(|id| !entries.contains_key(*id))
+        {
             return Err(format!(
                 "Benutzer {:?}: unbekannter Fragebogen {id:?}",
                 p.user
@@ -180,7 +186,7 @@ pub fn load(data: &Path) -> Result<Registry, String> {
     Ok(Registry {
         dir: data.to_owned(),
         source: config.source,
-        practices: config.praxen,
+        practices: config.practices,
         entries,
     })
 }
@@ -250,9 +256,102 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 pub fn write_config(dir: &Path, source: &Source, practices: Vec<Practice>) -> Result<(), String> {
     let config = Config {
         source: source.clone(),
-        praxen: practices,
+        practices,
     };
     let text = serde_norway::to_string(&config).map_err(|e| e.to_string())?;
     write_atomic(&dir.join("config.yaml"), text.as_bytes())
         .map_err(|e| format!("config.yaml: nicht schreibbar: {e}"))
+}
+
+/// Upgrades a 0.4 data dir once: `definitionen/` becomes `definitions/`, and the `praxen` and
+/// `fragebogen` keys of config.yaml become `practices` and `questionnaires` (the old file is kept
+/// as `config.yaml.bak`). Every step is atomic and skips itself when done, so a rerun after a
+/// crash finishes the job. Returns what it did, for the log.
+pub fn migrate(data: &Path) -> Result<Vec<String>, String> {
+    let mut log = Vec::new();
+    let (old, new) = (data.join("definitionen"), data.join("definitions"));
+    if old.is_dir() {
+        if !new.exists() {
+            fs::rename(&old, &new).map_err(|e| format!("{}: {e}", old.display()))?;
+            log.push("definitionen/ → definitions/".to_string());
+        } else {
+            for e in fs::read_dir(&old).map_err(|e| format!("{}: {e}", old.display()))? {
+                let e = e.map_err(|e| e.to_string())?;
+                let to = new.join(e.file_name());
+                if to.exists() {
+                    log.push(format!(
+                        "{} bleibt liegen: {} gibt es schon",
+                        e.path().display(),
+                        to.display()
+                    ));
+                } else {
+                    fs::rename(e.path(), &to).map_err(|e| e.to_string())?;
+                    log.push(format!("{} → {}", e.path().display(), to.display()));
+                }
+            }
+            // Fails while files were left behind; they stay for the admin to sort out.
+            let _ = fs::remove_dir(&old);
+        }
+    }
+    let path = data.join("config.yaml");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return Ok(log);
+    };
+    if let Some(upgraded) = upgrade_config(&text).map_err(|e| format!("{}: {e}", path.display()))? {
+        write_atomic(&data.join("config.yaml.bak"), text.as_bytes())
+            .and_then(|()| write_atomic(&path, upgraded.as_bytes()))
+            .map_err(|e| format!("{}: nicht schreibbar: {e}", path.display()))?;
+        log.push(
+            "config.yaml: praxen/fragebogen → practices/questionnaires (alt: config.yaml.bak)"
+                .into(),
+        );
+    }
+    Ok(log)
+}
+
+/// config.yaml with the English keys, `None` when it has them already. Edits the text so
+/// comments stay; falls back to re-serializing when the edit does not parse to the same config.
+fn upgrade_config(text: &str) -> Result<Option<String>, String> {
+    use serde_norway::Value;
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut v: Value = serde_norway::from_str(text).map_err(|e| e.to_string())?;
+    let Some(m) = v.as_mapping_mut() else {
+        return Ok(None);
+    };
+    let Some(mut list) = m.remove("praxen") else {
+        return Ok(None);
+    };
+    for p in list.as_sequence_mut().into_iter().flatten() {
+        if let Some(p) = p.as_mapping_mut() {
+            if let Some(q) = p.remove("fragebogen") {
+                p.insert("questionnaires".into(), q);
+            }
+        }
+    }
+    m.insert("practices".into(), list);
+    let want: Config = serde_norway::from_value(v).map_err(|e| e.to_string())?;
+    let want = serde_norway::to_string(&want).map_err(|e| e.to_string())?;
+
+    let edited: String = text
+        .lines()
+        .map(|l| {
+            let indent = l.len() - l.trim_start_matches([' ', '-']).len();
+            let (head, rest) = l.split_at(indent);
+            match (
+                rest.strip_prefix("praxen:"),
+                rest.strip_prefix("fragebogen:"),
+            ) {
+                (Some(r), _) if indent == 0 => format!("practices:{r}"),
+                (_, Some(r)) => format!("{head}questionnaires:{r}"),
+                _ => l.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    let same = serde_norway::from_str::<Config>(&edited)
+        .ok()
+        .and_then(|c| serde_norway::to_string(&c).ok())
+        .is_some_and(|c| c == want);
+    Ok(Some(if same { edited } else { want }))
 }

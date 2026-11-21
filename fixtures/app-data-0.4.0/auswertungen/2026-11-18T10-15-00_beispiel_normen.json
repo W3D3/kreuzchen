@@ -1,0 +1,83 @@
+{
+  "format": 1,
+  "kennung": "TEST-002",
+  "created_at": "2026-11-18T10:15:00",
+  "questionnaire": {
+    "id": "beispiel_normen",
+    "title": "Beispiel mit Normwerten",
+    "version": "1",
+    "hash": "096a98b077d9da861d318e571a855edf83be19b3aa44cb100af2bf9c3707761a"
+  },
+  "input": {
+    "fields": {
+      "kennung": "TEST-002"
+    },
+    "answers": {
+      "1": 1,
+      "2": 2,
+      "3": 0,
+      "4": 3
+    }
+  },
+  "grading": {
+    "fields": [
+      {
+        "id": "kennung",
+        "label": "Kennung",
+        "value": "TEST-002"
+      }
+    ],
+    "rows": [
+      {
+        "kind": "sum",
+        "id": "gesamt",
+        "label": "Gesamtrohwert",
+        "value": 5.0,
+        "cutoff": 10,
+        "over": false,
+        "norm": {
+          "name": "T",
+          "value": 45,
+          "band": "unauffällig"
+        }
+      },
+      {
+        "kind": "sum",
+        "id": "A",
+        "label": "Skala A",
+        "value": 2.0,
+        "cutoff": null,
+        "over": false,
+        "norm": {
+          "name": "T",
+          "value": 40,
+          "band": "unauffällig"
+        }
+      },
+      {
+        "kind": "sum",
+        "id": "B",
+        "label": "Skala B",
+        "value": 3.0,
+        "cutoff": null,
+        "over": false,
+        "norm": {
+          "name": "T",
+          "value": 46,
+          "band": "unauffällig"
+        }
+      }
+    ],
+    "rules": [],
+    "caveats": [
+      "Mehr als 1 fehlende Antwort."
+    ],
+    "verdict": "Unauffällig",
+    "missing": 2,
+    "missing_items": [
+      "5",
+      "6"
+    ]
+  },
+  "text": "Beispiel mit Normwerten (Version 1)\nKennung: TEST-002\n\nGesamtrohwert: 5 (T = 45, unauffällig) (Cut-off 10)\nSkala A: 2 (T = 40, unauffällig)\nSkala B: 3 (T = 46, unauffällig)\n\nFehlende Antworten: 2 (Fragen 5, 6)\nHinweis: Mehr als 1 fehlende Antwort.\nErgebnis: Unauffällig"
+}

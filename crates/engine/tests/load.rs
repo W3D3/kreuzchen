@@ -1,7 +1,7 @@
 use kreuzchen_engine::parse_definition;
 use kreuzchen_engine::schema::*;
 
-const YAML: &str = include_str!("../../../examples/definitionen/beispiel.yaml");
+const YAML: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 
 #[test]
 fn parses_beispiel() {
@@ -39,7 +39,7 @@ fn unknown_field_rejected() {
 
 #[test]
 fn cutoff_compare_defaults_to_ge() {
-    let y = include_str!("../../../examples/definitionen/beispiel.yaml").replacen(
+    let y = include_str!("../../../examples/definitions/beispiel.yaml").replacen(
         "cutoff_compare: \">=\"\n",
         "",
         1,

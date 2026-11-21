@@ -12,7 +12,7 @@
   import { confirm } from "$lib/components/confirm.svelte";
   import { dataDir, deleteDraft, getDefinition, listDefinitions, listDrafts, openDefinitionsFolder, openDraft } from "../lib/api";
   import { fitInput, initialInput } from "../lib/input";
-  import { formatCreatedAt } from "../lib/kennung";
+  import { formatCreatedAt } from "../lib/subject";
   import type { DefinitionEntry, DraftSummary, Input, OpenedDefinition } from "../lib/types";
 
   let { onstart, onupdate }: {
@@ -64,7 +64,7 @@
   }
 
   async function removeDraft(d: DraftSummary) {
-    if (!(await confirm({ title: "Entwurf löschen", message: `Entwurf „${d.kennung || d.title}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
+    if (!(await confirm({ title: "Entwurf löschen", message: `Entwurf „${d.subject_id || d.title}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
     banner = null;
     try {
       await deleteDraft(d.name);
@@ -88,7 +88,7 @@
           {#each drafts as d (d.name)}
             <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
               <div class="min-w-0 flex-1">
-                <p class="font-mono font-bold">{d.kennung || d.title}</p>
+                <p class="font-mono font-bold">{d.subject_id || d.title}</p>
                 <p class="text-[15px] text-muted-foreground">{d.title} · {d.answered} beantwortet · zuletzt {formatCreatedAt(d.saved_at)}</p>
                 <p class="tech font-mono text-muted-foreground">{d.name}</p>
               </div>

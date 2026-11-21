@@ -44,7 +44,7 @@ pub fn pdf(r: &Report) -> Vec<u8> {
     }
     caveats(&mut d, &g.caveats);
 
-    let footer = match g.fields.iter().find(|f| f.id == "kennung") {
+    let footer = match g.fields.iter().find(|f| f.id == "subject_id") {
         Some(k) => format!("{} · {}", r.title, k.value),
         None => r.title.clone(),
     };
@@ -66,7 +66,7 @@ fn header(d: &mut Doc, r: &Report) {
             .iter()
             .map(|f| (f.label.as_str(), f.value.as_str())),
     );
-    if let Some(k) = g.fields.iter().position(|f| f.id == "kennung") {
+    if let Some(k) = g.fields.iter().position(|f| f.id == "subject_id") {
         meta.swap(0, k + 1);
     }
     let col = (W - 2.0 * M) / 3.0;

@@ -16,7 +16,7 @@
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { saveResult } from "../lib/api";
   import { loadAutoSaveResult } from "../lib/settings";
-  import { formatCreatedAt, localTimestamp, pdfName } from "../lib/kennung";
+  import { formatCreatedAt, localTimestamp, pdfName } from "../lib/subject";
   import { compactItems } from "../lib/ranges";
   import { meter } from "../lib/meter";
   import type { Graded, Input, Norms, OpenedDefinition, SavedRecord } from "../lib/types";
@@ -45,7 +45,7 @@
   } = $props();
 
   const g = $derived(graded.grading);
-  const kennung = $derived(String(input.fields.kennung ?? ""));
+  const subjectId = $derived(String(input.fields.subject_id ?? ""));
   const title = $derived(opened?.definition.title ?? record?.questionnaire.title ?? "");
   const anyMet = $derived(g.rules.some((r) => r.met));
   // Same notation as the engine's copy text: `55`, `3,5`, `3,67`.
@@ -83,7 +83,7 @@
     try {
       const name = await saveResult({
         format: 1,
-        kennung,
+        subject_id: subjectId,
         created_at: localTimestamp(new Date()),
         questionnaire: {
           id: opened.definition.id,
@@ -125,7 +125,7 @@
     <PdfButton
       primary
       {report}
-      name={pdfName(kennung, title)}
+      name={pdfName(subjectId, title)}
       onstart={() => { banner = null; status = ""; }}
       onerror={(e) => (banner = e)}
       onstatus={(s) => (status = s)}
@@ -147,7 +147,7 @@
   <div>
     {#if opened}<p class="text-[15px] text-muted-foreground">{opened.definition.title}</p>{/if}
     <h1 class="text-[26px] leading-tight font-bold">Ergebnis</h1>
-    {#each g.fields.filter((f) => f.id === "kennung") as f (f.id)}
+    {#each g.fields.filter((f) => f.id === "subject_id") as f (f.id)}
       <p class="mt-1 font-mono text-[16px] font-bold">{f.value}</p>
     {/each}
   </div>
@@ -177,9 +177,9 @@
     </ul>
   </section>
 
-  {#if g.fields.some((f) => f.id !== "kennung")}
+  {#if g.fields.some((f) => f.id !== "subject_id")}
       <dl class="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-6 gap-y-2.5 rounded-xl border bg-card px-5 py-3.5">
-        {#each g.fields.filter((f) => f.id !== "kennung") as f (f.id)}
+        {#each g.fields.filter((f) => f.id !== "subject_id") as f (f.id)}
           <div class="min-w-0">
             <dt class="text-[13px] text-muted-foreground">{f.label}</dt>
             <dd class="text-[15px] font-medium break-words {f.value === '–' ? 'text-muted-foreground' : ''}">{f.value}</dd>

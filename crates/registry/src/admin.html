@@ -90,37 +90,37 @@
 <body>
 <header><div class="bar">
   <div class="brand">Bibliotheksserver <span>– Verwaltung</span></div>
-  <button class="btn ghost" id="abmelden" hidden>Abmelden</button>
+  <button class="btn ghost" id="logout" hidden>Abmelden</button>
 </div></header>
 
 <main>
-  <form id="anmeldung" class="card login" hidden>
+  <form id="login" class="card login" hidden>
     <h2>Anmelden</h2>
     <div class="field">
       <label for="token">Admin-Token</label>
       <input id="token" type="password" autocomplete="off" required>
       <p class="hint">Das Token bleibt nur in diesem Tab gespeichert, bis Sie ihn schließen.</p>
     </div>
-    <p id="anmeldefehler" class="err" role="alert" hidden></p>
+    <p id="login-error" class="err" role="alert" hidden></p>
     <button class="btn primary" type="submit">Anmelden</button>
   </form>
 
   <div id="app" hidden>
     <nav class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tab-fragebogen" aria-controls="fragebogen">Fragebögen<span class="count" id="n-fragebogen"></span></button>
-      <button class="tab" role="tab" id="tab-praxen" aria-controls="praxen">Praxen<span class="count" id="n-praxen"></span></button>
+      <button class="tab" role="tab" id="tab-questionnaires" aria-controls="questionnaires">Fragebögen<span class="count" id="n-questionnaires"></span></button>
+      <button class="tab" role="tab" id="tab-practices" aria-controls="practices">Praxen<span class="count" id="n-practices"></span></button>
     </nav>
 
-    <div class="alert" id="fehler" role="alert" hidden>
-      <div class="row"><div><strong id="fehler-titel"></strong><p id="fehler-text"></p></div>
-      <button class="btn ghost" id="fehler-zu" aria-label="Meldung schließen">✕</button></div>
-      <pre id="fehler-detail"></pre>
+    <div class="alert" id="error" role="alert" hidden>
+      <div class="row"><div><strong id="error-title"></strong><p id="error-text"></p></div>
+      <button class="btn ghost" id="error-close" aria-label="Meldung schließen">✕</button></div>
+      <pre id="error-detail"></pre>
     </div>
 
-    <section id="fragebogen" role="tabpanel" aria-labelledby="tab-fragebogen">
+    <section id="questionnaires" role="tabpanel" aria-labelledby="tab-questionnaires">
       <div class="head">
         <div><h2>Fragebögen</h2><p class="muted">Häkchen bestimmen, welche Praxen einen Fragebogen in ihrer Bibliothek sehen.</p></div>
-        <button class="btn primary" id="hochladen">Fragebogen hochladen</button>
+        <button class="btn primary" id="upload">Fragebogen hochladen</button>
       </div>
       <div class="card source" id="source" hidden>
         <div class="row">
@@ -134,46 +134,46 @@
         </div>
         <p class="hint">Die Fragebögen werden im Repository gepflegt. Hochladen, Ersetzen und Löschen sind hier abgeschaltet; die Sichtbarkeit legen Sie weiterhin hier fest.</p>
       </div>
-      <div class="card" id="fb-karte"></div>
+      <div class="card" id="q-card"></div>
     </section>
 
-    <section id="praxen" role="tabpanel" aria-labelledby="tab-praxen" hidden>
+    <section id="practices" role="tabpanel" aria-labelledby="tab-practices" hidden>
       <div class="head">
         <div><h2>Praxen</h2><p class="muted">Zugänge für die Bibliothek. Schlüssel werden nur beim Erzeugen angezeigt.</p></div>
-        <button class="btn primary" id="anlegen">Praxis anlegen</button>
+        <button class="btn primary" id="add-practice">Praxis anlegen</button>
       </div>
-      <div class="card" id="px-karte"></div>
+      <div class="card" id="p-card"></div>
     </section>
   </div>
-  <input type="file" id="datei" accept=".yaml,.yml" hidden>
+  <input type="file" id="file-input" accept=".yaml,.yml" hidden>
 </main>
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<dialog id="dlg-frage"><form method="dialog">
-  <h2 id="frage-titel"></h2>
-  <p id="frage-text"></p>
-  <div class="buttons"><button class="btn" value="nein">Abbrechen</button><button class="btn danger" value="ja" id="frage-ok"></button></div>
+<dialog id="dlg-confirm"><form method="dialog">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-text"></p>
+  <div class="buttons"><button class="btn" value="cancel">Abbrechen</button><button class="btn danger" value="ok" id="confirm-ok"></button></div>
 </form></dialog>
 
-<dialog id="dlg-praxis"><form id="praxis-form">
+<dialog id="dlg-practice"><form id="practice-form">
   <h2>Praxis anlegen</h2>
   <div class="field">
-    <label for="praxis-name">Benutzername</label>
-    <input id="praxis-name" type="text" required maxlength="64" pattern="[a-z0-9_\-]+" autocomplete="off" spellcheck="false" placeholder="z. B. praxis_sonnenhof">
+    <label for="practice-name">Benutzername</label>
+    <input id="practice-name" type="text" required maxlength="64" pattern="[a-z0-9_\-]+" autocomplete="off" spellcheck="false" placeholder="z. B. praxis_sonnenhof">
     <p class="hint">Kleinbuchstaben, Ziffern, _ und -. Lässt sich später nicht ändern.</p>
   </div>
-  <fieldset id="praxis-fb"><legend>Sichtbare Fragebögen</legend></fieldset>
-  <p id="praxis-fehler" class="err" role="alert" hidden></p>
-  <div class="buttons"><button class="btn" type="button" id="praxis-abbrechen">Abbrechen</button><button class="btn primary" type="submit">Anlegen</button></div>
+  <fieldset id="practice-questionnaires"><legend>Sichtbare Fragebögen</legend></fieldset>
+  <p id="practice-error" class="err" role="alert" hidden></p>
+  <div class="buttons"><button class="btn" type="button" id="practice-cancel">Abbrechen</button><button class="btn primary" type="submit">Anlegen</button></div>
 </form></dialog>
 
-<dialog id="dlg-schluessel"><form method="dialog">
-  <h2 id="schluessel-titel"></h2>
+<dialog id="dlg-key"><form method="dialog">
+  <h2 id="key-title"></h2>
   <p class="warn"><strong>Nur jetzt sichtbar.</strong> Der Schlüssel wird nicht gespeichert und kann nicht erneut angezeigt werden. Geben Sie ihn zusammen mit dem Benutzernamen an die Praxis weiter.</p>
-  <div class="field"><span class="hint">Benutzername</span><div class="key" id="schluessel-user"></div></div>
-  <div class="field"><span class="hint">Schlüssel</span><div class="key" id="schluessel-wert"></div></div>
-  <div class="buttons"><button class="btn" type="button" id="kopieren">Schlüssel kopieren</button><button class="btn primary" value="ok">Fertig</button></div>
+  <div class="field"><span class="hint">Benutzername</span><div class="key" id="key-user"></div></div>
+  <div class="field"><span class="hint">Schlüssel</span><div class="key" id="key-value"></div></div>
+  <div class="buttons"><button class="btn" type="button" id="copy-key">Schlüssel kopieren</button><button class="btn primary" value="ok">Fertig</button></div>
 </form></dialog>
 
 <script>
@@ -181,7 +181,7 @@
 const KEY = "kreuzchen-admin-token";
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
-let data = { praxen: [], fragebogen: [] };
+let data = { practices: [], questionnaires: [] };
 let git = false;
 const GIT_MODE = "Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen.";
 
@@ -197,30 +197,30 @@ const SUMMARY = {
 
 class ApiError extends Error { constructor(status, detail) { super(detail); this.status = status; } }
 
-async function api(method, pfad, body, typ) {
+async function api(method, path, body, type) {
   const headers = { Authorization: "Bearer " + sessionStorage.getItem(KEY) };
-  if (typ) headers["Content-Type"] = typ;
+  if (type) headers["Content-Type"] = type;
   let r;
-  try { r = await fetch("/admin/api" + pfad, { method, headers, body }); }
+  try { r = await fetch("/admin/api" + path, { method, headers, body }); }
   catch { throw new ApiError(0, ""); }
-  if (r.status === 401) { abmelden("Das Token ist ungültig."); throw null; }
+  if (r.status === 401) { logout("Das Token ist ungültig."); throw null; }
   if (!r.ok) throw new ApiError(r.status, await r.text());
   return r.status === 204 ? null : r.json();
 }
 
 // German summary first, the server's raw message (e.g. parser output) below it.
-function fehler(titel, e, summary) {
+function showError(title, e, summary) {
   if (!e) return;
-  $("fehler-titel").textContent = titel;
-  $("fehler-text").textContent = summary || SUMMARY[e.status] || "Unerwarteter Fehler (" + e.status + ").";
-  $("fehler-detail").textContent = e.message || "";
-  $("fehler-detail").hidden = !e.message;
-  $("fehler").hidden = false;
-  $("fehler").scrollIntoView({ block: "nearest" });
-  if (e.status === 404) laden().catch(() => {});
+  $("error-title").textContent = title;
+  $("error-text").textContent = summary || SUMMARY[e.status] || "Unerwarteter Fehler (" + e.status + ").";
+  $("error-detail").textContent = e.message || "";
+  $("error-detail").hidden = !e.message;
+  $("error").hidden = false;
+  $("error").scrollIntoView({ block: "nearest" });
+  if (e.status === 404) loadData().catch(() => {});
 }
-const fehlerWeg = () => ($("fehler").hidden = true);
-$("fehler-zu").onclick = fehlerWeg;
+const clearError = () => ($("error").hidden = true);
+$("error-close").onclick = clearError;
 
 let toastTimer;
 function toast(text) {
@@ -230,40 +230,40 @@ function toast(text) {
   toastTimer = setTimeout(() => $("toast").classList.remove("show"), 3500);
 }
 
-function fragen(titel, text, ok) {
-  $("frage-titel").textContent = titel;
-  $("frage-text").textContent = text;
-  $("frage-ok").textContent = ok;
-  $("dlg-frage").returnValue = "";
-  $("dlg-frage").showModal();
-  return new Promise((res) => $("dlg-frage").addEventListener("close", () => res($("dlg-frage").returnValue === "ja"), { once: true }));
+function ask(title, text, ok) {
+  $("confirm-title").textContent = title;
+  $("confirm-text").textContent = text;
+  $("confirm-ok").textContent = ok;
+  $("dlg-confirm").returnValue = "";
+  $("dlg-confirm").showModal();
+  return new Promise((res) => $("dlg-confirm").addEventListener("close", () => res($("dlg-confirm").returnValue === "ok"), { once: true }));
 }
 
-function zeigeTab(name) {
-  for (const t of ["fragebogen", "praxen"]) {
+function showTab(name) {
+  for (const t of ["questionnaires", "practices"]) {
     $(t).hidden = t !== name;
     $("tab-" + t).setAttribute("aria-selected", t === name);
   }
   history.replaceState(null, "", "#" + name);
 }
-$("tab-fragebogen").onclick = () => zeigeTab("fragebogen");
-$("tab-praxen").onclick = () => zeigeTab("praxen");
+$("tab-questionnaires").onclick = () => showTab("questionnaires");
+$("tab-practices").onclick = () => showTab("practices");
 
-async function laden() {
+async function loadData() {
   let sync;
-  [data, sync] = await Promise.all([api("GET", "/fragebogen"), api("GET", "/sync")]);
+  [data, sync] = await Promise.all([api("GET", "/questionnaires"), api("GET", "/sync")]);
   drawSource(sync);
-  $("n-fragebogen").textContent = data.fragebogen.length;
-  $("n-praxen").textContent = data.praxen.length;
-  zeichneFragebogen();
-  zeichnePraxen();
+  $("n-questionnaires").textContent = data.questionnaires.length;
+  $("n-practices").textContent = data.practices.length;
+  drawQuestionnaires();
+  drawPractices();
 }
 
 function drawSource(s) {
   git = s.source === "github";
   $("source").hidden = !git;
-  $("hochladen").disabled = git;
-  $("hochladen").title = git ? GIT_MODE : "";
+  $("upload").disabled = git;
+  $("upload").title = git ? GIT_MODE : "";
   if (!git) return;
   const path = s.path.replace(/^\/+|\/+$/g, "");
   const synced = s.sha ? ", Stand " + s.sha.slice(0, 7) : ", noch nicht synchronisiert";
@@ -286,53 +286,53 @@ $("sync").onclick = async () => {
   const button = $("sync");
   button.disabled = true;
   button.textContent = "Synchronisiere …";
-  fehlerWeg();
+  clearError();
   try {
     const s = await api("POST", "/sync");
-    await laden();
+    await loadData();
     toast(s.error ? "Synchronisierung fehlgeschlagen; der bisherige Stand bleibt online." : "Synchronisiert, Stand " + s.sha.slice(0, 7) + ".");
-  } catch (e) { fehler("Synchronisierung fehlgeschlagen", e); }
+  } catch (e) { showError("Synchronisierung fehlgeschlagen", e); }
   finally {
     button.disabled = false;
     button.textContent = "Jetzt synchronisieren";
   }
 };
 
-function leer(text, knopf, aktion) {
-  const b = el("button", { className: "btn primary", textContent: knopf });
-  b.onclick = aktion;
+function emptyState(text, label, action) {
+  const b = el("button", { className: "btn primary", textContent: label });
+  b.onclick = action;
   return el("div", { className: "empty" }, el("p", { className: "muted", textContent: text }), b);
 }
 
-function tabelle(koepfe, zeilen) {
+function table(heads, rows) {
   return el("table", {},
-    el("thead", {}, el("tr", {}, ...koepfe.map((h) => el("th", { textContent: h })))),
-    el("tbody", {}, ...zeilen));
+    el("thead", {}, el("tr", {}, ...heads.map((h) => el("th", { textContent: h })))),
+    el("tbody", {}, ...rows));
 }
 
-function knopf(text, klasse, aktion, title = "") {
-  const b = el("button", { className: "btn " + klasse, textContent: text, title });
-  b.onclick = aktion;
+function makeButton(text, cls, action, title = "") {
+  const b = el("button", { className: "btn " + cls, textContent: text, title });
+  b.onclick = action;
   return b;
 }
 
 // Questionnaire files come from the repo in git mode: the button stays visible but disabled.
 function fileButton(text, cls, action, title = "") {
-  const b = knopf(text, cls, action, git ? GIT_MODE : title);
+  const b = makeButton(text, cls, action, git ? GIT_MODE : title);
   b.disabled = git;
   return b;
 }
 
-function zeichneFragebogen() {
-  if (!data.fragebogen.length && git) return $("fb-karte").replaceChildren(el("div", { className: "empty" }, el("p", { className: "muted", textContent: "Im Repository liegen noch keine gültigen Fragebögen." })));
-  if (!data.fragebogen.length) return $("fb-karte").replaceChildren(leer("Noch keine Fragebögen. Laden Sie eine YAML-Datei hoch; sie wird vor dem Speichern geprüft.", "Fragebogen hochladen", hochladenNeu));
-  $("fb-karte").replaceChildren(tabelle(["Fragebogen", "Version", "Sichtbar für", ""], data.fragebogen.map((f) => {
+function drawQuestionnaires() {
+  if (!data.questionnaires.length && git) return $("q-card").replaceChildren(el("div", { className: "empty" }, el("p", { className: "muted", textContent: "Im Repository liegen noch keine gültigen Fragebögen." })));
+  if (!data.questionnaires.length) return $("q-card").replaceChildren(emptyState("Noch keine Fragebögen. Laden Sie eine YAML-Datei hoch; sie wird vor dem Speichern geprüft.", "Fragebogen hochladen", uploadNew));
+  $("q-card").replaceChildren(table(["Fragebogen", "Version", "Sichtbar für", ""], data.questionnaires.map((f) => {
     const td = el("td");
-    if (!data.praxen.length) td.append(el("span", { className: "muted", textContent: "Noch keine Praxen" }));
-    for (const p of data.praxen) {
-      const cb = el("input", { type: "checkbox", checked: f.praxen.includes(p) });
-      cb.dataset.praxis = p;
-      cb.onchange = () => zuweisen(f, td);
+    if (!data.practices.length) td.append(el("span", { className: "muted", textContent: "Noch keine Praxen" }));
+    for (const p of data.practices) {
+      const cb = el("input", { type: "checkbox", checked: f.practices.includes(p) });
+      cb.dataset.practice = p;
+      cb.onchange = () => assign(f, td);
       td.append(el("label", { className: "check" }, cb, el("span", { className: "mono", textContent: p })));
     }
     return el("tr", {},
@@ -340,152 +340,152 @@ function zeichneFragebogen() {
       el("td", { textContent: f.version }),
       td,
       el("td", { className: "actions" },
-        fileButton("Ersetzen …", "", () => dateiWaehlen((file) => senden("PUT", "/fragebogen/" + encodeURIComponent(f.id), file, "„" + f.title + "“ ersetzt")), "Neue Version hochladen; die alte bleibt als .bak erhalten"),
-        fileButton("Löschen", "ghost quiet-danger", () => fragebogenLoeschen(f))));
+        fileButton("Ersetzen …", "", () => pickFile((file) => send("PUT", "/questionnaires/" + encodeURIComponent(f.id), file, "„" + f.title + "“ ersetzt")), "Neue Version hochladen; die alte bleibt als .bak erhalten"),
+        fileButton("Löschen", "ghost quiet-danger", () => deleteQuestionnaire(f))));
   })));
 }
 
-function zeichnePraxen() {
-  if (!data.praxen.length) return $("px-karte").replaceChildren(leer("Noch keine Praxen. Legen Sie eine an, um ihr Zugang zur Bibliothek zu geben.", "Praxis anlegen", praxisDialog));
-  $("px-karte").replaceChildren(tabelle(["Praxis", "Sieht", ""], data.praxen.map((p) => {
-    const sichtbar = data.fragebogen.filter((f) => f.praxen.includes(p)).map((f) => f.title);
+function drawPractices() {
+  if (!data.practices.length) return $("p-card").replaceChildren(emptyState("Noch keine Praxen. Legen Sie eine an, um ihr Zugang zur Bibliothek zu geben.", "Praxis anlegen", practiceDialog));
+  $("p-card").replaceChildren(table(["Praxis", "Sieht", ""], data.practices.map((p) => {
+    const visible = data.questionnaires.filter((f) => f.practices.includes(p)).map((f) => f.title);
     return el("tr", {},
       el("td", { className: "mono", textContent: p }),
-      el("td", sichtbar.length ? { textContent: sichtbar.join(", ") } : { className: "muted", textContent: "keine Fragebögen" }),
+      el("td", visible.length ? { textContent: visible.join(", ") } : { className: "muted", textContent: "keine Fragebögen" }),
       el("td", { className: "actions" },
-        knopf("Neuer Schlüssel", "", () => neuerSchluessel(p)),
-        knopf("Löschen", "ghost quiet-danger", () => praxisLoeschen(p))));
+        makeButton("Neuer Schlüssel", "", () => newKey(p)),
+        makeButton("Löschen", "ghost quiet-danger", () => deletePractice(p))));
   })));
 }
 
-let beiDatei = null;
-function dateiWaehlen(fn) { beiDatei = fn; $("datei").value = ""; $("datei").click(); }
-$("datei").onchange = () => { const f = $("datei").files[0]; if (f && beiDatei) beiDatei(f); };
-const hochladenNeu = () => dateiWaehlen((file) => senden("POST", "/fragebogen", file));
-$("hochladen").onclick = hochladenNeu;
+let onFile = null;
+function pickFile(fn) { onFile = fn; $("file-input").value = ""; $("file-input").click(); }
+$("file-input").onchange = () => { const f = $("file-input").files[0]; if (f && onFile) onFile(f); };
+const uploadNew = () => pickFile((file) => send("POST", "/questionnaires", file));
+$("upload").onclick = uploadNew;
 
-async function senden(method, pfad, file, meldung) {
-  fehlerWeg();
+async function send(method, path, file, message) {
+  clearError();
   try {
-    const f = await api(method, pfad, file, "application/yaml");
-    await laden();
-    toast((meldung || "„" + f.title + "“ hochgeladen") + ".");
+    const f = await api(method, path, file, "application/yaml");
+    await loadData();
+    toast((message || "„" + f.title + "“ hochgeladen") + ".");
   } catch (e) {
     const s = e?.status === 400 ? "Die Datei ist kein gültiger Fragebogen und wurde nicht veröffentlicht. Meldung der Prüfung (Zeilennummer in der YAML-Datei):"
       : e?.status === 409 ? "Diesen Fragebogen gibt es schon. Für eine neue Version „Ersetzen …“ in seiner Zeile verwenden." : "";
-    fehler("„" + file.name + "“ wurde nicht gespeichert", e, s);
+    showError("„" + file.name + "“ wurde nicht gespeichert", e, s);
   }
 }
 
-async function zuweisen(f, td) {
-  const boxen = [...td.querySelectorAll("input")];
-  const users = boxen.filter((b) => b.checked).map((b) => b.dataset.praxis);
-  boxen.forEach((b) => (b.disabled = true));
-  fehlerWeg();
+async function assign(f, td) {
+  const boxes = [...td.querySelectorAll("input")];
+  const users = boxes.filter((b) => b.checked).map((b) => b.dataset.practice);
+  boxes.forEach((b) => (b.disabled = true));
+  clearError();
   try {
-    await api("PUT", "/fragebogen/" + encodeURIComponent(f.id) + "/praxen", JSON.stringify(users), "application/json");
-    f.praxen = users;
-    zeichnePraxen();
+    await api("PUT", "/questionnaires/" + encodeURIComponent(f.id) + "/practices", JSON.stringify(users), "application/json");
+    f.practices = users;
+    drawPractices();
     toast("Sichtbarkeit von „" + f.title + "“ gespeichert.");
   } catch (e) {
-    boxen.forEach((b) => (b.checked = f.praxen.includes(b.dataset.praxis)));
-    fehler("Sichtbarkeit nicht gespeichert", e);
+    boxes.forEach((b) => (b.checked = f.practices.includes(b.dataset.practice)));
+    showError("Sichtbarkeit nicht gespeichert", e);
   } finally {
-    boxen.forEach((b) => (b.disabled = false));
+    boxes.forEach((b) => (b.disabled = false));
   }
 }
 
-async function fragebogenLoeschen(f) {
-  const n = f.praxen.length;
+async function deleteQuestionnaire(f) {
+  const n = f.practices.length;
   const text = (n ? "Er verschwindet bei " + n + (n === 1 ? " Praxis" : " Praxen") + " beim nächsten Abruf aus der Bibliothek. " : "")
     + "Die letzte Fassung bleibt auf dem Server als .bak-Datei erhalten.";
-  if (!(await fragen("„" + f.title + "“ löschen?", text, "Fragebogen löschen"))) return;
-  fehlerWeg();
+  if (!(await ask("„" + f.title + "“ löschen?", text, "Fragebogen löschen"))) return;
+  clearError();
   try {
-    await api("DELETE", "/fragebogen/" + encodeURIComponent(f.id));
-    await laden();
+    await api("DELETE", "/questionnaires/" + encodeURIComponent(f.id));
+    await loadData();
     toast("„" + f.title + "“ gelöscht.");
-  } catch (e) { fehler("Löschen fehlgeschlagen", e); }
+  } catch (e) { showError("Löschen fehlgeschlagen", e); }
 }
 
-function zeigeSchluessel(user, key, titel) {
-  $("schluessel-titel").textContent = titel;
-  $("schluessel-user").textContent = user;
-  $("schluessel-wert").textContent = key;
-  $("kopieren").textContent = "Schlüssel kopieren";
-  $("dlg-schluessel").showModal();
+function showKey(user, key, title) {
+  $("key-title").textContent = title;
+  $("key-user").textContent = user;
+  $("key-value").textContent = key;
+  $("copy-key").textContent = "Schlüssel kopieren";
+  $("dlg-key").showModal();
 }
 // Closing must be deliberate (no Esc): the key is gone afterwards.
-$("dlg-schluessel").addEventListener("cancel", (e) => e.preventDefault());
-$("dlg-schluessel").addEventListener("close", () => ($("schluessel-wert").textContent = ""));
-$("kopieren").onclick = async () => {
-  try { await navigator.clipboard.writeText($("schluessel-wert").textContent); $("kopieren").textContent = "Kopiert ✓"; }
-  catch { getSelection().selectAllChildren($("schluessel-wert")); $("kopieren").textContent = "Markiert – mit Strg+C kopieren"; }
+$("dlg-key").addEventListener("cancel", (e) => e.preventDefault());
+$("dlg-key").addEventListener("close", () => ($("key-value").textContent = ""));
+$("copy-key").onclick = async () => {
+  try { await navigator.clipboard.writeText($("key-value").textContent); $("copy-key").textContent = "Kopiert ✓"; }
+  catch { getSelection().selectAllChildren($("key-value")); $("copy-key").textContent = "Markiert – mit Strg+C kopieren"; }
 };
 
-function praxisDialog() {
-  $("praxis-form").reset();
-  $("praxis-fehler").hidden = true;
-  $("praxis-fb").replaceChildren(el("legend", { textContent: "Sichtbare Fragebögen" }),
-    ...(data.fragebogen.length
-      ? data.fragebogen.map((f) => el("label", { className: "check" }, el("input", { type: "checkbox", value: f.id }), f.title))
+function practiceDialog() {
+  $("practice-form").reset();
+  $("practice-error").hidden = true;
+  $("practice-questionnaires").replaceChildren(el("legend", { textContent: "Sichtbare Fragebögen" }),
+    ...(data.questionnaires.length
+      ? data.questionnaires.map((f) => el("label", { className: "check" }, el("input", { type: "checkbox", value: f.id }), f.title))
       : [el("p", { className: "hint", textContent: "Noch keine Fragebögen; die Zuordnung geht auch später." })]));
-  $("dlg-praxis").showModal();
+  $("dlg-practice").showModal();
 }
-$("anlegen").onclick = praxisDialog;
-$("praxis-abbrechen").onclick = () => $("dlg-praxis").close();
-$("praxis-name").oninvalid = (e) => e.target.setCustomValidity(e.target.value ? "Nur Kleinbuchstaben, Ziffern, _ und - (höchstens 64 Zeichen)." : "Bitte einen Benutzernamen eingeben.");
-$("praxis-name").oninput = (e) => e.target.setCustomValidity("");
-$("praxis-form").onsubmit = async (ev) => {
+$("add-practice").onclick = practiceDialog;
+$("practice-cancel").onclick = () => $("dlg-practice").close();
+$("practice-name").oninvalid = (e) => e.target.setCustomValidity(e.target.value ? "Nur Kleinbuchstaben, Ziffern, _ und - (höchstens 64 Zeichen)." : "Bitte einen Benutzernamen eingeben.");
+$("practice-name").oninput = (e) => e.target.setCustomValidity("");
+$("practice-form").onsubmit = async (ev) => {
   ev.preventDefault();
-  const user = $("praxis-name").value;
-  const fragebogen = [...$("praxis-fb").querySelectorAll("input:checked")].map((c) => c.value);
-  const knopfAnlegen = ev.submitter;
-  if (knopfAnlegen) knopfAnlegen.disabled = true;
+  const user = $("practice-name").value;
+  const questionnaires = [...$("practice-questionnaires").querySelectorAll("input:checked")].map((c) => c.value);
+  const submitButton = ev.submitter;
+  if (submitButton) submitButton.disabled = true;
   try {
-    const r = await api("POST", "/praxen", JSON.stringify({ user, fragebogen }), "application/json");
-    $("dlg-praxis").close();
-    zeigeSchluessel(r.user, r.key, "Praxis „" + r.user + "“ angelegt");
-    await laden();
+    const r = await api("POST", "/practices", JSON.stringify({ user, questionnaires }), "application/json");
+    $("dlg-practice").close();
+    showKey(r.user, r.key, "Praxis „" + r.user + "“ angelegt");
+    await loadData();
   } catch (e) {
     if (!e) return;
-    $("praxis-fehler").textContent = e.status === 409 ? "Diesen Benutzernamen gibt es schon." : (SUMMARY[e.status] || "Fehler.") + (e.message ? " " + e.message : "");
-    $("praxis-fehler").hidden = false;
+    $("practice-error").textContent = e.status === 409 ? "Diesen Benutzernamen gibt es schon." : (SUMMARY[e.status] || "Fehler.") + (e.message ? " " + e.message : "");
+    $("practice-error").hidden = false;
   } finally {
-    if (knopfAnlegen) knopfAnlegen.disabled = false;
+    if (submitButton) submitButton.disabled = false;
   }
 };
 
-async function neuerSchluessel(user) {
-  if (!(await fragen("Neuen Schlüssel für „" + user + "“ erzeugen?", "Der bisherige Schlüssel funktioniert sofort nicht mehr. Die Praxis muss den neuen in Kreuzchen eintragen, bevor sie die Bibliothek wieder abrufen kann.", "Neuen Schlüssel erzeugen"))) return;
-  fehlerWeg();
+async function newKey(user) {
+  if (!(await ask("Neuen Schlüssel für „" + user + "“ erzeugen?", "Der bisherige Schlüssel funktioniert sofort nicht mehr. Die Praxis muss den neuen in Kreuzchen eintragen, bevor sie die Bibliothek wieder abrufen kann.", "Neuen Schlüssel erzeugen"))) return;
+  clearError();
   try {
-    const r = await api("POST", "/praxen/" + encodeURIComponent(user) + "/schluessel");
-    zeigeSchluessel(r.user, r.key, "Neuer Schlüssel für „" + r.user + "“");
-  } catch (e) { fehler("Kein neuer Schlüssel erzeugt", e); }
+    const r = await api("POST", "/practices/" + encodeURIComponent(user) + "/key");
+    showKey(r.user, r.key, "Neuer Schlüssel für „" + r.user + "“");
+  } catch (e) { showError("Kein neuer Schlüssel erzeugt", e); }
 }
 
-async function praxisLoeschen(user) {
-  if (!(await fragen("Praxis „" + user + "“ löschen?", "Ihr Zugang endet sofort. Bereits heruntergeladene Fragebögen bleiben in ihrer App erhalten. Das lässt sich nicht rückgängig machen.", "Praxis löschen"))) return;
-  fehlerWeg();
+async function deletePractice(user) {
+  if (!(await ask("Praxis „" + user + "“ löschen?", "Ihr Zugang endet sofort. Bereits heruntergeladene Fragebögen bleiben in ihrer App erhalten. Das lässt sich nicht rückgängig machen.", "Praxis löschen"))) return;
+  clearError();
   try {
-    await api("DELETE", "/praxen/" + encodeURIComponent(user));
-    await laden();
+    await api("DELETE", "/practices/" + encodeURIComponent(user));
+    await loadData();
     toast("Praxis „" + user + "“ gelöscht.");
-  } catch (e) { fehler("Löschen fehlgeschlagen", e); }
+  } catch (e) { showError("Löschen fehlgeschlagen", e); }
 }
 
-function anzeigen(an) { $("anmeldung").hidden = an; $("app").hidden = !an; $("abmelden").hidden = !an; }
-function abmelden(grund) {
+function showApp(on) { $("login").hidden = on; $("app").hidden = !on; $("logout").hidden = !on; }
+function logout(reason) {
   sessionStorage.removeItem(KEY);
   document.querySelectorAll("dialog[open]").forEach((d) => d.close());
-  anzeigen(false);
-  $("anmeldefehler").textContent = grund || "";
-  $("anmeldefehler").hidden = !grund;
+  showApp(false);
+  $("login-error").textContent = reason || "";
+  $("login-error").hidden = !reason;
   $("token").focus();
 }
-$("abmelden").onclick = () => abmelden();
-$("anmeldung").onsubmit = async (ev) => {
+$("logout").onclick = () => logout();
+$("login").onsubmit = async (ev) => {
   ev.preventDefault();
   sessionStorage.setItem(KEY, $("token").value);
   $("token").value = "";
@@ -493,10 +493,10 @@ $("anmeldung").onsubmit = async (ev) => {
 };
 
 async function start() {
-  if (!sessionStorage.getItem(KEY)) return abmelden();
-  anzeigen(true);
-  zeigeTab(location.hash === "#praxen" ? "praxen" : "fragebogen");
-  try { await laden(); } catch (e) { fehler("Die Daten konnten nicht geladen werden", e); }
+  if (!sessionStorage.getItem(KEY)) return logout();
+  showApp(true);
+  showTab(location.hash === "#practices" ? "practices" : "questionnaires");
+  try { await loadData(); } catch (e) { showError("Die Daten konnten nicht geladen werden", e); }
 }
 start();
 </script>
