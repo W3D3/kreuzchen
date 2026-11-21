@@ -76,11 +76,13 @@ fn steps(data: &Path, problems: &mut Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Backups, temp files, and what the webview keeps here (caches, storage, WebKit/WebView2 data).
 fn skip_in_backup(name: &str) -> bool {
     let n = name.to_lowercase();
     n.starts_with(BACKUP)
         || n.ends_with(".tmp")
-        || ["cache", "webkit", "ebwebview"]
+        || n == "storage"
+        || ["cache", "webkit", "ebwebview", "mediakeys", "hsts-storage"]
             .iter()
             .any(|w| n.contains(w))
 }
@@ -302,8 +304,11 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         copy_dir(Path::new(FIXTURE), d.path()).unwrap();
         // What the OS keeps in the app data folder must not land in the backup.
-        fs::create_dir(d.path().join("WebKitCache")).unwrap();
-        fs::write(d.path().join("WebKitCache/blob"), "x").unwrap();
+        for dir in ["WebKitCache", "CacheStorage", "storage", "mediakeys"] {
+            fs::create_dir(d.path().join(dir)).unwrap();
+            fs::write(d.path().join(dir).join("blob"), "x").unwrap();
+        }
+        fs::write(d.path().join("hsts-storage.sqlite"), "x").unwrap();
         d
     }
 
@@ -338,7 +343,15 @@ mod tests {
         assert_eq!(read(backup.join("definitionen/beispiel.yaml")), old_def);
         assert!(backup.join("auswertungen").join(RESULT).exists());
         assert!(backup.join("registry.json").exists());
-        assert!(!backup.join("WebKitCache").exists());
+        for skipped in [
+            "WebKitCache",
+            "CacheStorage",
+            "storage",
+            "mediakeys",
+            "hsts-storage.sqlite",
+        ] {
+            assert!(!backup.join(skipped).exists(), "{skipped}");
+        }
 
         for (old, new) in FOLDERS {
             assert!(!p.join(old).exists() && p.join(new).is_dir(), "{old}");
