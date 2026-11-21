@@ -27,8 +27,8 @@ it("renameKey keeps order and never overwrites", () => {
 });
 
 it("freshKey skips taken names", () => {
-  expect(freshKey({ neu: 1, neu2: 1 }, "neu")).toBe("neu3");
-  expect(freshKey({}, "neu")).toBe("neu");
+  expect(freshKey({ new: 1, new2: 1 }, "new")).toBe("new3");
+  expect(freshKey({}, "new")).toBe("new");
 });
 
 it("parseKey tells named from inline keys", () => {

@@ -494,7 +494,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("pdf");
 
-        // Two evaluations of the same Kennung and questionnaire share a name.
+        // Two evaluations of the same subject id and questionnaire share a name.
         let a = write_temp_pdf(&dir, "K – Test.pdf", b"child A").unwrap();
         let b = write_temp_pdf(&dir, "K – Test.pdf", b"child B").unwrap();
         assert_eq!(a, dir.join("K – Test.pdf"));
