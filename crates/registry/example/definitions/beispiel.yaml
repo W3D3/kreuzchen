@@ -1,0 +1,46 @@
+schema: 1
+min_app: "0.5.0"
+id: beispiel
+version: "1"
+title: Beispiel-Fragebogen
+cutoff_compare: ">="
+answer_sets:
+  haeufigkeit: [nie, selten, oft, immer]
+  ja_nein: [Nein, Ja]
+keys:
+  normal: [0, 1, 2, 3]
+  umgepolt: [3, 2, 1, 0]
+default_answers: haeufigkeit
+fields:
+  - { id: subject_id, label: Kennung, type: text, default: anonymous }
+  - { id: alter, label: Alter, type: number }
+  - { id: erwachsen, label: Volljährig, type: checkbox }
+scales:
+  - { id: X, label: Skala X, cutoff: 4 }
+  - { id: Y, label: Skala Y, cutoff: 3 }
+derived:
+  - { id: gesamt, label: Gesamtsumme, value: X + Y, cutoff: 7 }
+sections:
+  - title: Teil 1
+    intro: Beispieltext.
+    items:
+      - { n: 1, scale: X, key: normal, text: "Frage eins?" }
+      - { n: 2, scale: X, key: umgepolt, text: "Frage zwei?" }
+      - { n: 3, scale: Y, key: [0, 0, 1, 2], text: "Frage drei?" }
+  - title: Teil 2
+    items:
+      - { n: 4, scale: Y, key: normal, text: "Frage vier?" }
+      - { id: zusatz, answers: ja_nein, text: "Zusatzfrage" }
+result: [gesamt, X, Y, zusatz]
+rules:
+  - { id: r1, label: "Regel 1: Gesamtsumme über Cut-off", when: gesamt.over }
+  - { id: r2, label: "Regel 2: Gesamtsumme und Skala X über Cut-off", when: r1 and X.over }
+  - { id: vollstaendig, label: "Höchstens 1 Antwort fehlt", when: missing <= 1 }
+caveats:
+  - { when: erwachsen, text: "Nur für Kinder normiert." }
+  - { when: zusatz == "Ja", text: "Zusatzfrage mit Ja beantwortet." }
+verdict:
+  - { when: not vollstaendig, text: "Nicht auswertbar: zu viele fehlende Antworten" }
+  - { when: r2, text: "Auffällig (Regel 2)" }
+  - { when: r1, text: "Auffällig (Regel 1)" }
+  - { else: "Unauffällig" }

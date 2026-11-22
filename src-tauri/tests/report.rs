@@ -4,7 +4,7 @@ use kreuzchen_lib::report::{Report, pdf};
 use std::{collections::BTreeMap, fs};
 
 fn example(name: &str, answers: &[(&str, usize)]) -> String {
-    let yaml = fs::read_to_string(format!("../examples/definitionen/{name}.yaml")).unwrap();
+    let yaml = fs::read_to_string(format!("../examples/definitions/{name}.yaml")).unwrap();
     let answers: Vec<_> = answers.iter().map(|&(k, v)| (k.to_string(), v)).collect();
     render(name, &yaml, answers)
 }
@@ -15,7 +15,7 @@ fn stanine(name: &str, n: usize) -> String {
         "schema: 1\nid: stanine\nversion: \"1\"\ntitle: Profilbogen mit Stanine-Werten\n\
          answer_sets: { stufen: [\"1\", \"2\", \"3\", \"4\", \"5\", \"6\", \"7\", \"8\", \"9\"] }\n\
          keys: { k: [0, 1, 2, 3, 4, 5, 6, 7, 8] }\ndefault_answers: stufen\n\
-         fields: [{ id: kennung, label: Kennung, type: text }]\nscales:\n",
+         fields: [{ id: subject_id, label: Kennung, type: text }]\nscales:\n",
     );
     let ids: Vec<String> = (1..=n).map(|i| format!("s{i}")).collect();
     for (i, id) in ids.iter().enumerate() {
@@ -62,7 +62,7 @@ fn srs(name: &str) -> String {
          cutoff_compare: \">=\"\n\
          answer_sets: { haeufigkeit: [nie, manchmal, oft, immer] }\n\
          keys: { k: [0, 1, 2, 3] }\ndefault_answers: haeufigkeit\n\
-         fields: [{ id: kennung, label: Kennung, type: text }]\nscales:\n",
+         fields: [{ id: subject_id, label: Kennung, type: text }]\nscales:\n",
     );
     for (id, label, _) in scales {
         yaml += &format!("  - {{ id: {id}, label: \"{label}\" }}\n");
@@ -99,7 +99,7 @@ fn render(name: &str, yaml: &str, answers: Vec<(String, usize)>) -> String {
     let q = kreuzchen_engine::load(yaml).unwrap();
     let input = Input {
         fields: BTreeMap::from([(
-            "kennung".to_string(),
+            "subject_id".to_string(),
             FieldValue::Text("Muster 0815".into()),
         )]),
         answers: answers.into_iter().collect(),

@@ -7,12 +7,12 @@ const row = (state: Row["state"], file: string | null, id = "fragebogen_a", titl
 describe("rowView", () => {
   it("labels_and_actions", () => {
     expect(rowView(row("available", null), true)).toEqual({ label: "verfügbar", action: "Installieren", remove: false });
-    expect(rowView(row("current", "fragebogen_a.yaml"), true)).toEqual({ label: "aktuell", action: null, remove: true });
-    expect(rowView(row("update", "fragebogen_a.yaml"), true)).toEqual({ label: "neue Version verfügbar", action: "Aktualisieren", remove: true });
-    expect(rowView(row("gone", "fragebogen_a.yaml"), true)).toEqual({ label: "nicht mehr in der Bibliothek", action: null, remove: true });
+    expect(rowView(row("current", "questionnaire_a.yaml"), true)).toEqual({ label: "aktuell", action: null, remove: true });
+    expect(rowView(row("update", "questionnaire_a.yaml"), true)).toEqual({ label: "neue Version verfügbar", action: "Aktualisieren", remove: true });
+    expect(rowView(row("gone", "questionnaire_a.yaml"), true)).toEqual({ label: "nicht mehr in der Bibliothek", action: null, remove: true });
   });
   it("offline shows no state and only Entfernen", () => {
-    expect(rowView(row("current", "fragebogen_a.yaml"), false)).toEqual({ label: null, action: null, remove: true });
+    expect(rowView(row("current", "questionnaire_a.yaml"), false)).toEqual({ label: null, action: null, remove: true });
   });
 });
 

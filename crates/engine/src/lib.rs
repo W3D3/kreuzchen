@@ -1,5 +1,6 @@
 pub mod expr;
 mod grade;
+pub mod migrate;
 pub mod schema;
 mod text;
 mod validate;

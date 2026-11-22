@@ -36,12 +36,12 @@ type Fail = (StatusCode, String);
 
 pub(crate) fn router(st: AdminState) -> Router {
     let api = Router::new()
-        .route("/fragebogen", get(list).post(upload))
-        .route("/fragebogen/{id}", put(replace).delete(remove))
-        .route("/fragebogen/{id}/praxen", put(assign))
-        .route("/praxen", post(add_practice))
-        .route("/praxen/{user}", delete(remove_practice))
-        .route("/praxen/{user}/schluessel", post(rekey_practice))
+        .route("/questionnaires", get(list).post(upload))
+        .route("/questionnaires/{id}", put(replace).delete(remove))
+        .route("/questionnaires/{id}/practices", put(assign))
+        .route("/practices", post(add_practice))
+        .route("/practices/{user}", delete(remove_practice))
+        .route("/practices/{user}/key", post(rekey_practice))
         .route("/sync", get(sync_status).post(sync_now))
         .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
@@ -100,20 +100,20 @@ fn reload(st: &AdminState) -> Result<Arc<Registry>, Fail> {
 }
 
 fn entry_json(reg: &Registry, e: &Entry) -> serde_json::Value {
-    let praxen: Vec<_> = reg
+    let practices: Vec<_> = reg
         .practices
         .iter()
-        .filter(|p| p.fragebogen.contains(&e.id))
+        .filter(|p| p.questionnaires.contains(&e.id))
         .map(|p| &p.user)
         .collect();
-    json!({"id": e.id, "title": e.title, "version": e.version, "hash": e.hash, "praxen": praxen})
+    json!({"id": e.id, "title": e.title, "version": e.version, "hash": e.hash, "practices": practices})
 }
 
 async fn list(State(st): State<AdminState>) -> Json<serde_json::Value> {
     let reg = current(&st);
-    let praxen: Vec<_> = reg.practices.iter().map(|p| &p.user).collect();
-    let fragebogen: Vec<_> = reg.entries.values().map(|e| entry_json(&reg, e)).collect();
-    Json(json!({"praxen": praxen, "fragebogen": fragebogen}))
+    let practices: Vec<_> = reg.practices.iter().map(|p| &p.user).collect();
+    let questionnaires: Vec<_> = reg.entries.values().map(|e| entry_json(&reg, e)).collect();
+    Json(json!({"practices": practices, "questionnaires": questionnaires}))
 }
 
 const GIT_MODE: &str = "Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen";
@@ -150,10 +150,7 @@ async fn upload(State(st): State<AdminState>, body: Bytes) -> Result<Response, F
     let new = parse_upload(body)?;
     let _w = st.write.lock().await;
     let reg = reload(&st)?;
-    let path = reg
-        .dir
-        .join("definitionen")
-        .join(format!("{}.yaml", new.id));
+    let path = reg.dir.join("definitions").join(format!("{}.yaml", new.id));
     if reg.entries.contains_key(&new.id) || path.exists() {
         return Err((
             StatusCode::CONFLICT,
@@ -206,11 +203,11 @@ async fn remove(State(st): State<AdminState>, Path(id): Path<String>) -> Result<
         .get(&id)
         .ok_or((StatusCode::NOT_FOUND, String::new()))?;
     // Config first: a crash in between leaves an unassigned file, which still loads.
-    if reg.practices.iter().any(|p| p.fragebogen.contains(&id)) {
+    if reg.practices.iter().any(|p| p.questionnaires.contains(&id)) {
         let mut practices = reg.practices.clone();
         practices
             .iter_mut()
-            .for_each(|p| p.fragebogen.retain(|f| *f != id));
+            .for_each(|p| p.questionnaires.retain(|f| *f != id));
         write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
     }
     std::fs::rename(&old.path, bak(&old.path)).map_err(internal)?;
@@ -236,11 +233,11 @@ async fn assign(
     }
     let mut practices = reg.practices.clone();
     for p in &mut practices {
-        let has = p.fragebogen.contains(&id);
+        let has = p.questionnaires.contains(&id);
         if users.contains(&p.user) && !has {
-            p.fragebogen.push(id.clone());
+            p.questionnaires.push(id.clone());
         } else if !users.contains(&p.user) && has {
-            p.fragebogen.retain(|f| *f != id);
+            p.questionnaires.retain(|f| *f != id);
         }
     }
     write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
@@ -253,7 +250,7 @@ async fn assign(
 struct NewPractice {
     user: String,
     #[serde(default)]
-    fragebogen: Vec<String>,
+    questionnaires: Vec<String>,
 }
 
 /// Lowercase so names stay unambiguous when read aloud or typed into the app.
@@ -296,7 +293,7 @@ async fn add_practice(
         ));
     }
     if let Some(id) = new
-        .fragebogen
+        .questionnaires
         .iter()
         .find(|id| !reg.entries.contains_key(*id))
     {
@@ -310,7 +307,7 @@ async fn add_practice(
     practices.push(Practice {
         user: new.user.clone(),
         key_hash,
-        fragebogen: new.fragebogen,
+        questionnaires: new.questionnaires,
     });
     write_config(&reg.dir, &reg.source, practices).map_err(internal)?;
     reload(&st)?;

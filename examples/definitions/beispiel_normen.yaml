@@ -1,0 +1,46 @@
+# Example with norm tables. All values are invented; they only show the format.
+schema: 1
+min_app: "0.5.0"
+id: beispiel_normen
+version: "1"
+title: Beispiel mit Normwerten
+answer_sets:
+  haeufigkeit: [nie, manchmal, oft, immer]
+keys:
+  normal: [0, 1, 2, 3]
+  umgepolt: [3, 2, 1, 0]
+default_answers: haeufigkeit
+fields:
+  - { id: subject_id, label: Kennung, type: text, default: anonymous }
+scales:
+  - { id: A, label: Skala A }
+  - { id: B, label: Skala B }
+derived:
+  - { id: gesamt, label: Gesamtrohwert, value: A + B, cutoff: 10 }
+sections:
+  - title: Fragen
+    items:
+      - { n: 1, scale: A, key: normal, text: "Frage eins?" }
+      - { n: 2, scale: A, key: umgepolt, text: "Frage zwei?" }
+      - { n: 3, scale: A, key: normal, text: "Frage drei?" }
+      - { n: 4, scale: B, key: normal, text: "Frage vier?" }
+      - { n: 5, scale: B, key: normal, text: "Frage fünf?" }
+      - { n: 6, scale: B, key: umgepolt, text: "Frage sechs?" }
+result: [gesamt, A, B]
+# Limits on missing answers, per scale (`A.missing`) and in total (`missing`).
+caveats:
+  - { when: A.missing > 0, text: "Skala A: fehlende Antworten, Skala nicht auswertbar." }
+  - { when: missing > 1, text: "Mehr als 1 fehlende Antwort." }
+verdict:
+  - { when: gesamt.over, text: "Auffällig" }
+  - { else: "Unauffällig" }
+norms:
+  name: T
+  bands:
+    - { from: 0, label: unauffällig }
+    - { from: 60, label: auffällig }
+  tables:
+    A: { 0: 30, 1: 35, 2: 40, 3: 45, 4: 50, 5: 55, 6: 60, 7: 65, 8: 70, 9: 75 }
+    B: { 0: 32, 1: 36, 2: 41, 3: 46, 4: 51, 5: 56, 6: 61, 7: 66, 8: 71, 9: 76 }
+    # Like a printed table, gesamt skips rows: a raw score of 7 takes the row for 6.
+    gesamt: { 0: 25, 2: 35, 4: 45, 6: 50, 8: 55, 10: 60, 12: 66, 15: 72, 18: 80 }

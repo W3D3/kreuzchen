@@ -1,8 +1,8 @@
 //! Checks definitions in the gitignored `local/` folder, which holds copyrighted questionnaires.
 //! Skips itself where the folder is absent, as in CI.
 //!
-//! Every `local/definitionen/<name>.yaml` must load. Hand-scored cases live in
-//! `local/faelle/<name>/*.json` as `{ "input": Input, "expect": { "<row id>": value }, "verdict": "…" }`;
+//! Every `local/definitions/<name>.yaml` must load. Hand-scored cases live in
+//! `local/cases/<name>/*.json` as `{ "input": Input, "expect": { "<row id>": value }, "verdict": "…" }`;
 //! `verdict` is optional.
 use kreuzchen_engine::{load, Input, ResultRow};
 use serde::Deserialize;
@@ -35,16 +35,16 @@ struct Case {
 
 #[test]
 fn local_definitions_load_and_match_hand_cases() {
-    let defs = files(&local("definitionen"), "yaml");
+    let defs = files(&local("definitions"), "yaml");
     if defs.is_empty() {
-        eprintln!("skipped: no local/definitionen/*.yaml");
+        eprintln!("skipped: no local/definitions/*.yaml");
         return;
     }
     for def in defs {
         let yaml = fs::read_to_string(&def).unwrap();
         let q = load(&yaml).unwrap_or_else(|e| panic!("{}: {e:?}", def.display()));
         let name = def.file_stem().unwrap().to_string_lossy();
-        for path in files(&local(&format!("faelle/{name}")), "json") {
+        for path in files(&local(&format!("cases/{name}")), "json") {
             let case: Case = serde_json::from_str(&fs::read_to_string(&path).unwrap())
                 .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             let g = q.grade(&case.input).unwrap();

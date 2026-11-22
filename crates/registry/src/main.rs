@@ -49,6 +49,9 @@ async fn serve(args: &[String]) -> Result<(), String> {
             _ => return Err(format!("unbekannte Option {a:?}\n{USAGE}")),
         }
     }
+    for line in kreuzchen_registry::migrate(&data)? {
+        eprintln!("migration: {line}");
+    }
     let reg = kreuzchen_registry::load(&data)?;
     let source = match &reg.source {
         Source::Local => "local".to_owned(),

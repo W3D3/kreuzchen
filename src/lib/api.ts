@@ -40,3 +40,5 @@ export function registryInstall(id: string, replaceLocal: boolean, onProgress: (
   return invoke<InstallOutcome>("registry_install", { id, replaceLocal, onProgress: ch });
 }
 export const registryRemove = (file: string) => invoke<void>("registry_remove", { file });
+/** Files the 0.4 upgrade on this start could not convert (left as they were), and the data folder holding the backup. */
+export const migrationProblems = () => invoke<{ problems: string[]; folder: string }>("migration_problems");

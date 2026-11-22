@@ -52,6 +52,9 @@ pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&st
         verify_slots: Arc::new(Semaphore::new(4)),
     };
     let v1 = Router::new()
+        .route("/questionnaires", get(list))
+        .route("/questionnaires/{id}", get(download))
+        // shortcut: the 0.4.0 app's paths; remove once no 0.4.0 clients are left.
         .route("/fragebogen", get(list))
         .route("/fragebogen/{id}", get(download))
         .fallback(|| async { StatusCode::NOT_FOUND })
@@ -128,7 +131,7 @@ async fn list(
     Json(
         reg.entries
             .values()
-            .filter(|e| p.fragebogen.contains(&e.id))
+            .filter(|e| p.questionnaires.contains(&e.id))
             .map(|e| json!({"id": e.id, "title": e.title, "version": e.version, "hash": e.hash}))
             .collect(),
     )
@@ -143,7 +146,7 @@ async fn download(
     match reg
         .entries
         .get(&id)
-        .filter(|e| p.fragebogen.contains(&e.id))
+        .filter(|e| p.questionnaires.contains(&e.id))
     {
         Some(e) => (
             [

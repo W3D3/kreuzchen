@@ -3,9 +3,13 @@ use crate::store::write_atomic;
 use kreuzchen_engine::hash;
 use std::{collections::HashSet, fs, path::Path};
 
+/// The file's text, with 0.4 names upgraded as `load_file` does, so the editor shows, checks
+/// and saves what the list loads. The hash for saving stays that of the file on disk.
 pub fn read_source(dir: &Path, file: &str) -> Result<String, String> {
     check_name(file, YAML)?;
-    fs::read_to_string(dir.join(file)).map_err(|e| format!("Datei nicht lesbar: {e}"))
+    let text =
+        fs::read_to_string(dir.join(file)).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
+    Ok(kreuzchen_engine::migrate::upgraded(&text).into_owned())
 }
 
 /// Validates `yaml` and writes it to `dir/file`, returning the new hash.
@@ -68,7 +72,7 @@ pub fn delete(dir: &Path, file: &str) -> Result<(), String> {
 }
 
 /// Copies `file` (from `registry` if `file_locked`, else `dir`) into `dir` under a fresh id
-/// (`{id}_kopie`, `{id}_kopie2` …) as `{id}.yaml`; returns the new name.
+/// (`{id}_copy`, `{id}_copy2` …) as `{id}.yaml`; returns the new name.
 /// Saved results find their definition by id, so no two files in either folder may share one.
 pub fn duplicate(
     dir: &Path,
@@ -79,11 +83,15 @@ pub fn duplicate(
     let src = if file_locked { registry } else { dir };
     let mut def =
         kreuzchen_engine::parse_definition(&read_source(src, file)?).map_err(|e| e.to_string())?;
+    // A Bibliothek file may still use the 0.4 names; the local copy gets the new ones.
+    if let Ok(Some(new)) = kreuzchen_engine::migrate::upgrade_definition(&def) {
+        def = new;
+    }
     let used: HashSet<String> = scan_all(dir, registry)
         .into_iter()
         .filter_map(|e| e.summary.map(|s| s.id))
         .collect();
-    let base = format!("{}_kopie", def.id);
+    let base = format!("{}_copy", def.id);
     let mut id = base.clone();
     for n in 2.. {
         if !used.contains(&id) && !dir.join(format!("{id}.yaml")).exists() {
@@ -102,7 +110,7 @@ pub fn duplicate(
 mod tests {
     use super::*;
 
-    const FIXTURE: &str = include_str!("../../examples/definitionen/beispiel.yaml");
+    const FIXTURE: &str = include_str!("../../examples/definitions/beispiel.yaml");
 
     /// A registry folder that does not exist (its temp parent is removed on drop).
     fn empty() -> std::path::PathBuf {
@@ -123,6 +131,29 @@ mod tests {
         assert_eq!(got, hash(new.as_bytes()));
         assert_eq!(read_source(d.path(), "b.yaml").unwrap(), new);
         assert!(!d.path().join("b.yaml.tmp").exists());
+    }
+
+    #[test]
+    fn a_0_4_file_arriving_after_the_migration_opens_and_saves_upgraded() {
+        let d = tempfile::tempdir().unwrap();
+        let old = include_str!("../../fixtures/app-data-0.4.0/definitionen/beispiel.yaml");
+        fs::write(d.path().join("b.yaml"), old).unwrap();
+        let src = read_source(d.path(), "b.yaml").unwrap();
+        assert!(src.contains("when: missing <= 1") && src.contains("id: subject_id"));
+        assert!(
+            src.starts_with("# Fictional example questionnaire"),
+            "comments kept"
+        );
+        let got = save(
+            d.path(),
+            &empty(),
+            "b.yaml",
+            &src,
+            Some(&hash(old.as_bytes())),
+            false,
+        );
+        assert_eq!(got, Ok(hash(src.as_bytes())));
+        assert_eq!(fs::read_to_string(d.path().join("b.yaml")).unwrap(), src);
     }
 
     #[test]
@@ -188,13 +219,13 @@ mod tests {
         let (d, _) = dir_with_fixture();
         assert_eq!(
             duplicate(d.path(), &empty(), false, "b.yaml").unwrap(),
-            "beispiel_kopie.yaml"
+            "beispiel_copy.yaml"
         );
         assert_eq!(
             duplicate(d.path(), &empty(), false, "b.yaml").unwrap(),
-            "beispiel_kopie2.yaml"
+            "beispiel_copy2.yaml"
         );
-        let ids: Vec<String> = ["b.yaml", "beispiel_kopie.yaml", "beispiel_kopie2.yaml"]
+        let ids: Vec<String> = ["b.yaml", "beispiel_copy.yaml", "beispiel_copy2.yaml"]
             .iter()
             .map(|f| {
                 load_text(&read_source(d.path(), f).unwrap())
@@ -203,17 +234,17 @@ mod tests {
                     .id
             })
             .collect();
-        assert_eq!(ids, ["beispiel", "beispiel_kopie", "beispiel_kopie2"]);
+        assert_eq!(ids, ["beispiel", "beispiel_copy", "beispiel_copy2"]);
     }
 
     #[test]
     fn duplicate_skips_ids_used_under_other_file_names() {
         let (d, _) = dir_with_fixture();
-        let other = FIXTURE.replace("id: beispiel", "id: beispiel_kopie");
+        let other = FIXTURE.replace("id: beispiel", "id: beispiel_copy");
         fs::write(d.path().join("anders.yaml"), other).unwrap();
         assert_eq!(
             duplicate(d.path(), &empty(), false, "b.yaml").unwrap(),
-            "beispiel_kopie2.yaml"
+            "beispiel_copy2.yaml"
         );
     }
 
@@ -262,14 +293,14 @@ mod tests {
     #[test]
     fn duplicate_of_registry_file_gets_id_free_in_both() {
         let (local, registry) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let a = FIXTURE.replace("id: beispiel", "id: fragebogen_a");
-        fs::write(registry.path().join("fragebogen_a.yaml"), &a).unwrap();
-        let kopie = FIXTURE.replace("id: beispiel", "id: fragebogen_a_kopie");
-        fs::write(local.path().join("fragebogen_a_kopie.yaml"), kopie).unwrap();
-        let name = duplicate(local.path(), registry.path(), true, "fragebogen_a.yaml").unwrap();
-        assert_eq!(name, "fragebogen_a_kopie2.yaml");
+        let a = FIXTURE.replace("id: beispiel", "id: questionnaire_a");
+        fs::write(registry.path().join("questionnaire_a.yaml"), &a).unwrap();
+        let copy = FIXTURE.replace("id: beispiel", "id: questionnaire_a_copy");
+        fs::write(local.path().join("questionnaire_a_copy.yaml"), copy).unwrap();
+        let name = duplicate(local.path(), registry.path(), true, "questionnaire_a.yaml").unwrap();
+        assert_eq!(name, "questionnaire_a_copy2.yaml");
         let src = read_source(local.path(), &name).unwrap();
-        assert_eq!(load_text(&src).unwrap().def.id, "fragebogen_a_kopie2");
+        assert_eq!(load_text(&src).unwrap().def.id, "questionnaire_a_copy2");
         assert!(!registry.path().join(&name).exists());
     }
 

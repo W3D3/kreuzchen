@@ -9,7 +9,7 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import { confirm } from "$lib/components/confirm.svelte";
   import { deleteResult, exportResult, importResult, listResults, openResult } from "../lib/api";
-  import { formatCreatedAt, pdfName } from "../lib/kennung";
+  import { formatCreatedAt, pdfName } from "../lib/subject";
   import type { OpenedResult, Report, SavedSummary } from "../lib/types";
 
   let { onopen }: { onopen: (res: OpenedResult) => void } = $props();
@@ -55,7 +55,7 @@
 
   const remove = (r: SavedSummary) =>
     run(async () => {
-      if (!(await confirm({ title: "Auswertung löschen", message: `Auswertung „${r.kennung}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
+      if (!(await confirm({ title: "Auswertung löschen", message: `Auswertung „${r.subject_id}“ endgültig löschen?`, confirmLabel: "Löschen", destructive: true }))) return;
       await deleteResult(r.name);
       rows = await listResults();
     });
@@ -80,7 +80,7 @@
         {#each rows as r (r.name)}
           <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
             <div class="min-w-0 flex-1">
-              <p class="font-mono font-bold">{r.kennung}</p>
+              <p class="font-mono font-bold">{r.subject_id}</p>
               <p class="text-[15px] text-muted-foreground">{r.title} · {formatCreatedAt(r.created_at)}</p>
               <p class="tech font-mono text-muted-foreground">{r.name}</p>
             </div>
@@ -88,7 +88,7 @@
               <Button class="h-11 px-5 font-bold" onclick={() => openRow(r.name)}>Öffnen</Button>
               <PdfButton
                 report={report(r.name)}
-                name={pdfName(r.kennung, r.title)}
+                name={pdfName(r.subject_id, r.title)}
                 onstart={() => { banner = null; status = ""; }}
                 onerror={(e) => (banner = e)}
                 onstatus={(s) => (status = s)}

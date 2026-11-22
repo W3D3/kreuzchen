@@ -51,15 +51,17 @@ Unter Linux aktualisiert sich nur die AppImage-Variante selbst. Bei `.deb` und `
 
 Version 0.1.0 hat noch keine Update-Funktion. Installieren Sie 0.2.0 einmal von Hand darüber. Ihre Fragebögen und gespeicherten Auswertungen bleiben erhalten.
 
+Beim ersten Start von 0.5.0 übernimmt Kreuzchen Ihre Daten aus 0.4 in ein neues Format. Vorher legt es eine vollständige Sicherungskopie im Datenordner an (Ordner `backup-0.4-…`). Dateien, die sich nicht übernehmen lassen, bleiben unverändert; Kreuzchen nennt sie nach dem Start.
+
 ## Fragebögen hinzufügen (für Entwicklung und Support)
 
-Fragebögen sind YAML-Dateien im Ordner `definitionen` im Datenordner der App:
+Fragebögen sind YAML-Dateien im Ordner `definitions` im Datenordner der App:
 
 | System  | Ordner                                                           |
 |---------|------------------------------------------------------------------|
-| Windows | `%APPDATA%\io.github.w3d3.kreuzchen\definitionen`                |
-| macOS   | `~/Library/Application Support/io.github.w3d3.kreuzchen/definitionen` |
-| Linux   | `~/.local/share/io.github.w3d3.kreuzchen/definitionen`           |
+| Windows | `%APPDATA%\io.github.w3d3.kreuzchen\definitions`                 |
+| macOS   | `~/Library/Application Support/io.github.w3d3.kreuzchen/definitions` |
+| Linux   | `~/.local/share/io.github.w3d3.kreuzchen/definitions`            |
 
 1. Kopieren Sie die YAML-Datei in diesen Ordner.
 2. Starten Sie Kreuzchen neu.
