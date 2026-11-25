@@ -151,7 +151,7 @@ pub fn scan(dir: &Path) -> Vec<DefinitionEntry> {
         })
         .collect();
     entries.sort_by(|a, b| match (&a.summary, &b.summary) {
-        (Some(x), Some(y)) => x.title.cmp(&y.title),
+        (Some(x), Some(y)) => x.title.cmp(&y.title).then_with(|| a.file.cmp(&b.file)),
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => a.file.cmp(&b.file),

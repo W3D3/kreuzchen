@@ -14,11 +14,9 @@ tokio = { version = "1", features = ["rt", "macros", "sync", "net", "rt-multi-th
 tower-http = { version = "0.6", features = ["set-header"] }
 base64 = "0.22"
 serde_json = "1"
-# GitHub sync: same HTTP stack as the app (rustls with ring, no aws-lc-rs build), and the tarball.
+# GitHub sync: same HTTP stack as the app (rustls with ring, no aws-lc-rs build).
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
-flate2 = "1"
-tar = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

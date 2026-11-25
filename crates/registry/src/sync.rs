@@ -1,19 +1,19 @@
-//! GitHub as the source of the questionnaires: resolve the branch head, download its tarball when
-//! it moved, validate every YAML file in `path` and publish the result atomically.
+//! GitHub as the source of the questionnaires: resolve the branch head, and when it moved, list
+//! `path` in that commit's tree, download its YAML blobs (nothing outside `path`), validate every
+//! file and publish the result atomically.
 //!
 //! On disk: `github/<sha>-<millis>/` holds one published set, `github/current` names the live one.
 //! `load` reads only through that pointer, so a set is either fully published or not at all.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use reqwest::header::ACCEPT;
 use reqwest::Url;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::Mutex;
 
@@ -21,7 +21,7 @@ use crate::config::{is_yaml, load, parse_entry, write_atomic, GitHub};
 use crate::{Registry, MAX_UPLOAD};
 
 const POINTER: &str = "current";
-const MAX_TARBALL: usize = 64 * 1024 * 1024;
+const MAX_TREE: usize = 16 * 1024 * 1024;
 
 /// The directory `github/current` points at; `None` before the first sync.
 pub(crate) fn published(data: &Path) -> Option<PathBuf> {
@@ -68,6 +68,25 @@ pub(crate) struct Sync {
     /// Held for a whole run, so runs never overlap.
     running: Mutex<()>,
     status: std::sync::Mutex<Status>,
+    /// Blob sha → bytes of the last published commit, so an unchanged file is not downloaded again.
+    blobs: std::sync::Mutex<HashMap<String, Vec<u8>>>,
+}
+
+#[derive(Deserialize)]
+struct Tree {
+    tree: Vec<TreeEntry>,
+    #[serde(default)]
+    truncated: bool,
+}
+
+#[derive(Deserialize)]
+struct TreeEntry {
+    path: String,
+    mode: String,
+    #[serde(rename = "type")]
+    kind: String,
+    sha: String,
+    size: Option<u64>,
 }
 
 impl Sync {
@@ -97,6 +116,7 @@ impl Sync {
                 sha,
                 ..Status::default()
             }),
+            blobs: Default::default(),
         }
     }
 
@@ -158,8 +178,7 @@ impl Sync {
     async fn check(&self, prev: &Status) -> Result<Option<(String, Vec<Invalid>)>, String> {
         let head = self
             .get(
-                "commits",
-                &self.gh.branch,
+                &["commits", &self.gh.branch],
                 "application/vnd.github.sha",
                 100,
             )
@@ -172,33 +191,89 @@ impl Sync {
         if prev.checked_at.is_some() && prev.sha.as_deref() == Some(&sha) {
             return Ok(None);
         }
-        let tarball = self
-            .get("tarball", &sha, "application/vnd.github+json", MAX_TARBALL)
-            .await?;
-        let files = extract(&tarball, &self.gh.path)?;
+        let (files, blobs) = self.files(&sha).await?;
         let _write = self.write.lock().await;
         let data = self.reg.read().unwrap().dir.clone();
         let invalid = publish(&data, &sha, files)?;
         let reg = load(&data)?;
         *self.reg.write().unwrap() = Arc::new(reg);
+        *self.blobs.lock().unwrap() = blobs;
         Ok(Some((sha, invalid)))
     }
 
-    /// GET `<api_url>/repos/<repo>/<what>/<arg>`, at most `max` bytes.
-    async fn get(
-        &self,
-        what: &str,
-        arg: &str,
-        accept: &str,
-        max: usize,
-    ) -> Result<Vec<u8>, String> {
+    /// The YAML files directly in `path` at commit `sha`, and their bytes by blob sha. Walks one
+    /// tree level per folder, so nothing outside `path` is listed or downloaded.
+    async fn files(&self, sha: &str) -> Result<(Files, HashMap<String, Vec<u8>>), String> {
+        let mut entries = self.tree(sha).await?;
+        for dir in self.gh.path.split('/').filter(|s| !s.is_empty()) {
+            let sub = entries
+                .iter()
+                .find(|e| e.kind == "tree" && e.path == dir)
+                .ok_or_else(|| format!("Ordner {:?} fehlt im Repository", self.gh.path))?
+                .sha
+                .clone();
+            entries = self.tree(&sub).await?;
+        }
+        let cache = self.blobs.lock().unwrap().clone();
+        let mut files = Vec::new();
+        let mut blobs = HashMap::new();
+        // Regular files only, as the tarball import took them: no symlinks (120000), no submodules.
+        for e in entries {
+            if e.kind != "blob"
+                || e.mode == "120000"
+                || e.path.contains(['/', '\\'])
+                || !is_yaml(Path::new(&e.path))
+            {
+                continue;
+            }
+            let bytes = if e.size.unwrap_or(0) > MAX_UPLOAD as u64 {
+                Err(format!("{}: größer als 1 MiB", e.path))
+            } else if let Some(b) = cache.get(&e.sha) {
+                Ok(b.clone())
+            } else {
+                let accept = "application/vnd.github.raw+json";
+                Ok(self
+                    .get(&["git", "blobs", &e.sha], accept, MAX_UPLOAD)
+                    .await?)
+            };
+            if let Ok(b) = &bytes {
+                blobs.insert(e.sha, b.clone());
+            }
+            files.push((e.path, bytes));
+        }
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok((files, blobs))
+    }
+
+    /// One level of a git tree; a truncated listing is an error, never a silently shorter set.
+    async fn tree(&self, sha: &str) -> Result<Vec<TreeEntry>, String> {
+        let body = self
+            .get(
+                &["git", "trees", sha],
+                "application/vnd.github+json",
+                MAX_TREE,
+            )
+            .await?;
+        let tree: Tree = serde_json::from_slice(&body)
+            .map_err(|e| format!("Dateiliste von GitHub unlesbar: {e}"))?;
+        if tree.truncated {
+            return Err("Dateiliste von GitHub unvollständig (truncated)".into());
+        }
+        Ok(tree.tree)
+    }
+
+    /// GET `<api_url>/repos/<repo>/<path…>`, at most `max` bytes.
+    async fn get(&self, path: &[&str], accept: &str, max: usize) -> Result<Vec<u8>, String> {
+        // For messages: the endpoint without its argument (a sha or the branch).
+        let what = path[..path.len() - 1].join("/");
         let mut url = Url::parse(&self.gh.api_url)
             .map_err(|_| format!("api_url {:?} ist ungültig", self.gh.api_url))?;
         let (owner, name) = self.gh.repo.split_once('/').unwrap_or_default();
         url.path_segments_mut()
             .map_err(|()| format!("api_url {:?} ist ungültig", self.gh.api_url))?
             .pop_if_empty()
-            .extend(["repos", owner, name, what, arg]);
+            .extend(["repos", owner, name])
+            .extend(path);
         let mut req = self
             .client
             .get(url)
@@ -243,47 +318,6 @@ fn now() -> u64 {
 }
 
 type Files = Vec<(String, Result<Vec<u8>, String>)>;
-
-/// The YAML files directly in `folder` of a GitHub tarball, whose entries all sit in one top folder.
-fn extract(tarball: &[u8], folder: &str) -> Result<Files, String> {
-    let bad = |e: std::io::Error| format!("Archiv von GitHub unlesbar: {e}");
-    let want: Vec<&str> = folder.split('/').filter(|s| !s.is_empty()).collect();
-    let mut files = Vec::new();
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tarball));
-    for entry in archive.entries().map_err(bad)? {
-        let entry = entry.map_err(bad)?;
-        if !entry.header().entry_type().is_file() {
-            continue;
-        }
-        let path = entry.path().map_err(bad)?.into_owned();
-        let parts: Option<Vec<&str>> = path
-            .components()
-            .map(|c| match c {
-                Component::Normal(s) => s.to_str(),
-                _ => None,
-            })
-            .collect();
-        let Some((name, dir)) = parts.as_deref().and_then(|p| p.get(1..)?.split_last()) else {
-            continue;
-        };
-        if dir != want || !is_yaml(Path::new(name)) {
-            continue;
-        }
-        let mut bytes = Vec::new();
-        entry
-            .take(MAX_UPLOAD as u64 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(bad)?;
-        let bytes = if bytes.len() > MAX_UPLOAD {
-            Err(format!("{name}: größer als 1 MiB"))
-        } else {
-            Ok(bytes)
-        };
-        files.push((name.to_string(), bytes));
-    }
-    files.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(files)
-}
 
 /// Writes the valid `files` (an invalid one falls back to its published version) to a new snapshot
 /// and points `github/current` at it. Returns the invalid files.
