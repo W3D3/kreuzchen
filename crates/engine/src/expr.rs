@@ -13,6 +13,8 @@ pub enum Expr {
     Name(String),
     Not(Box<Expr>),
     Bin(Op, Box<Expr>, Box<Expr>),
+    /// `count(a, b, …)`: how many of the conditions are true.
+    Count(Vec<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,6 +42,7 @@ enum Tok {
     False,
     LParen,
     RParen,
+    Comma,
 }
 
 const INCOMPLETE: &str = "Ausdruck unvollständig";
@@ -121,6 +124,11 @@ fn tokenize(src: &str) -> Result<Vec<(usize, Tok)>, String> {
                 (_, ')') => {
                     i += 1;
                     out.push((start, Tok::RParen));
+                    continue;
+                }
+                (_, ',') => {
+                    i += 1;
+                    out.push((start, Tok::Comma));
                     continue;
                 }
                 _ => return Err(unexpected(start)),
@@ -208,6 +216,27 @@ impl Parser {
             Tok::Str(s) => Expr::Lit(Value::Str(s)),
             Tok::True => Expr::Lit(Value::Bool(true)),
             Tok::False => Expr::Lit(Value::Bool(false)),
+            Tok::Name(n) if self.peek() == Some(&Tok::LParen) => {
+                if n != "count" {
+                    return Err(format!("Unbekannte Funktion „{n}“"));
+                }
+                self.pos += 1;
+                if self.peek() == Some(&Tok::RParen) {
+                    return Err("count() braucht mindestens eine Bedingung".into());
+                }
+                let mut args = vec![self.or()?];
+                loop {
+                    match self.toks.get(self.pos) {
+                        Some((_, Tok::Comma)) => self.pos += 1,
+                        Some((_, Tok::RParen)) => break,
+                        Some((p, _)) => return Err(unexpected(*p)),
+                        None => return Err(INCOMPLETE.into()),
+                    }
+                    args.push(self.or()?);
+                }
+                self.pos += 1;
+                Expr::Count(args)
+            }
             Tok::Name(n) => Expr::Name(n),
             Tok::LParen => {
                 let e = self.or()?;
@@ -298,6 +327,23 @@ fn run(e: &Expr, env: &BTreeMap<String, Value>, short: bool) -> Result<Value, St
             .cloned()
             .ok_or_else(|| format!("„{n}“ hat keinen Wert")),
         Expr::Not(x) => Ok(Value::Bool(!want_bool(eval(x)?)?)),
+        // Every condition is evaluated; an unanswered item is just a false comparison.
+        Expr::Count(args) => {
+            let mut n = 0.0;
+            for (i, a) in args.iter().enumerate() {
+                match eval(a)? {
+                    Value::Bool(b) => n += f64::from(u8::from(b)),
+                    v => {
+                        return Err(format!(
+                            "count(): Bedingung {} muss wahr/falsch ergeben, {} gefunden",
+                            i + 1,
+                            kind(&v)
+                        ))
+                    }
+                }
+            }
+            Ok(Value::Num(n))
+        }
         Expr::Bin(op @ (Op::And | Op::Or), l, r) if short => {
             let l = want_bool(eval(l)?)?;
             if l == (*op == Op::Or) {
@@ -349,6 +395,17 @@ pub fn names(e: &Expr) -> BTreeSet<String> {
         Expr::Name(n) => BTreeSet::from([n.clone()]),
         Expr::Not(x) => names(x),
         Expr::Bin(_, l, r) => &names(l) | &names(r),
+        Expr::Count(args) => args.iter().flat_map(names).collect(),
+    }
+}
+
+/// Whether `e` uses `count(…)`, which needs app 0.6.0.
+pub fn counts(e: &Expr) -> bool {
+    match e {
+        Expr::Lit(_) | Expr::Name(_) => false,
+        Expr::Not(x) => counts(x),
+        Expr::Bin(_, l, r) => counts(l) || counts(r),
+        Expr::Count(_) => true,
     }
 }
 
@@ -445,6 +502,49 @@ mod tests {
         for s in ["false and 1", "true or 1", "1 == \"a\""] {
             assert!(run(s, &[]).unwrap_err().contains("Typfehler"), "{s}");
         }
+    }
+
+    #[test]
+    fn count_true_conditions() {
+        let env = [
+            ("a", Value::Str("Ja".into())),
+            ("b", Value::Str("Nein".into())),
+            ("c", Value::Str(String::new())), // unanswered
+        ];
+        let n = |s: &str| run(s, &env);
+        assert_eq!(n(r#"count(b == "Ja", c == "Ja")"#), Ok(Value::Num(0.0)));
+        assert_eq!(
+            n(r#"count(a == "Ja", true, not false)"#),
+            Ok(Value::Num(3.0))
+        );
+        assert_eq!(
+            n(r#"count(a == "Ja" or b == "Ja", b == "Ja", c == "Ja") + 1 >= 2"#),
+            Ok(Value::Bool(true))
+        );
+        assert_eq!(n("count(count(true) == 1)"), Ok(Value::Num(1.0)));
+    }
+
+    #[test]
+    fn count_errors() {
+        assert_eq!(
+            run("count(true, 1 + 1)", &[]).unwrap_err(),
+            "count(): Bedingung 2 muss wahr/falsch ergeben, Zahl gefunden"
+        );
+        assert_eq!(
+            parse("count()").unwrap_err(),
+            "count() braucht mindestens eine Bedingung"
+        );
+        assert_eq!(parse("sum(a)").unwrap_err(), "Unbekannte Funktion „sum“");
+        for s in ["count(a,)", "count(a b)", "count(a", "a, b"] {
+            assert!(parse(s).is_err(), "{s}");
+        }
+        // Without parentheses `count` is an ordinary name.
+        assert_eq!(
+            run("count", &[("count", Value::Num(2.0))]),
+            Ok(Value::Num(2.0))
+        );
+        assert!(counts(&parse("not (x or count(y))").unwrap()));
+        assert!(!counts(&parse("count + 1").unwrap()));
     }
 
     #[test]

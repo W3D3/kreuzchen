@@ -285,3 +285,29 @@ fn min_app_is_checked_before_the_full_load() {
     assert!(load(&newer).is_ok());
     assert!(load(&YAML.replacen("min_app: \"0.5.0\"", "min_app: new", 1)).is_err());
 }
+
+#[test]
+fn count_is_a_derived_number() {
+    use kreuzchen_engine::needs_newer_app;
+    let yaml = YAML
+        .replacen("min_app: \"0.5.0\"", "min_app: \"0.6.0\"", 1)
+        .replacen(
+            "derived:\n",
+            "derived:\n  - { id: anzahl, label: Anzahl, value: \"count(X.over, Y.over, zusatz == \\\"Ja\\\", alter.present and alter >= 18)\", cutoff: 2 }\n",
+            1,
+        )
+        .replacen("result: [", "result: [anzahl, ", 1)
+        .replacen("when: missing <= 1", "when: missing <= 1 and anzahl < 4", 1);
+    assert_eq!(needs_newer_app(&yaml, "0.5.0").as_deref(), Some("0.6.0"));
+    assert_eq!(needs_newer_app(&yaml, "0.6.0"), None);
+    // Nothing answered: unanswered items and an empty age count as false, not as errors.
+    let g = grade_with(&yaml, &[], &[]).unwrap();
+    assert_eq!(sum(&g, "anzahl"), (0, false));
+    let all = [("1", 3), ("2", 0), ("3", 3), ("4", 3), ("zusatz", 1)];
+    let g = grade_with(&yaml, &all, &[("alter", FieldValue::Num(40.0))]).unwrap();
+    assert_eq!(sum(&g, "anzahl"), (4, true));
+    assert!(!rule(&g, "vollstaendig"));
+    let g = grade_with(&yaml, &[("zusatz", 1)], &[("alter", FieldValue::Num(9.0))]).unwrap();
+    assert_eq!(sum(&g, "anzahl"), (1, false));
+    assert!(g.verdict.is_some());
+}

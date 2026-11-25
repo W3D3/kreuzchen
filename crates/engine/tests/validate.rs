@@ -172,3 +172,44 @@ fn shortcuts_errors() {
     assert!(e("gibtsnicht: \"12\"")
         .contains(&"Tasten für „gibtsnicht“: Antwortset ist nicht definiert".to_string()));
 }
+
+#[test]
+fn count_needs_min_app_0_6() {
+    let need = r#"count(…) und Felder, Fragen oder „missing“ in abgeleiteten Werten brauchen min_app: "0.6.0""#;
+    for value in [r#"count(X.over, zusatz == "Ja")"#, "X + missing"] {
+        let e = errs("value: X + Y", &format!("value: '{value}'"));
+        assert_eq!(e, vec![need.to_string()], "{value}");
+    }
+    assert_eq!(
+        errs("when: missing <= 1", "when: 'count(r1, r2) >= 1'"),
+        vec![need.to_string()]
+    );
+    let ok = FIXTURE
+        .replacen("min_app: \"0.5.0\"", "min_app: \"0.6.0\"", 1)
+        .replacen(
+            "value: X + Y",
+            r#"value: 'count(X.over, zusatz == "Ja")'"#,
+            1,
+        );
+    assert!(load(&ok).is_ok());
+}
+
+#[test]
+fn count_errors_name_the_expression() {
+    let e = errs_multi(&[
+        ("min_app: \"0.5.0\"", "min_app: \"0.6.0\""),
+        ("value: X + Y", "value: 'count(X.over, X)'"),
+    ]);
+    assert_eq!(
+        e,
+        vec!["Abgeleiteter Wert „gesamt“: count(): Bedingung 2 muss wahr/falsch ergeben, Zahl gefunden"]
+    );
+    let e = errs_multi(&[
+        ("min_app: \"0.5.0\"", "min_app: \"0.6.0\""),
+        ("value: X + Y", "value: count()"),
+    ]);
+    assert_eq!(
+        e,
+        vec!["Abgeleiteter Wert „gesamt“: count() braucht mindestens eine Bedingung"]
+    );
+}
