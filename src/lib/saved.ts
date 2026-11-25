@@ -32,8 +32,11 @@ export function dateBucket(createdAt: string, now: Date): string {
   return `${MONTHS[mo - 1]} ${y}`;
 }
 
+/** Rows under one header; `label` is null for the ungrouped list. */
+export type DateGroup = { label: string | null; rows: SavedSummary[] };
+
 /** Rows in their date groups, in list order (newest first); groups without rows do not appear. */
-export function groupByDate(rows: SavedSummary[], now: Date): { label: string; rows: SavedSummary[] }[] {
+export function groupByDate(rows: SavedSummary[], now: Date): DateGroup[] {
   const groups = new Map<string, SavedSummary[]>();
   for (const r of rows) {
     const label = dateBucket(r.created_at, now);

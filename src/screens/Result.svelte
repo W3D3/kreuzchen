@@ -15,7 +15,7 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { saveResult } from "../lib/api";
-  import { loadAutoSaveResult } from "../lib/settings";
+  import { autoSaveResult } from "../lib/settings";
   import { formatCreatedAt, localTimestamp, pdfName } from "../lib/subject";
   import { compactItems } from "../lib/ranges";
   import { meter } from "../lib/meter";
@@ -104,7 +104,7 @@
   }
 
   // svelte-ignore state_referenced_locally
-  const autoSaving = fresh && !preview && loadAutoSaveResult() ? save() : null;
+  const autoSaving = fresh && !preview && autoSaveResult.load() ? save() : null;
 
   // The entry must learn the saved record's name before it reopens, or the next save adds a duplicate.
   async function back() {

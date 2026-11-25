@@ -7,7 +7,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import Download from "@lucide/svelte/icons/download";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
-  import { loadAutoSaveResult, saveAutoSaveResult } from "../lib/settings";
+  import { autoSaveResult } from "../lib/settings";
   import { loadTheme, saveTheme, type Theme } from "../lib/theme";
   import { findUpdate, updates } from "../lib/updates.svelte";
 
@@ -17,7 +17,7 @@
 
   let theme = $state<Theme>(loadTheme());
   const choices: [Theme, string][] = [["system", "Wie das System"], ["light", "Hell"], ["dark", "Dunkel"]];
-  let autoSave = $state(loadAutoSaveResult());
+  let autoSave = $state(autoSaveResult.load());
 </script>
 
 <div class="flex flex-col gap-5">
@@ -45,7 +45,7 @@
     <Card.Header><Card.Title class="text-[17px] font-bold">Auswertung</Card.Title></Card.Header>
     <Card.Content>
       <div class="flex min-h-11 items-center gap-2.5">
-        <Checkbox id="auto-save" class="size-5" bind:checked={() => autoSave, (v) => { autoSave = v; saveAutoSaveResult(v); }} />
+        <Checkbox id="auto-save" class="size-5" bind:checked={() => autoSave, (v) => { autoSave = v; autoSaveResult.save(v); }} />
         <Label for="auto-save" class="cursor-pointer text-[15px]">Ergebnis beim Auswerten automatisch speichern</Label>
       </div>
     </Card.Content>

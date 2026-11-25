@@ -13,8 +13,8 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { confirm } from "$lib/components/confirm.svelte";
   import { deleteResult, exportResult, importResult, listResults, openResult } from "../lib/api";
-  import { filterSaved, groupByDate } from "../lib/saved";
-  import { loadGroupSavedByDate, saveGroupSavedByDate } from "../lib/settings";
+  import { filterSaved, groupByDate, type DateGroup } from "../lib/saved";
+  import { groupSavedByDate } from "../lib/settings";
   import { formatCreatedAt, pdfName } from "../lib/subject";
   import type { OpenedResult, Report, SavedSummary } from "../lib/types";
 
@@ -24,10 +24,12 @@
   let banner = $state<string | null>(null);
   let status = $state("");
   let query = $state("");
-  let grouped = $state(loadGroupSavedByDate());
+  let grouped = $state(groupSavedByDate.load());
+  // Refreshed when the window comes back, so „Heute“ moves on after midnight.
+  let now = $state(new Date());
   const shown = $derived(rows ? filterSaved(rows, query) : []);
   // One group without a header when grouping is off, so both views share the markup below.
-  const groups = $derived(grouped ? groupByDate(shown, new Date()) : [{ label: null, rows: shown }]);
+  const groups: DateGroup[] = $derived(grouped ? groupByDate(shown, now) : [{ label: null, rows: shown }]);
 
   // Runs an action; any German error string goes to the banner.
   async function run(fn: () => Promise<unknown>) {
@@ -72,6 +74,9 @@
     });
 </script>
 
+<svelte:window onfocus={() => (now = new Date())} />
+<svelte:document onvisibilitychange={() => (now = new Date())} />
+
 <div class="flex flex-col gap-5 pb-16">
   <div class="flex flex-wrap items-center justify-between gap-4">
     <h1 class="text-[26px] leading-tight font-bold">Gespeicherte Auswertungen</h1>
@@ -92,7 +97,7 @@
         <Input type="search" class="h-11 bg-card pl-10 text-[16px]" aria-label="Auswertungen durchsuchen" placeholder="Kennung, Fragebogen oder Datum suchen …" bind:value={query} />
       </div>
       <div class="flex min-h-11 items-center gap-2.5">
-        <Checkbox id="group-by-date" class="size-5" bind:checked={() => grouped, (v) => { grouped = v; saveGroupSavedByDate(v); }} />
+        <Checkbox id="group-by-date" class="size-5" bind:checked={() => grouped, (v) => { grouped = v; groupSavedByDate.save(v); }} />
         <Label for="group-by-date" class="cursor-pointer text-[15px]">Nach Datum gruppieren</Label>
       </div>
     </div>
