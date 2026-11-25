@@ -56,7 +56,7 @@ fn one_failed_criterion_replaces_the_verdict() {
     // Item 1 (scale X) unanswered: one missing answer is allowed in total, none in X.
     let (g, text) = grade(
         &with_validity(),
-        &ALL[1..],
+        &[("2", 0), ("3", 3), ("4", 3), ("zusatz", 0)],
         &[("erwachsen", FieldValue::Bool(true))],
     );
     assert_eq!(g.invalid, vec!["Skala X unvollständig."]);
@@ -71,6 +71,13 @@ fn one_failed_criterion_replaces_the_verdict() {
         .unwrap();
     assert!(warn < invalid, "{text}");
     assert!(!text.contains("Ergebnis:"), "{text}");
+    // gesamt is 8, over its cut-off 7, but an invalid result marks nothing as over it.
+    assert!(g.rules.iter().any(|r| r.id == "r1" && r.met));
+    assert!(
+        matches!(&g.rows[0], ResultRow::Sum { value, cutoff: Some(7), over: false, .. } if *value == 8.0)
+    );
+    assert!(text.contains("Gesamtsumme: 8 (Cut-off 7)\n"), "{text}");
+    assert!(!text.contains("– über Cut-off"), "{text}");
     assert!(
         text.contains("Die Werte sind nicht interpretierbar.\nGesamtsumme:"),
         "{text}"

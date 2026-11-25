@@ -22,7 +22,8 @@ pub struct Grading {
     pub rules: Vec<RuleOutcome>,
     /// Shown above the verdict.
     pub caveats: Vec<String>,
-    /// Texts of the failed validity criteria; when any failed there is no verdict and no norm values.
+    /// Texts of the failed validity criteria; when any failed there is no verdict, no norm values
+    /// and no row is marked over its cut-off.
     #[serde(default)]
     pub invalid: Vec<String>,
     pub verdict: Option<String>,
@@ -287,8 +288,9 @@ impl Questionnaire {
                     label: label.clone(),
                     value,
                     cutoff,
-                    over,
-                    // Norms assume a valid protocol; a T-value and band would read as a finding.
+                    // Over cut-off, a T-value or a band would read as a finding on an invalid
+                    // protocol; rules and verdict still see the real flag.
+                    over: over && invalid.is_empty(),
                     norm: def
                         .norms
                         .as_ref()

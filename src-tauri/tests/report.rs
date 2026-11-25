@@ -237,5 +237,8 @@ fn invalid_result_names_why_and_has_no_verdict_or_profile() {
     assert!(pdf.find("(WARNUNGEN)").unwrap() < pdf.find("(NICHT AUSWERTBAR)").unwrap());
     assert!(!pdf.contains("(ERGEBNIS)"));
     assert!(!pdf.contains("Profil"));
+    // gesamt is 10, at its cut-off 10, but nothing is marked as over it.
+    assert!(pdf.contains("(10) Tj"));
+    assert!(!shows(&pdf, "über Cut-off"));
     assert!(pdf.contains("(Ergebnisse)"));
 }
