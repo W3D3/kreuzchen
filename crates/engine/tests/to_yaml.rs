@@ -1,4 +1,4 @@
-use kreuzchen_engine::{load, parse_definition, raise_min_app, to_yaml};
+use kreuzchen_engine::{load, needs_newer_app, parse_definition, raise_min_app, to_yaml};
 
 const YAML: &str = include_str!("../../../examples/definitions/beispiel.yaml");
 
@@ -43,7 +43,9 @@ fn raise_min_app_follows_the_expressions_and_never_lowers() {
         assert_eq!(raised(&uses).as_deref(), Some("0.6.0"), "{to}");
         let mut def = parse_definition(&uses).unwrap();
         raise_min_app(&mut def);
-        assert!(load(&to_yaml(&def)).is_ok(), "{to}");
+        let out = to_yaml(&def);
+        assert!(load(&out).is_ok(), "{to}");
+        assert_eq!(needs_newer_app(&out, "0.5.0").as_deref(), Some("0.6.0"));
         let newer = YAML.replacen("min_app: \"0.5.0\"", "min_app: \"0.7.1\"", 1);
         assert_eq!(
             raised(&newer.replacen(from, to, 1)).as_deref(),
