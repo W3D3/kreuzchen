@@ -43,13 +43,13 @@ The reference example is [`examples/definitions/beispiel.yaml`](examples/definit
 
 - `schema`, `id`, `version`, `title`: format version (currently `1`), a unique ID, the definition version and the display title.
 - `cutoff_compare`: optional, how scores are compared with cut-offs, `">="` (default) or `">"`.
-- `min_app`: optional, the oldest Kreuzchen version that can open the file, e.g. `"0.4.0"`. Set it when the file uses a newer feature: older versions then show „Update nötig“ instead of an error. Versions before 0.4.0 do not know this key. Files using the English expression names of 0.5.0 (`missing`, `X.present`, field `subject_id`) declare `min_app: "0.5.0"`.
+- `min_app`: optional, the oldest Kreuzchen version that can open the file, e.g. `"0.4.0"`. Set it when the file uses a newer feature: older versions then show „Update nötig“ instead of an error. Versions before 0.4.0 do not know this key. Files using the English expression names of 0.5.0 (`missing`, `X.present`, field `subject_id`) declare `min_app: "0.5.0"`. Files using `count(…)`, or derived values that read fields, items or `missing`, declare `min_app: "0.6.0"`; validation rejects them otherwise.
 - `answer_sets`: named lists of answer labels, in order; the position is the answer value. `default_answers` names the set used by items that do not set `answers`.
 - `shortcuts`: optional entry keys per answer set, one character per answer in order, e.g. `ja_nein: nj`. Sets without an entry use `0`, `1`, `2`, ….
 - `keys`: named scoring tables. An item's `key` is a table name or an inline list mapping answer position to points (reverse-keyed items use e.g. `[3, 2, 1, 0]`).
 - `fields`: patient/session inputs (`text`, `number`, `checkbox`) with an `id` usable in expressions.
 - `scales`: scored groups with an `id`, `label` and optional `cutoff`. Items add their points to their `scale`.
-- `derived`: computed values with an `id` and a `value` expression (e.g. `X + Y`), optionally with a `cutoff`.
+- `derived`: computed values with an `id` and a `value` expression (e.g. `X + Y`), optionally with a `cutoff`. They are shown like scales (results table, copied text, PDF) and usable in rules like scales.
 - `sections`: the questionnaire pages, each with a `title`, optional `intro` and `items`. Items have a number `n` or an `id`, `text`, and optionally `scale`, `key` and `answers`.
 - `result`: the IDs shown in the result table, in order.
 - `norms`: optional norm tables (e.g. T-values). `name` is the label (default `T`), `bands` the severity labels by lower bound (`{ from: 60, label: mild }`, ascending), and `tables` maps a scale or derived ID to `{ raw score: norm value }`. A raw score that is not listed takes the next lower listed one, as with a printed table that skips rows. Example: [`examples/definitions/beispiel_normen.yaml`](examples/definitions/beispiel_normen.yaml).
@@ -57,7 +57,21 @@ The reference example is [`examples/definitions/beispiel.yaml`](examples/definit
 - `caveats`: notes shown when their `when` expression is true.
 - `verdict`: ordered list; the first entry whose `when` is true gives the text; the entry with `else` is the fallback.
 
-Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, `missing` is the number of unanswered items, and `X.missing` the unanswered items of scale `X`. A number field `F` that may stay empty is checked with `F.present`, e.g. `age.present and age > 24`: `and`/`or` stop once the left side decides. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`.
+Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, `missing` is the number of unanswered items, and `X.missing` the unanswered items of scale `X`. A number field `F` that may stay empty is checked with `F.present`, e.g. `age.present and age > 24`: `and`/`or` stop once the left side decides. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`. Derived values see scales, fields, item IDs, `missing` and earlier derived values, but not rules (rules are evaluated after them and may use them).
+
+`count(a, b, …)` is the number of true conditions, from 0 to the number of conditions. It takes at least one condition; each must be true or false. All conditions are evaluated. An unanswered item has the empty answer, so `k1 == "Ja"` is simply false and does not count; check `missing` or `X.missing` in a caveat when that matters. Conditions repeat what a rule says instead of naming the rule, because derived values are computed before rules. Example, the number of events ticked in at least one of two life phases:
+
+```yaml
+derived:
+  - id: anzahl_ereignisse
+    label: Anzahl unterschiedlicher Ereignisse
+    value: count(k1 == "Ja" or e1 == "Ja", k2 == "Ja" or e2 == "Ja", k3 == "Ja" or e3 == "Ja")
+    cutoff: 2
+rules:
+  - { id: mehrfach, label: "Mindestens zwei Ereignisse", when: anzahl_ereignisse.over }
+```
+
+Inside `{ … }` flow mappings the commas of `count(…)` split the entry: quote the expression there, e.g. `{ id: n, label: N, value: 'count(a, b)' }`.
 
 ### Upgrading 0.4 data
 

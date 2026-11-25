@@ -103,7 +103,7 @@ pub(crate) struct EnvSource<'a, E> {
 }
 
 /// Builds the expression environment in the one order both validation and grading use:
-/// scales, derived, fields, item ids, `missing`, then rules (later rules see earlier ones).
+/// scales, fields, item ids, `missing`, derived, then rules (later ones see earlier ones).
 pub(crate) fn build_env<E>(
     def: &Definition,
     src: EnvSource<'_, E>,
@@ -115,10 +115,6 @@ pub(crate) fn build_env<E>(
             format!("{}.missing", s.id),
             Value::Num((src.scale_missing)(s)),
         );
-    }
-    for d in &def.derived {
-        let v = (src.derived)(d, &env)?;
-        add_scored(&mut env, &d.id, v, d.cutoff);
     }
     for f in &def.fields {
         let v = (src.field)(f);
@@ -135,6 +131,10 @@ pub(crate) fn build_env<E>(
         }
     }
     env.insert("missing".to_string(), Value::Num(src.missing));
+    for d in &def.derived {
+        let v = (src.derived)(d, &env)?;
+        add_scored(&mut env, &d.id, v, d.cutoff);
+    }
     for r in &def.rules {
         let met = (src.rule)(r, &env)?;
         env.insert(r.id.clone(), Value::Bool(met));
@@ -326,6 +326,33 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
             }
             VerdictEntry::Else { otherwise } => verdict.push((None, otherwise.clone())),
         }
+    }
+
+    // Before 0.6.0 derived values saw only scales and earlier derived values, and there was no
+    // `count`: such a file must say so, or older apps reject it instead of asking for an update.
+    let late: BTreeSet<&str> = def
+        .fields
+        .iter()
+        .map(|f| f.id.as_str())
+        .chain(items.iter().filter_map(|(_, i)| i.id.as_deref()))
+        .chain(["missing"])
+        .collect();
+    let reads_late = |e: &Expr| {
+        expr::names(e)
+            .iter()
+            .any(|n| late.contains(n.split('.').next().unwrap_or_default()))
+    };
+    let mut exprs = (derived.iter().map(|(_, e)| e))
+        .chain(rules.iter().map(|(_, e)| e))
+        .chain(caveats.iter().map(|(_, e)| e))
+        .chain(verdict.iter().filter_map(|(e, _)| e.as_ref()));
+    let new_language = derived.iter().any(|(_, e)| reads_late(e)) || exprs.any(expr::counts);
+    let min_app = def.min_app.as_deref().and_then(crate::app_version);
+    if new_language && min_app.is_none_or(|v| v < vec![0, 6, 0]) {
+        errors.push(err(
+            "count(…) und Felder, Fragen oder „missing“ in abgeleiteten Werten brauchen min_app: \"0.6.0\""
+                .to_string(),
+        ));
     }
 
     // Result entries: scale, derived or item id.
