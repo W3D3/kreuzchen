@@ -260,7 +260,8 @@ pub fn validate_definition(yaml: String) -> Result<Summary, Vec<String>> {
 }
 
 #[tauri::command]
-pub fn definition_to_yaml(def: Definition) -> String {
+pub fn definition_to_yaml(mut def: Definition) -> String {
+    kreuzchen_engine::raise_min_app(&mut def);
     kreuzchen_engine::to_yaml(&def)
 }
 
