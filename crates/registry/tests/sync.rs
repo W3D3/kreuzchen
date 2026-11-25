@@ -10,7 +10,7 @@ use argon2::Argon2;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Request, StatusCode};
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use base64::Engine;
@@ -34,27 +34,22 @@ fn def(id: &str, version: &str) -> String {
         .replacen("version: \"1\"", &format!("version: {version:?}"), 1)
 }
 
-/// A GitHub-style tarball: every entry under one `<owner>-<repo>-<sha>/` folder.
-fn tarball(files: &[(&str, String)]) -> Vec<u8> {
-    let gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    let mut b = tar::Builder::new(gz);
-    for (path, text) in files {
-        let mut h = tar::Header::new_gnu();
-        h.set_size(text.len() as u64);
-        h.set_mode(0o644);
-        h.set_cksum();
-        b.append_data(&mut h, format!("o-r-1234567/{path}"), text.as_bytes())
-            .unwrap();
-    }
-    b.into_inner().unwrap().finish().unwrap()
+type Files = Vec<(&'static str, String)>;
+
+/// The mock's blob sha: content-addressed like git's, so unchanged content keeps its sha.
+fn blob_sha(text: &str) -> String {
+    hash(text.as_bytes())
 }
 
 #[derive(Default)]
 struct Mock {
     head: String,
-    tarballs: HashMap<String, Vec<u8>>,
+    /// Commit sha → every file in that commit.
+    commits: HashMap<String, Files>,
     fail: bool,
-    downloads: usize,
+    truncated: bool,
+    /// Every tree and blob request, as `trees/<id>` or `blobs/<sha>`.
+    requests: Vec<String>,
     auth: Vec<String>,
 }
 
@@ -77,11 +72,51 @@ async fn commits(State(m): State<Shared>, Path(branch): Path<String>, h: HeaderM
     m.head.clone().into_response()
 }
 
-async fn codeload(State(m): State<Shared>, Path(sha): Path<String>) -> Response {
+/// One tree level. A tree id is `<commit>:<folder>`; the bare commit sha is its root tree.
+async fn trees(State(m): State<Shared>, Path(id): Path<String>) -> Response {
     let mut m = m.lock().unwrap();
-    m.downloads += 1;
-    match m.tarballs.get(&sha) {
-        Some(t) => t.clone().into_response(),
+    m.requests.push(format!("trees/{id}"));
+    let (commit, dir) = id.split_once(':').unwrap_or((&id, ""));
+    let Some(files) = m.commits.get(commit) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let prefix = if dir.is_empty() {
+        String::new()
+    } else {
+        format!("{dir}/")
+    };
+    let mut tree: Vec<serde_json::Value> = Vec::new();
+    for (path, text) in files {
+        let Some(rest) = path.strip_prefix(&prefix) else {
+            continue;
+        };
+        let entry = match rest.split_once('/') {
+            Some((sub, _)) => serde_json::json!({"path": sub, "mode": "040000", "type": "tree",
+                "sha": format!("{commit}:{prefix}{sub}")}),
+            None => serde_json::json!({"path": rest, "mode": "100644", "type": "blob",
+                "sha": blob_sha(text), "size": text.len()}),
+        };
+        if !tree.contains(&entry) {
+            tree.push(entry);
+        }
+    }
+    let truncated = m.truncated;
+    axum::Json(serde_json::json!({"sha": id, "tree": tree, "truncated": truncated})).into_response()
+}
+
+async fn blobs(State(m): State<Shared>, Path(sha): Path<String>, h: HeaderMap) -> Response {
+    let mut m = m.lock().unwrap();
+    m.requests.push(format!("blobs/{sha}"));
+    if h["accept"] != "application/vnd.github.raw+json" {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+    let text = m
+        .commits
+        .values()
+        .flatten()
+        .find(|(_, t)| blob_sha(t) == sha);
+    match text {
+        Some((_, t)) => t.clone().into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -90,11 +125,8 @@ async fn codeload(State(m): State<Shared>, Path(sha): Path<String>) -> Response 
 async fn github(m: Shared) -> String {
     let app = Router::new()
         .route("/repos/o/r/commits/{branch}", get(commits))
-        .route(
-            "/repos/o/r/tarball/{sha}",
-            get(|Path(sha): Path<String>| async move { Redirect::to(&format!("/codeload/{sha}")) }),
-        )
-        .route("/codeload/{sha}", get(codeload))
+        .route("/repos/o/r/git/trees/{id}", get(trees))
+        .route("/repos/o/r/git/blobs/{sha}", get(blobs))
         .with_state(m);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
@@ -103,7 +135,7 @@ async fn github(m: Shared) -> String {
 }
 
 /// What the repo holds at SHA1: two questionnaires in `questionnaires/`, decoys elsewhere.
-fn first_commit() -> Vec<(&'static str, String)> {
+fn first_commit() -> Files {
     vec![
         ("questionnaires/a.yaml", def("fb_a", "1")),
         (
@@ -114,6 +146,8 @@ fn first_commit() -> Vec<(&'static str, String)> {
         ("questionnaires/old/c.yaml", def("fb_subfolder", "1")),
         ("other/d.yaml", def("fb_other_folder", "1")),
         ("e.yaml", def("fb_root", "1")),
+        // A large source PDF next to the questionnaires, as the real repo has.
+        ("quellen/scan.pdf", "%PDF".repeat(1 << 19)),
     ]
 }
 
@@ -146,7 +180,7 @@ async fn setup(fail_first: bool) -> Env {
     {
         let mut m = mock.lock().unwrap();
         m.head = SHA1.into();
-        m.tarballs.insert(SHA1.into(), tarball(&first_commit()));
+        m.commits.insert(SHA1.into(), first_commit());
         m.fail = fail_first;
     }
     let dir = data_dir(&github(mock.clone()).await);
@@ -245,13 +279,126 @@ async fn first_sync_publishes_only_yaml_directly_in_path() {
 }
 
 #[tokio::test]
+async fn only_the_yaml_blobs_in_path_are_requested() {
+    let env = setup(false).await;
+    let files = first_commit();
+    let blob = |name: &str| {
+        let text = &files.iter().find(|(p, _)| *p == name).unwrap().1;
+        format!("blobs/{}", blob_sha(text))
+    };
+    // Not the PDF, not its folder, not the decoys: just the walk to `path` and its two YAML files.
+    assert_eq!(
+        env.mock.lock().unwrap().requests,
+        [
+            format!("trees/{SHA1}"),
+            format!("trees/{SHA1}:questionnaires"),
+            blob("questionnaires/a.yaml"),
+            blob("questionnaires/b.yml"),
+        ]
+    );
+}
+
+#[tokio::test]
 async fn unchanged_head_skips_the_download() {
     let env = setup(false).await;
-    assert_eq!(env.mock.lock().unwrap().downloads, 1);
+    let before = env.mock.lock().unwrap().requests.len();
     let st = sync_now(&env.app).await;
     assert_eq!(st["sha"], SHA1);
-    assert_eq!(env.mock.lock().unwrap().downloads, 1);
+    assert_eq!(env.mock.lock().unwrap().requests.len(), before);
     assert_eq!(env.mock.lock().unwrap().auth.len(), 2);
+}
+
+#[tokio::test]
+async fn new_head_downloads_only_changed_blobs() {
+    let env = setup(false).await;
+    let new_b = def("fb_b", "2");
+    {
+        let mut m = env.mock.lock().unwrap();
+        m.head = SHA2.into();
+        m.requests.clear();
+        let files = vec![
+            ("questionnaires/a.yaml", def("fb_a", "1")),
+            ("questionnaires/b.yml", new_b.clone()),
+        ];
+        m.commits.insert(SHA2.into(), files);
+    }
+    assert_eq!(sync_now(&env.app).await["sha"], SHA2);
+    let blobs: Vec<_> = env
+        .mock
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|r| r.starts_with("blobs/"))
+        .cloned()
+        .collect();
+    assert_eq!(blobs, [format!("blobs/{}", blob_sha(&new_b))]);
+    assert_eq!(
+        practice(&env.app, "/v1/questionnaires/fb_a").await.1,
+        def("fb_a", "1")
+    );
+    assert_eq!(practice(&env.app, "/v1/questionnaires/fb_b").await.1, new_b);
+}
+
+#[tokio::test]
+async fn oversized_file_is_invalid_and_never_downloaded() {
+    let env = setup(false).await;
+    let big = format!("{}#{}\n", def("fb_a", "2"), "x".repeat(1 << 20));
+    {
+        let mut m = env.mock.lock().unwrap();
+        m.head = SHA2.into();
+        let files = vec![
+            ("questionnaires/a.yaml", big.clone()),
+            ("questionnaires/b.yml", def("fb_b", "2")),
+        ];
+        m.commits.insert(SHA2.into(), files);
+    }
+    let st = sync_now(&env.app).await;
+    assert_eq!(st["sha"], SHA2);
+    assert_eq!(st["invalid"][0]["file"], "a.yaml");
+    assert!(st["invalid"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("größer als 1 MiB"));
+    let big_blob = format!("blobs/{}", blob_sha(&big));
+    assert!(!env.mock.lock().unwrap().requests.contains(&big_blob));
+    // Its last good version stays.
+    assert_eq!(
+        practice(&env.app, "/v1/questionnaires/fb_a").await.1,
+        def("fb_a", "1")
+    );
+}
+
+#[tokio::test]
+async fn truncated_tree_or_missing_folder_fails_and_keeps_the_set() {
+    let env = setup(false).await;
+    {
+        let mut m = env.mock.lock().unwrap();
+        m.head = SHA2.into();
+        m.truncated = true;
+        m.commits.insert(
+            SHA2.into(),
+            vec![("questionnaires/b.yml", def("fb_b", "2"))],
+        );
+    }
+    let st = sync_now(&env.app).await;
+    assert!(
+        st["error"].as_str().unwrap().contains("unvollständig"),
+        "{st}"
+    );
+    assert_eq!(st["sha"], SHA1);
+    assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
+
+    {
+        let mut m = env.mock.lock().unwrap();
+        m.truncated = false;
+        m.commits
+            .insert(SHA2.into(), vec![("other/b.yml", def("fb_b", "2"))]);
+    }
+    let st = sync_now(&env.app).await;
+    assert!(st["error"].as_str().unwrap().contains("fehlt"), "{st}");
+    assert_eq!(st["sha"], SHA1);
+    assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
 }
 
 #[tokio::test]
@@ -265,7 +412,7 @@ async fn new_head_is_published_and_invalid_files_keep_their_last_good_version() 
             ("questionnaires/b.yml", def("fb_b", "2")),
             ("questionnaires/c.yaml", "id: fb_c\n".to_string()),
         ];
-        m.tarballs.insert(SHA2.into(), tarball(&files));
+        m.commits.insert(SHA2.into(), files);
     }
     let st = sync_now(&env.app).await;
     assert_eq!(st["sha"], SHA2);
@@ -322,7 +469,7 @@ async fn failed_fetch_keeps_the_set_and_never_shows_the_token() {
     assert!(!st.to_string().contains(GH_TOKEN));
     assert_eq!(practice_ids(&env.app).await, ["fb_a", "fb_b"]);
 
-    // Missing tarball: same, the published set stays.
+    // Missing commit tree: same, the published set stays.
     env.mock.lock().unwrap().fail = false;
     let st = sync_now(&env.app).await;
     assert!(st["error"].as_str().unwrap().contains("404"));
