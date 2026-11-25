@@ -101,6 +101,17 @@ fn practice_keys_are_never_logged_or_stored() {
         base64::engine::general_purpose::STANDARD.encode(format!("practice_b:{}", keys[0]))
     );
     assert!(http(port, "GET", "/v1/questionnaires", &basic, "").starts_with("HTTP/1.1 200"));
+    let ticket = r#"{"type":"bug","subject":"Betreff-Geheim","message":"Nachricht-Geheim","reply_email":"geheim@example.org","app_version":"0.6.0","os":"linux"}"#;
+    let sent = http(port, "POST", "/v1/tickets", &basic, ticket);
+    assert!(sent.starts_with("HTTP/1.1 201"), "{sent}");
+    let noted = http(
+        port,
+        "PATCH",
+        "/admin/api/tickets/1",
+        bearer,
+        r#"{"admin_note":"Notiz-Geheim"}"#,
+    );
+    assert!(noted.starts_with("HTTP/1.1 200"), "{noted}");
 
     server.kill().unwrap();
     let mut log = String::new();
@@ -114,6 +125,8 @@ fn practice_keys_are_never_logged_or_stored() {
     assert!(log.contains("/admin/api/practices 201"), "{log}");
     assert!(log.contains("practice_b /v1/questionnaires 200"), "{log}");
     assert!(!log.contains("cli-test-token"), "{log}");
+    assert!(log.contains("practice_b /v1/tickets 201"), "{log}");
+    assert!(!log.contains("Geheim") && !log.contains("geheim@"), "{log}");
     let cfg = std::fs::read_to_string(dir.path().join("config.yaml")).unwrap();
     for key in &keys {
         assert!(!log.contains(key.as_str()), "{log}");

@@ -2,11 +2,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
@@ -16,6 +16,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::config::{load, parse_entry, write_atomic, write_config};
 use crate::sync::Sync;
+use crate::tickets::{Patch, Status, Ticket, Tickets};
 use crate::{new_key, Entry, Practice, Registry};
 
 /// Largest accepted questionnaire upload.
@@ -30,6 +31,7 @@ pub(crate) struct AdminState {
     pub write: Arc<Mutex<()>>,
     /// `Some` with a `type: github` source: the files are read-only here, the repo is the truth.
     pub sync: Option<Arc<Sync>>,
+    pub tickets: Arc<Tickets>,
 }
 
 type Fail = (StatusCode, String);
@@ -43,6 +45,8 @@ pub(crate) fn router(st: AdminState) -> Router {
         .route("/practices/{user}", delete(remove_practice))
         .route("/practices/{user}/key", post(rekey_practice))
         .route("/sync", get(sync_status).post(sync_now))
+        .route("/tickets", get(list_tickets))
+        .route("/tickets/{id}", patch(update_ticket))
         .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
         .layer(from_fn_with_state(st.clone(), auth))
@@ -353,4 +357,40 @@ fn bak(path: &std::path::Path) -> PathBuf {
     let mut p = path.as_os_str().to_owned();
     p.push(".bak");
     p.into()
+}
+
+#[derive(Deserialize)]
+struct TicketFilter {
+    status: Option<Status>,
+    questionnaire: Option<String>,
+}
+
+/// Open tickets first, newest first within each status.
+async fn list_tickets(
+    State(st): State<AdminState>,
+    Query(f): Query<TicketFilter>,
+) -> Result<Json<Vec<Ticket>>, Fail> {
+    let mut list: Vec<Ticket> = st
+        .tickets
+        .list()
+        .await?
+        .into_iter()
+        .filter(|t| f.status.is_none_or(|s| t.status == s))
+        // `questionnaire=` (empty) selects the general tickets, those about no questionnaire.
+        .filter(|t| match f.questionnaire.as_deref() {
+            None => true,
+            Some("") => t.questionnaire.is_none(),
+            Some(q) => t.questionnaire.as_ref().is_some_and(|r| r.id == q),
+        })
+        .collect();
+    list.sort_by_key(|t| t.status != Status::Open);
+    Ok(Json(list))
+}
+
+async fn update_ticket(
+    State(st): State<AdminState>,
+    Path(id): Path<u64>,
+    Json(p): Json<Patch>,
+) -> Result<Json<Ticket>, Fail> {
+    Ok(Json(st.tickets.update(id, p).await?))
 }

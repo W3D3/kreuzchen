@@ -2,11 +2,11 @@ use std::sync::{Arc, RwLock};
 
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, SaltString};
 use argon2::{Argon2, PasswordVerifier};
-use axum::extract::{Path, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use base64::Engine;
 use serde_json::json;
@@ -15,6 +15,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::admin::{self, AdminState};
 use crate::sync::Sync;
+use crate::tickets::{self, NewTicket, Tickets};
 use crate::{Practice, Registry, Source};
 
 #[derive(Clone)]
@@ -25,6 +26,7 @@ struct AppState {
     dummy_hash: Arc<str>,
     /// Bounds concurrent argon2 verifications (memory-hard).
     verify_slots: Arc<Semaphore>,
+    tickets: Arc<Tickets>,
 }
 
 /// `admin_token`: `None` (or empty) leaves every `/admin` route unmounted, so they answer 404.
@@ -32,6 +34,7 @@ struct AppState {
 /// is optional for public repos.
 pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&str>) -> Router {
     let source = reg.source.clone();
+    let tickets = Arc::new(Tickets::new(&reg.dir));
     let reg = Arc::new(RwLock::new(Arc::new(reg)));
     let write = Arc::new(Mutex::new(()));
     let sync = match source {
@@ -50,10 +53,17 @@ pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&st
         reg: reg.clone(),
         dummy_hash: dummy_hash.into(),
         verify_slots: Arc::new(Semaphore::new(4)),
+        tickets: tickets.clone(),
     };
     let v1 = Router::new()
         .route("/questionnaires", get(list))
         .route("/questionnaires/{id}", get(download))
+        .route(
+            "/tickets",
+            post(create_ticket)
+                .get(own_tickets)
+                .layer(DefaultBodyLimit::max(tickets::MAX_BODY)),
+        )
         // shortcut: the 0.4.0 app's paths; remove once no 0.4.0 clients are left.
         .route("/fragebogen", get(list))
         .route("/fragebogen/{id}", get(download))
@@ -71,6 +81,7 @@ pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&st
                 token: admin::digest(token),
                 write,
                 sync,
+                tickets,
             }),
         );
     }
@@ -158,4 +169,32 @@ async fn download(
             .into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+async fn create_ticket(
+    State(st): State<AppState>,
+    Extension(p): Extension<Practice>,
+    Json(new): Json<NewTicket>,
+) -> Result<Response, tickets::Fail> {
+    let t = st.tickets.create(&p.user, new).await?;
+    Ok((StatusCode::CREATED, Json(json!({"id": t.id}))).into_response())
+}
+
+/// The practice's own tickets, without the admins' note.
+async fn own_tickets(
+    State(st): State<AppState>,
+    Extension(p): Extension<Practice>,
+) -> Result<Json<Vec<serde_json::Value>>, tickets::Fail> {
+    Ok(Json(
+        st.tickets
+            .list()
+            .await?
+            .into_iter()
+            .filter(|t| t.practice == p.user)
+            .map(|t| {
+                json!({"id": t.id, "created_at": t.created_at, "type": t.kind, "subject": t.subject,
+                       "questionnaire": t.questionnaire, "status": t.status})
+            })
+            .collect(),
+    ))
 }

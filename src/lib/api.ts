@@ -1,5 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { ConnectionInfo, Definition, DefinitionEntry, Draft, DraftSummary, Graded, InstallOutcome, Input, Opened, OpenedDefinition, OpenedResult, Progress, Report, RowsResult, SavedRecord, SavedSummary, Summary } from "./types";
+import type { ConnectionInfo, Definition, DefinitionEntry, Draft, DraftSummary, Graded, InstallOutcome, Input, Opened, OpenedDefinition, OpenedResult, Progress, QRef, Report, RowsResult, SavedRecord, SavedSummary, Summary, TicketForm, TicketSummary } from "./types";
 
 export const listDefinitions = () => invoke<DefinitionEntry[]>("list_definitions");
 export const getDefinition = (file: string, locked: boolean) => invoke<OpenedDefinition>("get_definition", { file, locked });
@@ -42,3 +42,5 @@ export function registryInstall(id: string, replaceLocal: boolean, onProgress: (
 export const registryRemove = (file: string) => invoke<void>("registry_remove", { file });
 /** Files the 0.4 upgrade on this start could not convert (left as they were), and the data folder holding the backup. */
 export const migrationProblems = () => invoke<{ problems: string[]; folder: string }>("migration_problems");
+export const sendTicket = (form: TicketForm, questionnaire: QRef | null) => invoke<number>("send_ticket", { form, questionnaire });
+export const listTickets = () => invoke<TicketSummary[]>("list_tickets");

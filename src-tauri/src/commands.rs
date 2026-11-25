@@ -2,7 +2,10 @@ use crate::{
     Paths,
     definitions::{self, DefinitionEntry, OpenedDefinition, Summary},
     editor,
-    registry::{self, Connection, InstallOutcome, Progress, RowsResult},
+    registry::{
+        self, Connection, InstallOutcome, NewTicket, Progress, RowsResult, TicketForm,
+        TicketSummary,
+    },
     report::{self, Report},
     store::{self, Draft, DraftSummary, QRef, SavedRecord, SavedSummary},
 };
@@ -16,7 +19,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
-use tauri::State;
+use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
 #[derive(Serialize)]
@@ -375,12 +378,39 @@ pub async fn registry_install(
     replace_local: bool,
     on_progress: tauri::ipc::Channel<Progress>,
 ) -> Result<InstallOutcome, String> {
-    let c = registry::load_connection(&paths.data).ok_or("Kein Bibliotheksserver verbunden.")?;
+    let c = registry::load_connection(&paths.data).ok_or(NOT_CONNECTED)?;
     // A closed channel only loses the progress display, never the install.
     registry::install(&c, &paths, &id, replace_local, |p| {
         let _ = on_progress.send(p);
     })
     .await
+}
+
+const NOT_CONNECTED: &str = "Kein Bibliotheksserver verbunden.";
+
+/// Sends what the user typed plus metadata; the ticket number on success.
+#[tauri::command]
+pub async fn send_ticket(
+    app: AppHandle,
+    paths: State<'_, Paths>,
+    form: TicketForm,
+    questionnaire: Option<QRef>,
+) -> Result<u64, String> {
+    let c = registry::load_connection(&paths.data).ok_or(NOT_CONNECTED)?;
+    let version = app.package_info().version.to_string();
+    let ticket = NewTicket {
+        form: &form,
+        questionnaire: questionnaire.as_ref(),
+        app_version: &version,
+        os: std::env::consts::OS,
+    };
+    registry::send_ticket(&c, &ticket).await
+}
+
+#[tauri::command]
+pub async fn list_tickets(paths: State<'_, Paths>) -> Result<Vec<TicketSummary>, String> {
+    let c = registry::load_connection(&paths.data).ok_or(NOT_CONNECTED)?;
+    registry::list_tickets(&c).await
 }
 
 #[tauri::command]

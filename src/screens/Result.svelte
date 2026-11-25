@@ -5,6 +5,7 @@
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Copy from "@lucide/svelte/icons/copy";
   import Info from "@lucide/svelte/icons/info";
+  import MessageSquare from "@lucide/svelte/icons/message-square";
   import PencilLine from "@lucide/svelte/icons/pencil-line";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Save from "@lucide/svelte/icons/save";
@@ -19,9 +20,9 @@
   import { formatCreatedAt, localTimestamp, pdfName } from "../lib/subject";
   import { compactItems } from "../lib/ranges";
   import { meter } from "../lib/meter";
-  import type { Graded, Input, Norms, OpenedDefinition, SavedRecord } from "../lib/types";
+  import type { Graded, Input, Norms, OpenedDefinition, QRef, SavedRecord } from "../lib/types";
 
-  let { opened, record = null, norms = null, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, oneditor }: {
+  let { opened, record = null, norms = null, input, graded, notice, fresh = false, draft, savedFile, onsaved, preview = false, onregrade, onback, oneditor, onfeedback }: {
     opened: OpenedDefinition | null;
     /** The saved result on display, if any; without `opened` its date is the evaluation date. */
     record?: SavedRecord | null;
@@ -42,11 +43,16 @@
     onback: () => void;
     /** Leaves a preview for the editor. */
     oneditor: () => void;
+    /** Opens the support form about this questionnaire; gets only its reference, never answers. */
+    onfeedback: (q: QRef) => void;
   } = $props();
 
   const g = $derived(graded.grading);
   const subjectId = $derived(String(input.fields.subject_id ?? ""));
   const title = $derived(opened?.definition.title ?? record?.questionnaire.title ?? "");
+  const qref = $derived<QRef | null>(
+    opened ? { id: opened.definition.id, title: opened.definition.title, version: opened.definition.version, hash: opened.hash } : (record?.questionnaire ?? null),
+  );
   const anyMet = $derived(g.rules.some((r) => r.met));
   // Same notation as the engine's copy text: `55`, `3,5`, `3,67`.
   // Values that round to zero keep their sign; `signDisplay` would fix that but throws on older WebKitGTK.
@@ -233,4 +239,8 @@
       <Info class="size-4.5 shrink-0 text-muted-foreground" />Hinweis: {c}
     </p>
   {/each}
+
+  {#if qref && !preview}
+    <div><Button variant="ghost" class="-ml-2.5 h-11 px-3 text-muted-foreground" onclick={() => onfeedback(qref)}><MessageSquare />Feedback zu diesem Fragebogen</Button></div>
+  {/if}
 </div>
