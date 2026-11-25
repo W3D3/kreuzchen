@@ -376,6 +376,19 @@
     {/snippet}
     {@render card("rules", "Regeln", null, rules)}
 
+    {#snippet validity()}
+      {@render head(cols.cond, ["Muss gelten", "Text, wenn nicht", ""])}
+      {#each d.validity ?? [] as v, i (v)}
+        <div class="grid {cols.cond} gap-2">
+          <Input aria-label="Muss gelten" placeholder="Bedingung" class="font-mono" bind:value={v.require} />
+          <Input aria-label="Text, wenn nicht" placeholder="… – nicht auswertbar." bind:value={v.invalid} />
+          {@render tools(d.validity!, i)}
+        </div>
+      {/each}
+      {@render add("Kriterium", () => (d.validity ??= []).push({ require: "", invalid: "" }))}
+    {/snippet}
+    {@render card("validity", "Gültigkeit", "Bedingungen, die alle gelten müssen, z. B. missing <= 6. Gilt eine nicht, gibt es keinen Befund und keine Normwerte; stattdessen steht ihr Text da (braucht Kreuzchen 0.7.0; beim Speichern wird min_app automatisch gesetzt).", validity)}
+
     {#snippet caveats()}
       {@render head(cols.cond, ["Bedingung", "Text", ""])}
       {#each d.caveats as c, i (c)}
@@ -385,9 +398,9 @@
           {@render tools(d.caveats, i)}
         </div>
       {/each}
-      {@render add("Hinweis", () => d.caveats.push({ when: "", text: "" }))}
+      {@render add("Warnung", () => d.caveats.push({ when: "", text: "" }))}
     {/snippet}
-    {@render card("caveats", "Hinweise", null, caveats)}
+    {@render card("caveats", "Warnungen", "Stehen über dem Befund, wenn ihre Bedingung zutrifft.", caveats)}
 
     {#snippet verdict()}
       {@render head(cols.cond, ["Bedingung", "Text", ""])}

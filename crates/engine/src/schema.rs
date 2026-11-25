@@ -40,6 +40,10 @@ pub struct Definition {
     pub rules: Vec<Rule>,
     #[serde(default)]
     pub caveats: Vec<Caveat>,
+    /// Conditions that must all hold for the result to be interpretable (since 0.7.0).
+    /// Left out when empty, so files saved by the editor still open in older versions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validity: Vec<Validity>,
     #[serde(default)]
     pub verdict: Vec<VerdictEntry>,
     #[serde(default)]
@@ -210,6 +214,14 @@ pub struct Rule {
 pub struct Caveat {
     pub when: String,
     pub text: String,
+}
+
+/// A validity criterion: when `require` is false, the result has no verdict and shows `invalid`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Validity {
+    pub require: String,
+    pub invalid: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

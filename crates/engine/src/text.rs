@@ -8,6 +8,23 @@ impl Questionnaire {
         let mut lines = vec![format!("{} (Version {})", d.title, d.version)];
         lines.extend(g.fields.iter().map(|f| format!("{}: {}", f.label, f.value)));
         lines.push(String::new());
+        // Same order as on screen and in the PDF: warnings, then the verdict or why there is none.
+        lines.extend(g.caveats.iter().map(|c| format!("Warnung: {c}")));
+        lines.extend(g.invalid.iter().map(|i| format!("Nicht auswertbar: {i}")));
+        lines.extend(g.verdict.iter().map(|v| format!("Ergebnis: {v}")));
+        for r in &g.rules {
+            let met = if r.met { "erfüllt" } else { "nicht erfüllt" };
+            lines.push(format!("{}: {met}", r.label));
+        }
+        let mut missing = format!("Fehlende Antworten: {}", g.missing);
+        if g.missing > 0 {
+            write!(missing, " (Fragen {})", g.missing_items.join(", ")).unwrap();
+        }
+        lines.push(missing);
+        lines.push(String::new());
+        if !g.invalid.is_empty() {
+            lines.push("Die Werte sind nicht interpretierbar.".into());
+        }
         for row in &g.rows {
             lines.push(match row {
                 ResultRow::Sum {
@@ -39,18 +56,6 @@ impl Questionnaire {
                 }
             });
         }
-        lines.push(String::new());
-        for r in &g.rules {
-            let met = if r.met { "erfüllt" } else { "nicht erfüllt" };
-            lines.push(format!("{}: {met}", r.label));
-        }
-        let mut missing = format!("Fehlende Antworten: {}", g.missing);
-        if g.missing > 0 {
-            write!(missing, " (Fragen {})", g.missing_items.join(", ")).unwrap();
-        }
-        lines.push(missing);
-        lines.extend(g.caveats.iter().map(|c| format!("Hinweis: {c}")));
-        lines.extend(g.verdict.iter().map(|v| format!("Ergebnis: {v}")));
         lines.join("\n")
     }
 }

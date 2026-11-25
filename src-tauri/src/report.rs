@@ -26,7 +26,8 @@ pub fn pdf(r: &Report) -> Vec<u8> {
     };
     header(&mut d, r);
     verdict(&mut d, g);
-    let profile = Profile::new(r);
+    // An invalid result gets no profile: plotted norm values would read as a finding.
+    let profile = Profile::new(r).filter(|_| g.invalid.is_empty());
     let rest: Vec<&ResultRow> = g
         .rows
         .iter()
@@ -42,7 +43,6 @@ pub fn pdf(r: &Report) -> Vec<u8> {
     if !rest.is_empty() {
         table(&mut d, &rest, typical(r.norms.as_ref()));
     }
-    caveats(&mut d, &g.caveats);
 
     let footer = match g.fields.iter().find(|f| f.id == "subject_id") {
         Some(k) => format!("{} · {}", r.title, k.value),
@@ -97,9 +97,21 @@ fn header(d: &mut Doc, r: &Report) {
     d.y += 8.0;
 }
 
-/// Verdict, rules and missing answers.
+/// Warnings, then the verdict or why there is none, rules and missing answers.
 fn verdict(d: &mut Doc, g: &Grading) {
-    if let Some(v) = &g.verdict {
+    if !g.caveats.is_empty() {
+        label(d, OVER, "WARNUNGEN");
+        bullets(d, Font::Regular, FG, &g.caveats);
+        d.y += 8.0;
+    }
+    if !g.invalid.is_empty() {
+        label(d, DANGER, "NICHT AUSWERTBAR");
+        bullets(d, Font::Bold, DANGER, &g.invalid);
+        let note = "Die Werte unten sind nicht interpretierbar.";
+        d.room(15.0);
+        d.text(M, d.y + 11.0, Font::Regular, 10.0, note);
+        d.y += 21.0;
+    } else if let Some(v) = &g.verdict {
         d.ink(MUTED);
         d.text(M, d.y + 10.0, Font::Regular, 8.0, "ERGEBNIS");
         d.ink(FG);
@@ -114,7 +126,11 @@ fn verdict(d: &mut Doc, g: &Grading) {
     }
     for rule in &g.rules {
         d.room(15.0);
-        let f = if rule.met { Font::Bold } else { Font::Regular };
+        let f = if rule.met && g.invalid.is_empty() {
+            Font::Bold
+        } else {
+            Font::Regular
+        };
         let state = if rule.met {
             "erfüllt"
         } else {
@@ -138,21 +154,27 @@ fn verdict(d: &mut Doc, g: &Grading) {
     }
 }
 
-fn caveats(d: &mut Doc, caveats: &[String]) {
-    if !caveats.is_empty() {
-        heading(d, "Hinweise");
-        for c in caveats {
-            for (i, l) in wrap(c, Font::Regular, 10.0, W - 2.0 * M - 12.0)
-                .iter()
-                .enumerate()
-            {
-                d.room(14.0);
-                if i == 0 {
-                    d.text(M, d.y + 11.0, Font::Regular, 10.0, "•");
-                }
-                d.text(M + 12.0, d.y + 11.0, Font::Regular, 10.0, l);
-                d.y += 14.0;
+/// A small caps label like „ERGEBNIS“, in `color`.
+fn label(d: &mut Doc, color: u32, s: &str) {
+    d.room(30.0);
+    d.ink(color);
+    d.text(M, d.y + 10.0, Font::Bold, 8.0, s);
+    d.ink(FG);
+    d.y += 14.0;
+}
+
+/// Wrapped bullet points in `color`.
+fn bullets(d: &mut Doc, font: Font, color: u32, items: &[String]) {
+    for c in items {
+        for (i, l) in wrap(c, font, 10.0, W - 2.0 * M - 12.0).iter().enumerate() {
+            d.room(14.0);
+            d.ink(color);
+            if i == 0 {
+                d.text(M, d.y + 11.0, font, 10.0, "•");
             }
+            d.text(M + 12.0, d.y + 11.0, font, 10.0, l);
+            d.ink(FG);
+            d.y += 14.0;
         }
     }
 }
