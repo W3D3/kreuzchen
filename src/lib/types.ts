@@ -51,9 +51,9 @@ export interface Summary { id: string; title: string; version: string; item_coun
 export interface DefinitionEntry { file: string; hash: string; summary: Summary | null; error: string | null; needs_app: string | null; locked: boolean }
 export interface OpenedDefinition { file: string; hash: string; definition: Definition; locked: boolean }
 export interface Graded { grading: Grading; text: string }
-/** Input of the PDF report; `date` is shown as given. */
 /** Colours of the PDF report as `#rrggbb`; `Colors` in `src-tauri/src/report.rs`. */
 export interface PdfColors { accent: string; dot: string; line: string; over: string; row: string }
+/** Input of the PDF report; `date` is shown as given. */
 export interface Report { title: string; date: string; grading: Grading; norms: Norms | null; colors?: PdfColors }
 export interface QRef { id: string; title: string; version: string; hash: string }
 export interface SavedRecord {
