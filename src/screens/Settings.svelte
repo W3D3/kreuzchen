@@ -15,9 +15,9 @@
     autoSaveResult,
     dotContrast,
     pdfColors,
-    type PdfColors,
   } from "../lib/settings";
   import { loadTheme, saveTheme, type Theme } from "../lib/theme";
+  import type { PdfColors } from "../lib/types";
   import { findUpdate, updates } from "../lib/updates.svelte";
 
   let { oninstall, onsupport }: { oninstall: () => void; onsupport: () => void } = $props();

@@ -1,3 +1,5 @@
+import type { PdfColors } from "./types";
+
 /** On unless explicitly turned off. */
 export const parseFlag = (raw: string | null): boolean => raw !== "off";
 
@@ -23,8 +25,6 @@ export const autoSaveResult = flag("kreuzchen.autoSaveResult");
 export const groupSavedByDate = flag("kreuzchen.groupSavedByDate");
 
 const PDF_COLORS = "kreuzchen.pdfColors";
-
-export type PdfColors = { accent: string; dot: string; line: string; over: string; row: string };
 
 /** The PDF's own colours, `Colors::default()` in `src-tauri/src/report.rs`. */
 export const DEFAULT_PDF_COLORS: PdfColors = {
