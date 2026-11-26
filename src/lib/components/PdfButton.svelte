@@ -7,6 +7,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { exportPdf, openPdf } from "../api";
+  import { pdfColors } from "../settings";
   import type { Report } from "../types";
 
   let { report, name, primary = false, onstart, onerror, onstatus }: {
@@ -29,7 +30,7 @@
     onstart?.();
     busy = true;
     try {
-      const r = await report();
+      const r = { ...(await report()), colors: pdfColors.load() };
       if (dest) {
         await exportPdf(r, dest);
         onstatus?.("PDF gespeichert.");

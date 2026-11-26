@@ -1,9 +1,11 @@
 //! Printable A4 report of a graded questionnaire: header, a profile chart for normed scales and a
-//! result table. In the app's light-theme colours, in the standard PDF fonts (nothing embedded).
+//! result table. In the app's light-theme colours unless the settings choose others, in the
+//! standard PDF fonts (nothing embedded).
 use kreuzchen_engine::schema::Norms;
 use kreuzchen_engine::{Grading, NormValue, ResultRow, number};
 use pdf_writer::{Content, Name};
 use serde::Deserialize;
+use serde_json::Value;
 use typeset::*;
 
 mod typeset;
@@ -16,6 +18,62 @@ pub struct Report {
     pub grading: Grading,
     /// Norm tables of the definition, when it is at hand; they span the profile axis.
     pub norms: Option<Norms>,
+    #[serde(default)]
+    pub colors: Colors,
+}
+
+/// The colours the settings can change, as `0xrrggbb`.
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(from = "Value")]
+pub struct Colors {
+    /// Middle range (mean ± 1 SD) and its labels.
+    pub accent: u32,
+    /// Profile markers.
+    pub dot: u32,
+    /// Line joining the markers.
+    pub line: u32,
+    /// Classification of a score over its cut-off.
+    pub over: u32,
+    /// Background of every other profile row.
+    pub row: u32,
+}
+
+impl Default for Colors {
+    fn default() -> Self {
+        Colors {
+            accent: ACCENT,
+            dot: DANGER,
+            line: MUTED,
+            over: OVER,
+            row: ROW,
+        }
+    }
+}
+
+/// From the frontend: `#rrggbb` per key; a missing or malformed value keeps its default.
+impl From<Value> for Colors {
+    fn from(v: Value) -> Self {
+        let d = Colors::default();
+        let pick = |key: &str, default: u32| {
+            v.get(key)
+                .and_then(Value::as_str)
+                .and_then(hex)
+                .unwrap_or(default)
+        };
+        Colors {
+            accent: pick("accent", d.accent),
+            dot: pick("dot", d.dot),
+            line: pick("line", d.line),
+            over: pick("over", d.over),
+            row: pick("row", d.row),
+        }
+    }
+}
+
+fn hex(s: &str) -> Option<u32> {
+    let h = s.strip_prefix('#')?;
+    let ok = h.len() == 6 && h.bytes().all(|b| b.is_ascii_hexdigit());
+    ok.then(|| u32::from_str_radix(h, 16).expect("six hex digits"))
 }
 
 pub fn pdf(r: &Report) -> Vec<u8> {
@@ -41,7 +99,20 @@ pub fn pdf(r: &Report) -> Vec<u8> {
         p.draw(&mut d);
     }
     if !rest.is_empty() {
-        table(&mut d, &rest, typical(r.norms.as_ref()));
+        // An invalid result gets neither word: „unauffällig“ would be a finding too.
+        let cutoff_wording = g.invalid.is_empty()
+            && r.norms.is_none()
+            && !g
+                .rows
+                .iter()
+                .any(|row| matches!(row, ResultRow::Sum { norm: Some(_), .. }));
+        table(
+            &mut d,
+            &rest,
+            cutoff_wording,
+            typical(r.norms.as_ref()),
+            r.colors.over,
+        );
     }
 
     let footer = match g.fields.iter().find(|f| f.id == "subject_id") {
@@ -197,6 +268,7 @@ struct Profile<'a> {
     typical: Option<&'a str>,
     /// Whether any row has a band or is over its cut-off, i.e. needs the „Einordnung“ column.
     classified: bool,
+    colors: Colors,
 }
 
 /// A profile row; `norm` is `None` when the raw score is below the table.
@@ -291,6 +363,7 @@ impl<'a> Profile<'a> {
             middle,
             typical,
             classified,
+            colors: r.colors,
         })
     }
 
@@ -364,7 +437,7 @@ impl<'a> Profile<'a> {
         let mut y = top;
         for (i, row) in rows.iter().enumerate() {
             if i % 2 == 1 {
-                ink(c, ROW);
+                ink(c, self.colors.row);
                 c.rect(M, H - y - row.h, W - 2.0 * M, row.h).fill_nonzero();
             }
             y += row.h;
@@ -376,7 +449,7 @@ impl<'a> Profile<'a> {
             let hi = mid[2].min(self.axis.hi);
             if lo <= hi {
                 c.save_state().set_parameters(Name(b"Shade"));
-                ink(c, ACCENT);
+                ink(c, self.colors.accent);
                 c.rect(
                     self.x(lo) - half,
                     H - bottom,
@@ -386,7 +459,7 @@ impl<'a> Profile<'a> {
                 .fill_nonzero();
                 c.restore_state();
             }
-            ink(c, ACCENT);
+            ink(c, self.colors.accent);
             for (v, s) in mid.iter().zip(["-s", "m", "+s"]) {
                 if (self.axis.lo..=self.axis.hi).contains(v) {
                     let x = self.x(*v) - width(s, Font::Bold, 8.0) / 2.0;
@@ -394,7 +467,15 @@ impl<'a> Profile<'a> {
                 }
             }
             if (self.axis.lo..=self.axis.hi).contains(&mid[1]) {
-                line(c, self.x(mid[1]), top, self.x(mid[1]), bottom, 0.8, ACCENT);
+                line(
+                    c,
+                    self.x(mid[1]),
+                    top,
+                    self.x(mid[1]),
+                    bottom,
+                    0.8,
+                    self.colors.accent,
+                );
             }
         }
 
@@ -473,7 +554,7 @@ impl<'a> Profile<'a> {
                 &format!("RW {}", number(m.value)),
             );
             let (font, color) = if m.over {
-                (Font::Bold, OVER)
+                (Font::Bold, self.colors.over)
             } else {
                 (Font::Regular, FG)
             };
@@ -492,14 +573,14 @@ impl<'a> Profile<'a> {
         }
 
         // The profile line, then the markers on top.
-        stroke(c, MUTED);
+        stroke(c, self.colors.line);
         c.set_line_width(1.2);
         for pair in points.windows(2) {
             if let [Some(a), Some(b)] = pair {
                 c.move_to(a.0, H - a.1).line_to(b.0, H - b.1).stroke();
             }
         }
-        ink(c, DANGER);
+        ink(c, self.colors.dot);
         stroke(c, WHITE);
         c.set_line_width(0.9);
         for &(x, y) in points.iter().flatten() {
@@ -516,9 +597,18 @@ const T_CUT: f32 = 385.0;
 const T_NORM: f32 = 440.0;
 const T_CLASS: f32 = 452.0;
 
-fn table(d: &mut Doc, rows: &[&ResultRow], typical: Option<&str>) {
+/// `cutoff_wording`: „Einordnung“ reads „auffällig“ or „unauffällig“ for every scale with a cut-off,
+/// as for a valid result of a definition without norms; otherwise it holds the norm band and
+/// „über Cut-off“, see [`class`].
+fn table(
+    d: &mut Doc,
+    rows: &[&ResultRow],
+    cutoff_wording: bool,
+    typical: Option<&str>,
+    over_color: u32,
+) {
     heading(d, "Ergebnisse");
-    let normed = rows
+    let norm_column = rows
         .iter()
         .any(|r| matches!(r, ResultRow::Sum { norm: Some(_), .. }));
     let header = |d: &mut Doc| {
@@ -528,7 +618,7 @@ fn table(d: &mut Doc, rows: &[&ResultRow], typical: Option<&str>) {
         text(c, M, y, Font::Bold, 8.0, "Skala");
         right(c, T_RAW, y, Font::Bold, 8.0, "Rohwert");
         right(c, T_CUT, y, Font::Bold, 8.0, "Cut-off");
-        if normed {
+        if norm_column {
             right(c, T_NORM, y, Font::Bold, 8.0, "Normwert");
         }
         text(c, T_CLASS, y, Font::Bold, 8.0, "Einordnung");
@@ -583,7 +673,7 @@ fn table(d: &mut Doc, rows: &[&ResultRow], typical: Option<&str>) {
                 10.0,
                 &cutoff.map_or("–".into(), |c| c.to_string()),
             );
-            if normed {
+            if norm_column {
                 right(
                     c,
                     T_NORM,
@@ -596,9 +686,13 @@ fn table(d: &mut Doc, rows: &[&ResultRow], typical: Option<&str>) {
                 );
             }
             let (font, color) = if *over {
-                (Font::Bold, OVER)
+                (Font::Bold, over_color)
             } else {
                 (Font::Regular, FG)
+            };
+            let class = match cutoff_wording {
+                true => cutoff_class(*cutoff, *over).into(),
+                false => class(norm.as_ref(), *over, typical),
             };
             ink(c, color);
             text(
@@ -607,12 +701,7 @@ fn table(d: &mut Doc, rows: &[&ResultRow], typical: Option<&str>) {
                 base,
                 font,
                 10.0,
-                &fit(
-                    &class(norm.as_ref(), *over, typical),
-                    font,
-                    10.0,
-                    W - M - T_CLASS,
-                ),
+                &fit(&class, font, 10.0, W - M - T_CLASS),
             );
             ink(c, FG);
         }
@@ -636,6 +725,15 @@ fn class(norm: Option<&NormValue>, over: bool, typical: Option<&str>) -> String 
         parts.push("über Cut-off".into());
     }
     parts.join(", ")
+}
+
+/// The „Einordnung“ of a scale without norms: only scales with a cut-off have one.
+fn cutoff_class(cutoff: Option<i64>, over: bool) -> &'static str {
+    match (cutoff, over) {
+        (None, _) => "",
+        (Some(_), true) => "auffällig",
+        (Some(_), false) => "unauffällig",
+    }
 }
 
 /// Label of the norm band that holds the scale mean, when the bands and the mean are known.
