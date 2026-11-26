@@ -1,3 +1,5 @@
+import type { PdfColors } from "./settings";
+
 // Mirrors of the Rust wire types (snake_case, Option -> null).
 export type FieldValue = boolean | number | string;
 export type KeyRef = string | number[];
@@ -52,7 +54,7 @@ export interface DefinitionEntry { file: string; hash: string; summary: Summary 
 export interface OpenedDefinition { file: string; hash: string; definition: Definition; locked: boolean }
 export interface Graded { grading: Grading; text: string }
 /** Input of the PDF report; `date` is shown as given. */
-export interface Report { title: string; date: string; grading: Grading; norms: Norms | null }
+export interface Report { title: string; date: string; grading: Grading; norms: Norms | null; colors?: PdfColors }
 export interface QRef { id: string; title: string; version: string; hash: string }
 export interface SavedRecord {
   format: number; subject_id: string; created_at: string;

@@ -95,7 +95,49 @@ fn srs(name: &str) -> String {
     render(name, &yaml, answers)
 }
 
+/// Like the MBAS: cut-offs, no norms. Two scales reach their cut-off exactly, one stays under it,
+/// one has none.
+fn cutoffs(name: &str, compare: &str) -> String {
+    let scales = [
+        ("A", "Unzufriedenheit mit der Figur", Some(4), 4),
+        ("B", "Unzufriedenheit mit dem Gewicht", Some(6), 6),
+        ("C", "Muskelbezogene Sorgen", Some(5), 2),
+        ("D", "Körperbezogene Gedanken", None, 5),
+    ];
+    let mut yaml = format!(
+        "schema: 1\nid: koerperbild\nversion: \"1\"\ntitle: Körperbild-Fragebogen (fiktiv)\n\
+         cutoff_compare: \"{compare}\"\n\
+         answer_sets: {{ stufen: [nie, selten, oft, immer] }}\n\
+         keys: {{ k: [0, 1, 2, 3] }}\ndefault_answers: stufen\n\
+         fields: [{{ id: subject_id, label: Kennung, type: text }}]\nscales:\n"
+    );
+    for (id, label, cutoff, _) in scales {
+        let cutoff = cutoff.map_or(String::new(), |c| format!(", cutoff: {c}"));
+        yaml += &format!("  - {{ id: {id}, label: \"{label}\"{cutoff} }}\n");
+    }
+    yaml += "sections:\n  - title: Fragen\n    items:\n";
+    let mut answers = Vec::new();
+    for (s, (id, _, _, raw)) in scales.iter().enumerate() {
+        for i in 0..3 {
+            let n = s * 3 + i + 1;
+            yaml += &format!("      - {{ n: {n}, scale: {id}, key: k, text: \"Frage\" }}\n");
+            answers.push((n.to_string(), (raw - 3 * i as i64).clamp(0, 3) as usize));
+        }
+    }
+    yaml += "result: [A, B, C, D]\n";
+    render(name, &yaml, answers)
+}
+
 fn render(name: &str, yaml: &str, answers: Vec<(String, usize)>) -> String {
+    render_with(name, yaml, answers, serde_json::Value::Null)
+}
+
+fn render_with(
+    name: &str,
+    yaml: &str,
+    answers: Vec<(String, usize)>,
+    colors: serde_json::Value,
+) -> String {
     let q = kreuzchen_engine::load(yaml).unwrap();
     let input = Input {
         fields: BTreeMap::from([(
@@ -110,6 +152,7 @@ fn render(name: &str, yaml: &str, answers: Vec<(String, usize)>) -> String {
         "date": "17.11.2026 14:30",
         "grading": q.grade(&input).unwrap(),
         "norms": q.def.norms,
+        "colors": colors,
     }))
     .unwrap();
     let bytes = pdf(&report);
@@ -121,6 +164,12 @@ fn render(name: &str, yaml: &str, answers: Vec<(String, usize)>) -> String {
     assert!(bytes.starts_with(b"%PDF-"));
     // Content streams are uncompressed, so shown strings are plain in the file.
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// How often `pdf` shows exactly the string `s`, as a whole shown string.
+fn count(pdf: &str, s: &str) -> usize {
+    let hex: String = s.chars().map(|c| format!("{:02X}", c as u32)).collect();
+    pdf.matches(&format!("({s}) Tj")).count() + pdf.matches(&format!("<{hex}> Tj")).count()
 }
 
 /// Whether `pdf` shows `s`: as is, or hex-encoded when the string has non-ASCII bytes.
@@ -241,4 +290,61 @@ fn invalid_result_names_why_and_has_no_verdict_or_profile() {
     assert!(pdf.contains("(10) Tj"));
     assert!(!shows(&pdf, "über Cut-off"));
     assert!(pdf.contains("(Ergebnisse)"));
+}
+
+#[test]
+fn cutoff_scales_without_norms_read_auffaellig_or_unauffaellig() {
+    // Two scores equal their cut-off: „auffällig“ with `>=`, not with `>`.
+    for (name, compare, auffaellig, unauffaellig) in [
+        ("koerperbild_ge", ">=", 2, 1),
+        ("koerperbild_gt", ">", 0, 3),
+    ] {
+        let pdf = cutoffs(name, compare);
+        assert_eq!(count(&pdf, "auffällig"), auffaellig, "{compare}");
+        assert_eq!(count(&pdf, "unauffällig"), unauffaellig, "{compare}");
+        // Three of the four scales have a cut-off; the wording for normed scales stays out.
+        assert!(!shows(&pdf, "über Cut-off"));
+    }
+    // An invalid result has no Einordnung at all.
+    let yaml = fs::read_to_string("../examples/definitions/beispiel.yaml")
+        .unwrap()
+        .replacen("min_app: \"0.5.0\"", "min_app: \"0.7.0\"", 1)
+        .replacen(
+            "verdict:\n",
+            "validity:\n  - { require: missing == 0, invalid: \"Unvollständig.\" }\nverdict:\n",
+            1,
+        );
+    let answers = [("1", 3), ("2", 0), ("3", 3)].map(|(k, v)| (k.to_string(), v));
+    let pdf = render("beispiel_ungueltig", &yaml, answers.to_vec());
+    assert!(pdf.contains("(NICHT AUSWERTBAR)"));
+    assert_eq!(count(&pdf, "auffällig") + count(&pdf, "unauffällig"), 0);
+}
+
+#[test]
+fn chosen_colours_reach_the_pdf_and_bad_ones_fall_back() {
+    let yaml = fs::read_to_string("../examples/definitions/beispiel_normen.yaml").unwrap();
+    let answers = || {
+        [("1", 3), ("2", 0), ("3", 2), ("4", 1), ("5", 1)]
+            .map(|(k, v)| (k.to_string(), v))
+            .to_vec()
+    };
+    let default = render("farben_standard", &yaml, answers());
+    let custom = render_with(
+        "farben",
+        &yaml,
+        answers(),
+        serde_json::json!({ "accent": "#00FF00", "dot": "#ff00ff", "line": "#0000ff", "row": "#ffff00", "over": 7 }),
+    );
+    for rgb in ["0 1 0 rg", "1 0 1 rg", "0 0 1 RG", "1 1 0 rg"] {
+        assert!(custom.contains(rgb), "{rgb}");
+        assert!(!default.contains(rgb), "{rgb}");
+    }
+    // Malformed values keep the default colours.
+    let bad = render_with(
+        "farben_falsch",
+        &yaml,
+        answers(),
+        serde_json::json!({ "accent": "lime", "dot": "#ff00f", "line": "#0000fg", "row": null }),
+    );
+    assert_eq!(bad, default);
 }
