@@ -32,7 +32,7 @@ fn setup() -> tempfile::TempDir {
 }
 
 fn app(dir: &Path) -> Router {
-    router(load(dir).unwrap(), Some(TOKEN), None)
+    router(load(dir).unwrap(), Some(TOKEN), None, Default::default())
 }
 
 fn basic(user: &str) -> String {
@@ -188,7 +188,10 @@ async fn practices_see_only_their_own_tickets_without_note() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0]["id"], 1);
     assert!(!body.contains("intern"), "{body}");
-    assert!(list[0].get("message").is_none() && list[0].get("reply_email").is_none());
+    // Its own text and thread, but not the reply email or the internal note.
+    assert_eq!(list[0]["message"], "Die Summe stimmt nicht.");
+    assert_eq!(list[0]["replies"], json!([]));
+    assert!(list[0].get("reply_email").is_none() && list[0].get("admin_note").is_none());
 }
 
 #[tokio::test]
@@ -361,4 +364,171 @@ async fn admin_updates_status_and_note_and_filters() {
             .0,
         StatusCode::BAD_REQUEST
     );
+}
+
+async fn reply(app: &Router, auth: &str, id: u64, message: &str) -> (StatusCode, String) {
+    let uri = if auth.starts_with("Bearer") {
+        format!("/admin/api/tickets/{id}/replies")
+    } else {
+        format!("/v1/tickets/{id}/replies")
+    };
+    let body = json!({ "message": message }).to_string();
+    call(app, "POST", &uri, auth, body).await
+}
+
+async fn own_list(app: &Router, user: &str) -> Vec<Value> {
+    let (s, body) = call(app, "GET", "/v1/tickets", &basic(user), "").await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    serde_json::from_str(&body).unwrap()
+}
+
+#[tokio::test]
+async fn thread_persists_and_practice_reply_reopens() {
+    let dir = setup();
+    let a = app(dir.path());
+    send(&a, "practice_a", &ticket()).await;
+
+    let (s, body) = reply(&a, &bearer(), 1, " Bitte Version prüfen. ").await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    let t: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(t["replies"][0]["author"], "admin");
+    assert_eq!(t["replies"][0]["message"], "Bitte Version prüfen.");
+    call(
+        &a,
+        "PATCH",
+        "/admin/api/tickets/1",
+        &bearer(),
+        r#"{"status":"done"}"#,
+    )
+    .await;
+
+    // An admin reply leaves the status alone; a practice reply re-opens a done ticket.
+    reply(&a, &bearer(), 1, "Nachtrag").await;
+    assert_eq!(admin_list(&a, "").await[0]["status"], "done");
+    let (s, body) = reply(&a, &basic("practice_a"), 1, "Ist 0.7.0").await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    let t: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(t["status"], "open");
+    assert!(t.get("admin_note").is_none() && t.get("reply_email").is_none());
+
+    // A fresh server sees the whole thread, oldest first, numbered within the ticket.
+    let b = app(dir.path());
+    let mine = own_list(&b, "practice_a").await;
+    let replies = mine[0]["replies"].as_array().unwrap();
+    let summary: Vec<_> = replies
+        .iter()
+        .map(|r| (r["id"].as_u64().unwrap(), r["author"].as_str().unwrap()))
+        .collect();
+    assert_eq!(summary, [(1, "admin"), (2, "admin"), (3, "practice")]);
+    assert!(replies[2]["created_at"].as_str().unwrap().ends_with('Z'));
+    assert_eq!(
+        admin_list(&b, "").await[0]["replies"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+}
+
+#[tokio::test]
+async fn replies_only_on_own_tickets_with_limits() {
+    let dir = setup();
+    let a = app(dir.path());
+    send(&a, "practice_a", &ticket()).await;
+    let before = fs::read_to_string(dir.path().join("tickets/000001.json")).unwrap();
+
+    // Someone else's ticket and a missing one look the same.
+    assert_eq!(
+        reply(&a, &basic("practice_b"), 1, "fremd").await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        reply(&a, &basic("practice_a"), 99, "x").await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(reply(&a, &bearer(), 99, "x").await.0, StatusCode::NOT_FOUND);
+    for (m, want) in [
+        ("  ", StatusCode::BAD_REQUEST),
+        (&*"x".repeat(10_001), StatusCode::BAD_REQUEST),
+    ] {
+        let (s, body) = reply(&a, &basic("practice_a"), 1, m).await;
+        assert_eq!(s, want);
+        assert!(!body.contains("xxxxxxxx"), "error echoes content: {body}");
+        assert_eq!(reply(&a, &bearer(), 1, m).await.0, want);
+    }
+    let big = json!({ "message": "x".repeat(MAX_TICKET) }).to_string();
+    let uri = "/v1/tickets/1/replies";
+    assert_eq!(
+        call(&a, "POST", uri, &basic("practice_a"), big).await.0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    let extra = json!({ "message": "m", "author": "admin" }).to_string();
+    assert_eq!(
+        call(&a, "POST", uri, &basic("practice_a"), extra).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("tickets/000001.json")).unwrap(),
+        before
+    );
+
+    // Its own hourly budget, separate from new tickets; admins are not limited.
+    for _ in 0..TICKETS_PER_HOUR {
+        assert_eq!(
+            reply(&a, &basic("practice_a"), 1, "m").await.0,
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        reply(&a, &basic("practice_a"), 1, "m").await.0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        send(&a, "practice_a", &ticket()).await.0,
+        StatusCode::CREATED
+    );
+    assert_eq!(reply(&a, &bearer(), 1, "admin").await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn reply_credentials_stay_on_their_side() {
+    let dir = setup();
+    let a = app(dir.path());
+    send(&a, "practice_a", &ticket()).await;
+    let body = || json!({ "message": "m" }).to_string();
+    for (uri, auth) in [
+        ("/v1/tickets/1/replies", bearer()),
+        ("/v1/tickets/1/replies", String::new()),
+        ("/admin/api/tickets/1/replies", basic("practice_a")),
+        ("/admin/api/tickets/1/replies", String::new()),
+        ("/admin/api/notify", basic("practice_a")),
+        ("/admin/api/notify/test", basic("practice_a")),
+    ] {
+        assert_eq!(
+            call(&a, "POST", uri, &auth, body()).await.0,
+            StatusCode::UNAUTHORIZED,
+            "{uri} {auth}"
+        );
+    }
+    assert!(admin_list(&a, "").await[0]["replies"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn tickets_from_before_replies_still_load() {
+    let dir = setup();
+    fs::create_dir(dir.path().join("tickets")).unwrap();
+    let old = json!({"id": 7, "created_at": "2026-11-20T10:00:00Z", "practice": "practice_a", "type": "bug",
+        "subject": "s", "message": "m", "reply_email": null, "questionnaire": null, "app_version": "0.7.0",
+        "os": "linux", "status": "done", "admin_note": ""});
+    fs::write(dir.path().join("tickets/000007.json"), old.to_string()).unwrap();
+    let a = app(dir.path());
+    assert_eq!(own_list(&a, "practice_a").await[0]["replies"], json!([]));
+    assert_eq!(
+        reply(&a, &basic("practice_a"), 7, "noch da?").await.0,
+        StatusCode::OK
+    );
+    assert_eq!(admin_list(&a, "").await[0]["status"], "open");
 }

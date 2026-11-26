@@ -15,8 +15,9 @@ use tokio::sync::Mutex;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::config::{load, parse_entry, write_atomic, write_config};
+use crate::notify::Notifier;
 use crate::sync::Sync;
-use crate::tickets::{Patch, Status, Ticket, Tickets};
+use crate::tickets::{NewReply, Patch, Status, Ticket, Tickets};
 use crate::{new_key, Entry, Practice, Registry};
 
 /// Largest accepted questionnaire upload.
@@ -32,6 +33,7 @@ pub(crate) struct AdminState {
     /// `Some` with a `type: github` source: the files are read-only here, the repo is the truth.
     pub sync: Option<Arc<Sync>>,
     pub tickets: Arc<Tickets>,
+    pub notify: Arc<Notifier>,
 }
 
 type Fail = (StatusCode, String);
@@ -47,6 +49,9 @@ pub(crate) fn router(st: AdminState) -> Router {
         .route("/sync", get(sync_status).post(sync_now))
         .route("/tickets", get(list_tickets))
         .route("/tickets/{id}", patch(update_ticket))
+        .route("/tickets/{id}/replies", post(reply_ticket))
+        .route("/notify", get(notify_status))
+        .route("/notify/test", post(notify_test))
         .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
         .layer(from_fn_with_state(st.clone(), auth))
@@ -393,4 +398,33 @@ async fn update_ticket(
     Json(p): Json<Patch>,
 ) -> Result<Json<Ticket>, Fail> {
     Ok(Json(st.tickets.update(id, p).await?))
+}
+
+/// Admin replies never notify and leave the status alone.
+async fn reply_ticket(
+    State(st): State<AdminState>,
+    Path(id): Path<u64>,
+    Json(r): Json<NewReply>,
+) -> Result<Json<Ticket>, Fail> {
+    Ok(Json(st.tickets.reply(id, None, r).await?))
+}
+
+async fn notify_status(State(st): State<AdminState>) -> Json<serde_json::Value> {
+    Json(st.notify.status_json())
+}
+
+/// One test message per configured channel: `{"results": [{channel, ok, error}…]}`.
+async fn notify_test(State(st): State<AdminState>) -> Result<Json<serde_json::Value>, Fail> {
+    let results = st.notify.test().await;
+    if results.is_empty() {
+        return Err((
+            StatusCode::CONFLICT,
+            "Keine Benachrichtigungskanäle eingerichtet".into(),
+        ));
+    }
+    let results: Vec<_> = results
+        .into_iter()
+        .map(|(ch, err)| json!({"channel": ch.name(), "ok": err.is_none(), "error": err}))
+        .collect();
+    Ok(Json(json!({ "results": results })))
 }

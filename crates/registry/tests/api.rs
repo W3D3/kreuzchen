@@ -37,7 +37,7 @@ fn app() -> (Router, tempfile::TempDir) {
         .unwrap();
     }
     let reg = load(dir.path()).unwrap();
-    (router(reg, None, None), dir)
+    (router(reg, None, None, Default::default()), dir)
 }
 
 fn basic(user: &str, key: &str) -> String {

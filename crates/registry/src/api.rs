@@ -14,8 +14,9 @@ use tokio::sync::{Mutex, Semaphore};
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::admin::{self, AdminState};
+use crate::notify::{Event, Notifier, Notify};
 use crate::sync::Sync;
-use crate::tickets::{self, NewTicket, Tickets};
+use crate::tickets::{self, NewReply, NewTicket, Ticket, Tickets};
 use crate::{Practice, Registry, Source};
 
 #[derive(Clone)]
@@ -27,14 +28,21 @@ struct AppState {
     /// Bounds concurrent argon2 verifications (memory-hard).
     verify_slots: Arc<Semaphore>,
     tickets: Arc<Tickets>,
+    notify: Arc<Notifier>,
 }
 
 /// `admin_token`: `None` (or empty) leaves every `/admin` route unmounted, so they answer 404.
 /// With a `type: github` source this also starts the sync loop (needs a Tokio runtime); `github_token`
-/// is optional for public repos.
-pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&str>) -> Router {
+/// is optional for public repos. `notify` sends new tickets and practice replies to its channels.
+pub fn router(
+    reg: Registry,
+    admin_token: Option<&str>,
+    github_token: Option<&str>,
+    notify: Notify,
+) -> Router {
     let source = reg.source.clone();
     let tickets = Arc::new(Tickets::new(&reg.dir));
+    let notify = Arc::new(Notifier::new(notify));
     let reg = Arc::new(RwLock::new(Arc::new(reg)));
     let write = Arc::new(Mutex::new(()));
     let sync = match source {
@@ -54,6 +62,7 @@ pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&st
         dummy_hash: dummy_hash.into(),
         verify_slots: Arc::new(Semaphore::new(4)),
         tickets: tickets.clone(),
+        notify: notify.clone(),
     };
     let v1 = Router::new()
         .route("/questionnaires", get(list))
@@ -63,6 +72,10 @@ pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&st
             post(create_ticket)
                 .get(own_tickets)
                 .layer(DefaultBodyLimit::max(tickets::MAX_BODY)),
+        )
+        .route(
+            "/tickets/{id}/replies",
+            post(reply_ticket).layer(DefaultBodyLimit::max(tickets::MAX_BODY)),
         )
         // shortcut: the 0.4.0 app's paths; remove once no 0.4.0 clients are left.
         .route("/fragebogen", get(list))
@@ -82,6 +95,7 @@ pub fn router(reg: Registry, admin_token: Option<&str>, github_token: Option<&st
                 write,
                 sync,
                 tickets,
+                notify,
             }),
         );
     }
@@ -177,10 +191,17 @@ async fn create_ticket(
     Json(new): Json<NewTicket>,
 ) -> Result<Response, tickets::Fail> {
     let t = st.tickets.create(&p.user, new).await?;
+    st.notify.ticket(Event::NewTicket, &t);
     Ok((StatusCode::CREATED, Json(json!({"id": t.id}))).into_response())
 }
 
-/// The practice's own tickets, without the admins' note.
+/// A ticket as its practice sees it: its own text and the thread, without the admins' note.
+fn own_view(t: Ticket) -> serde_json::Value {
+    json!({"id": t.id, "created_at": t.created_at, "type": t.kind, "subject": t.subject,
+           "message": t.message, "questionnaire": t.questionnaire, "status": t.status,
+           "replies": t.replies})
+}
+
 async fn own_tickets(
     State(st): State<AppState>,
     Extension(p): Extension<Practice>,
@@ -191,10 +212,19 @@ async fn own_tickets(
             .await?
             .into_iter()
             .filter(|t| t.practice == p.user)
-            .map(|t| {
-                json!({"id": t.id, "created_at": t.created_at, "type": t.kind, "subject": t.subject,
-                       "questionnaire": t.questionnaire, "status": t.status})
-            })
+            .map(own_view)
             .collect(),
     ))
+}
+
+/// Only on the practice's own tickets; re-opens a done one.
+async fn reply_ticket(
+    State(st): State<AppState>,
+    Extension(p): Extension<Practice>,
+    Path(id): Path<u64>,
+    Json(new): Json<NewReply>,
+) -> Result<Json<serde_json::Value>, tickets::Fail> {
+    let t = st.tickets.reply(id, Some(&p.user), new).await?;
+    st.notify.ticket(Event::NewReply, &t);
+    Ok(Json(own_view(t)))
 }

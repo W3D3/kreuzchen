@@ -85,6 +85,7 @@ pub fn run() {
             commands::registry_remove,
             commands::send_ticket,
             commands::list_tickets,
+            commands::reply_ticket,
             commands::migration_problems,
         ])
         .setup(|app| {
