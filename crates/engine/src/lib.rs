@@ -80,6 +80,16 @@ pub fn to_yaml(def: &Definition) -> String {
     serde_norway::to_string(&v).expect("value serializes")
 }
 
+/// Raises `def.min_app` to the app version its expressions need, never lowering it: the form
+/// editor has no field for it, so saving from the form keeps older apps asking for an update.
+pub fn raise_min_app(def: &mut Definition) {
+    if let Some(need) = validate::required_app(def) {
+        if def.min_app.as_deref().and_then(app_version) < app_version(need) {
+            def.min_app = Some(need.into());
+        }
+    }
+}
+
 /// Parses and validates a definition, collecting every error.
 pub fn load(yaml: &str) -> Result<Questionnaire, Vec<LoadError>> {
     validate::validate(parse_definition(yaml).map_err(|e| vec![e])?)

@@ -151,6 +151,39 @@ fn valid_name(n: &str) -> bool {
         && !["and", "or", "not", "true", "false", "missing"].contains(&n)
 }
 
+/// The app version `def`'s expressions need when it is newer than 0.5.0. Before 0.6.0 derived
+/// values saw only scales and earlier derived values, and there was no `count`: such a file must
+/// say so, or older apps reject it instead of asking for an update. Unparsable expressions are
+/// skipped; validation reports them.
+pub(crate) fn required_app(def: &Definition) -> Option<&'static str> {
+    let items = def.sections.iter().flat_map(|s| &s.items);
+    let late: BTreeSet<&str> = (def.fields.iter().map(|f| f.id.as_str()))
+        .chain(items.filter_map(|i| i.id.as_deref()))
+        .chain(["missing"])
+        .collect();
+    let reads_late = |e: &Expr| {
+        expr::names(e)
+            .iter()
+            .any(|n| late.contains(n.split('.').next().unwrap_or_default()))
+    };
+    let parsed = |src: &String| expr::parse(src).ok();
+    let derived: Vec<Expr> = def
+        .derived
+        .iter()
+        .filter_map(|d| parsed(&d.value))
+        .collect();
+    let mut others = (def.rules.iter().map(|r| &r.when))
+        .chain(def.caveats.iter().map(|c| &c.when))
+        .chain(def.verdict.iter().filter_map(|v| match v {
+            VerdictEntry::When { when, .. } => Some(when),
+            VerdictEntry::Else { .. } => None,
+        }))
+        .filter_map(parsed);
+    let new_language = derived.iter().any(|e| reads_late(e) || expr::counts(e))
+        || others.any(|e| expr::counts(&e));
+    new_language.then_some("0.6.0")
+}
+
 pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>> {
     let mut errors = Vec::new();
     if def.schema != 1 {
@@ -328,31 +361,12 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
         }
     }
 
-    // Before 0.6.0 derived values saw only scales and earlier derived values, and there was no
-    // `count`: such a file must say so, or older apps reject it instead of asking for an update.
-    let late: BTreeSet<&str> = def
-        .fields
-        .iter()
-        .map(|f| f.id.as_str())
-        .chain(items.iter().filter_map(|(_, i)| i.id.as_deref()))
-        .chain(["missing"])
-        .collect();
-    let reads_late = |e: &Expr| {
-        expr::names(e)
-            .iter()
-            .any(|n| late.contains(n.split('.').next().unwrap_or_default()))
-    };
-    let mut exprs = (derived.iter().map(|(_, e)| e))
-        .chain(rules.iter().map(|(_, e)| e))
-        .chain(caveats.iter().map(|(_, e)| e))
-        .chain(verdict.iter().filter_map(|(e, _)| e.as_ref()));
-    let new_language = derived.iter().any(|(_, e)| reads_late(e)) || exprs.any(expr::counts);
-    let min_app = def.min_app.as_deref().and_then(crate::app_version);
-    if new_language && min_app.is_none_or(|v| v < vec![0, 6, 0]) {
-        errors.push(err(
-            "count(…) und Felder, Fragen oder „missing“ in abgeleiteten Werten brauchen min_app: \"0.6.0\""
-                .to_string(),
-        ));
+    if let Some(need) = required_app(&def) {
+        if def.min_app.as_deref().and_then(crate::app_version) < crate::app_version(need) {
+            errors.push(err(format!(
+                "count(…) und Felder, Fragen oder „missing“ in abgeleiteten Werten brauchen min_app: \"{need}\""
+            )));
+        }
     }
 
     // Result entries: scale, derived or item id.

@@ -316,7 +316,7 @@
       {/each}
       {@render add("Abgeleiteter Wert", () => d.derived.push({ id: "", label: "", value: "", cutoff: null }))}
     {/snippet}
-    {@render card("derived", "Abgeleitete Werte", "Formeln über Skalen, Felder und Fragen, z. B. A + B. count(Bedingung, …) zählt, wie viele Bedingungen zutreffen, z. B. count(f1 == \"Ja\", f2 == \"Ja\") (braucht min_app 0.6.0).", derived)}
+    {@render card("derived", "Abgeleitete Werte", "Formeln über Skalen, Felder und Fragen, z. B. A + B. count(Bedingung, …) zählt, wie viele Bedingungen zutreffen, z. B. count(f1 == \"Ja\", f2 == \"Ja\") (braucht Kreuzchen 0.6.0; beim Speichern wird min_app automatisch gesetzt).", derived)}
 
     <Card.Root class="gap-3" role="group" aria-labelledby="ed-sections">
       <Card.Header><Card.Title id="ed-sections" class="text-[17px] font-bold">Abschnitte und Fragen</Card.Title></Card.Header>
