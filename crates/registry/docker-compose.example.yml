@@ -13,6 +13,14 @@ services:
       # Only for a `type: github` source in config.yaml: a fine-grained token for the (private!)
       # questionnaire repo with Contents: read-only. Optional for a public repo.
       KREUZCHEN_GITHUB_TOKEN: ${KREUZCHEN_GITHUB_TOKEN:-}
+      # Optional notifications about new tickets and practice replies (metadata and a link only,
+      # never the message). Each channel is independent; leave unused ones empty. Secrets: keep
+      # them in the .env file. See DEVELOPMENT.md → Notifications for the setup.
+      KREUZCHEN_PUBLIC_URL: ${KREUZCHEN_PUBLIC_URL:-}
+      KREUZCHEN_DISCORD_WEBHOOK_URL: ${KREUZCHEN_DISCORD_WEBHOOK_URL:-}
+      KREUZCHEN_TELEGRAM_BOT_TOKEN: ${KREUZCHEN_TELEGRAM_BOT_TOKEN:-}
+      KREUZCHEN_TELEGRAM_CHAT_ID: ${KREUZCHEN_TELEGRAM_CHAT_ID:-}
+      KREUZCHEN_NOTIFY_WEBHOOK_URL: ${KREUZCHEN_NOTIFY_WEBHOOK_URL:-}
     volumes:
       # Writable so admin changes and GitHub syncs can be saved; the directory must belong to
       # uid 65532 (`sudo chown -R 65532:65532 ./example`). Append :ro to keep it read-only
