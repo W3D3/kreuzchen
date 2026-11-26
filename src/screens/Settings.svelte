@@ -6,12 +6,13 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { getVersion } from "@tauri-apps/api/app";
   import Download from "@lucide/svelte/icons/download";
+  import LifeBuoy from "@lucide/svelte/icons/life-buoy";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { autoSaveResult } from "../lib/settings";
   import { loadTheme, saveTheme, type Theme } from "../lib/theme";
   import { findUpdate, updates } from "../lib/updates.svelte";
 
-  let { oninstall }: { oninstall: () => void } = $props();
+  let { oninstall, onsupport }: { oninstall: () => void; onsupport: () => void } = $props();
   let version = $state<string | null>(null);
   getVersion().then((v) => (version = v), () => {});
 
@@ -75,6 +76,14 @@
         {/if}
       </div>
       {#if updates.error}<p role="alert" class="text-destructive">{updates.error}</p>{/if}
+    </Card.Content>
+  </Card.Root>
+
+  <Card.Root class="gap-4">
+    <Card.Header><Card.Title class="text-[17px] font-bold">Support & Feedback</Card.Title></Card.Header>
+    <Card.Content class="flex flex-col gap-3 text-[15px]">
+      <p>Frage stellen, Fehler melden oder Wünsche schicken – über den verbundenen Bibliotheksserver.</p>
+      <div><Button variant="outline" class="h-10 px-4" onclick={onsupport}><LifeBuoy />Support & Feedback öffnen</Button></div>
     </Card.Content>
   </Card.Root>
 </div>

@@ -1,7 +1,7 @@
 use crate::{
     Paths,
     definitions::{DefinitionEntry, YAML, check_name, load_file, scan},
-    store::write_atomic,
+    store::{QRef, write_atomic},
 };
 use kreuzchen_engine::hash;
 use reqwest::{StatusCode, Url};
@@ -12,6 +12,9 @@ const UNREACHABLE: &str = "Bibliotheksserver nicht erreichbar";
 const WRONG_KEY: &str = "Benutzername oder Schlüssel falsch";
 const BAD_URL: &str = "Ungültige Adresse";
 const FILE: &str = "registry.json";
+const OLD_SERVER: &str =
+    "Der Bibliotheksserver unterstützt noch kein Feedback – bitte Server aktualisieren.";
+const INVALID_ANSWER: &str = "Antwort des Bibliotheksservers ist ungültig";
 
 #[derive(Serialize, Deserialize)]
 pub struct Connection {
@@ -236,7 +239,7 @@ pub async fn try_fetch_list(c: &Connection) -> Result<Option<Vec<RemoteEntry>>, 
     };
     serde_json::from_slice(&body)
         .map(Some)
-        .map_err(|_| "Antwort des Bibliotheksservers ist ungültig".to_string())
+        .map_err(|_| INVALID_ANSWER.to_string())
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -310,6 +313,112 @@ pub async fn install(
             .map_err(|e| format!("Löschen fehlgeschlagen: {e}"))?;
     }
     Ok(InstallOutcome::Installed)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TicketKind {
+    Question,
+    Bug,
+    Feedback,
+    Wish,
+}
+
+/// What the user typed into the support form.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TicketForm {
+    #[serde(rename = "type")]
+    pub kind: TicketKind,
+    pub subject: String,
+    pub message: String,
+    pub reply_email: Option<String>,
+}
+
+/// The whole request body. Privacy rule: the form plus metadata, and nothing that could carry
+/// answers, results, drafts or a subject id.
+#[derive(Serialize, Debug)]
+pub struct NewTicket<'a> {
+    #[serde(flatten)]
+    pub form: &'a TicketForm,
+    pub questionnaire: Option<&'a QRef>,
+    pub app_version: &'a str,
+    pub os: &'a str,
+}
+
+/// A practice's own ticket as the server lists it.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct TicketSummary {
+    pub id: u64,
+    pub created_at: String,
+    #[serde(rename = "type")]
+    pub kind: TicketKind,
+    pub subject: String,
+    pub questionnaire: Option<QRef>,
+    pub status: String,
+}
+
+/// German message for a failed ticket request; old servers lack the route (404, 405 behind proxies).
+fn ticket_error(status: StatusCode, body: &[u8]) -> String {
+    match status {
+        StatusCode::UNAUTHORIZED => WRONG_KEY.into(),
+        StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED => OLD_SERVER.into(),
+        StatusCode::TOO_MANY_REQUESTS => {
+            "Zu viele Anfragen in kurzer Zeit – bitte später erneut senden.".into()
+        }
+        StatusCode::PAYLOAD_TOO_LARGE => "Die Nachricht ist zu lang.".into(),
+        StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => format!(
+            "Der Bibliotheksserver hat die Anfrage abgelehnt: {}",
+            String::from_utf8_lossy(body).trim()
+        ),
+        s => format!("Fehler des Bibliotheksservers: {s}"),
+    }
+}
+
+/// `<url>/v1/tickets` with Basic auth, optionally with a JSON body; the response body on success.
+async fn tickets_request(c: &Connection, body: Option<Vec<u8>>) -> Result<Vec<u8>, String> {
+    let mut url = Url::parse(&c.url).map_err(|_| BAD_URL.to_string())?;
+    url.path_segments_mut()
+        .map_err(|()| BAD_URL.to_string())?
+        .pop_if_empty()
+        .extend(["v1", "tickets"]);
+    let req = match body {
+        Some(b) => client()
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(b),
+        None => client().get(url),
+    };
+    let resp = req
+        .basic_auth(&c.user, Some(&c.key))
+        .send()
+        .await
+        .map_err(|_| UNREACHABLE.to_string())?;
+    let status = resp.status();
+    let bytes = resp.bytes().await.map_err(|_| UNREACHABLE.to_string())?;
+    if status.is_success() {
+        Ok(bytes.to_vec())
+    } else {
+        Err(ticket_error(status, &bytes))
+    }
+}
+
+/// Sends the ticket; its number on success.
+pub async fn send_ticket(c: &Connection, t: &NewTicket<'_>) -> Result<u64, String> {
+    #[derive(Deserialize)]
+    struct Created {
+        id: u64,
+    }
+    let body = serde_json::to_vec(t).map_err(|e| e.to_string())?;
+    let resp = tickets_request(c, Some(body)).await?;
+    serde_json::from_slice::<Created>(&resp)
+        .map(|c| c.id)
+        .map_err(|_| INVALID_ANSWER.into())
+}
+
+pub async fn list_tickets(c: &Connection) -> Result<Vec<TicketSummary>, String> {
+    let resp = tickets_request(c, None).await?;
+    serde_json::from_slice(&resp).map_err(|_| INVALID_ANSWER.into())
 }
 
 #[cfg(test)]
@@ -664,5 +773,116 @@ mod tests {
         let got = fetch_list(&conn(&format!("http://127.0.0.1:{port}"), "x")).await;
         assert_eq!(got, Err(UNREACHABLE.into()));
         assert!(start.elapsed() < Duration::from_secs(11));
+    }
+
+    fn form() -> TicketForm {
+        TicketForm {
+            kind: TicketKind::Bug,
+            subject: "Summe falsch".into(),
+            message: "Skala A zählt Frage 3 doppelt.".into(),
+            reply_email: Some("praxis@example.org".into()),
+        }
+    }
+
+    fn qref() -> QRef {
+        QRef {
+            id: "questionnaire_a".into(),
+            title: "A".into(),
+            version: "1".into(),
+            hash: "h".into(),
+        }
+    }
+
+    #[test]
+    fn ticket_body_has_only_form_and_metadata() {
+        let (f, q) = (form(), qref());
+        let t = NewTicket {
+            form: &f,
+            questionnaire: Some(&q),
+            app_version: "0.7.0",
+            os: "linux",
+        };
+        let v = serde_json::to_value(&t).unwrap();
+        let mut keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            [
+                "app_version",
+                "message",
+                "os",
+                "questionnaire",
+                "reply_email",
+                "subject",
+                "type"
+            ]
+        );
+        let mut qkeys: Vec<_> = v["questionnaire"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        qkeys.sort();
+        assert_eq!(qkeys, ["hash", "id", "title", "version"]);
+        assert_eq!(v["type"], "bug");
+        // The form rejects anything the UI might try to add.
+        let extra =
+            r#"{"type":"bug","subject":"s","message":"m","reply_email":null,"subject_id":"K-1"}"#;
+        assert!(serde_json::from_str::<TicketForm>(extra).is_err());
+    }
+
+    #[test]
+    fn ticket_errors_in_german() {
+        assert_eq!(ticket_error(StatusCode::NOT_FOUND, b""), OLD_SERVER);
+        assert_eq!(
+            ticket_error(StatusCode::METHOD_NOT_ALLOWED, b""),
+            OLD_SERVER
+        );
+        assert_eq!(ticket_error(StatusCode::UNAUTHORIZED, b""), WRONG_KEY);
+        assert!(ticket_error(StatusCode::TOO_MANY_REQUESTS, b"").contains("später"));
+        assert!(ticket_error(StatusCode::BAD_REQUEST, b"subject: 1-200").contains("subject"));
+    }
+
+    #[tokio::test]
+    async fn tickets_end_to_end() {
+        let (url, dir) = registry().await;
+        let (f, q) = (form(), qref());
+        let t = NewTicket {
+            form: &f,
+            questionnaire: Some(&q),
+            app_version: "0.7.0",
+            os: "linux",
+        };
+        let c = conn(&url, "secret");
+        assert_eq!(send_ticket(&c, &t).await, Ok(1));
+        let stored = fs::read_to_string(dir.path().join("tickets/000001.json")).unwrap();
+        assert!(stored.contains("Skala A zählt Frage 3 doppelt."));
+        let list = list_tickets(&c).await.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!((list[0].id, list[0].status.as_str()), (1, "open"));
+        assert_eq!(list[0].questionnaire.as_ref(), Some(&q));
+
+        assert_eq!(
+            send_ticket(&conn(&url, "wrong"), &t).await,
+            Err(WRONG_KEY.into())
+        );
+        // A 0.4.0 server answers 404 for every unknown /v1 path after auth.
+        let old = serve(axum::Router::new().fallback(|| async { StatusCode::NOT_FOUND })).await;
+        assert_eq!(
+            send_ticket(&conn(&old, "secret"), &t).await,
+            Err(OLD_SERVER.into())
+        );
+        assert_eq!(
+            list_tickets(&conn(&old, "secret")).await,
+            Err(OLD_SERVER.into())
+        );
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let offline = conn(&format!("http://127.0.0.1:{port}"), "secret");
+        assert_eq!(send_ticket(&offline, &t).await, Err(UNREACHABLE.into()));
     }
 }

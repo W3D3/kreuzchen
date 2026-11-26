@@ -7,6 +7,7 @@
   import Editor from "./screens/Editor.svelte";
   import Registry from "./screens/Registry.svelte";
   import Settings from "./screens/Settings.svelte";
+  import Support from "./screens/Support.svelte";
   import Download from "@lucide/svelte/icons/download";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { confirm } from "$lib/components/confirm.svelte";
@@ -19,7 +20,7 @@
   import { isDirty, type Doc } from "./lib/editor";
   import { initialInput } from "./lib/input";
   import { installTech } from "./lib/tech.svelte";
-  import type { Definition, Graded, Input, Norms, OpenedDefinition, OpenedResult, SavedRecord } from "./lib/types";
+  import type { Definition, Graded, Input, Norms, OpenedDefinition, OpenedResult, QRef, SavedRecord } from "./lib/types";
 
   // `preview` is the editor's draft YAML while it is being tested; `draftFile` and `savedFile` name the entry's autosaved draft and its saved result.
   type Screen =
@@ -30,7 +31,9 @@
     | { name: "definitions" }
     | { name: "editor" }
     | { name: "registry" }
-    | { name: "settings" };
+    | { name: "settings" }
+    // `back` is the screen to return to, kept whole so a result comes back as it was.
+    | { name: "support"; questionnaire: QRef | null; back: Screen };
 
   let screen = $state<Screen>({ name: "list" });
   let entry = $state<Entry>();
@@ -111,7 +114,7 @@
           <Download />{updates.installing ? "Update wird installiert …" : updates.error ? "Update erneut versuchen" : `Update auf ${updates.available.version}`}
         </Button>
       {/if}
-      {@render tab("Einstellungen", screen.name === "settings", () => go({ name: "settings" }))}
+      {@render tab("Einstellungen", screen.name === "settings" || screen.name === "support", () => go({ name: "settings" }))}
     </nav>
   </header>
   <main class="mx-auto max-w-[56rem] p-6">
@@ -153,6 +156,7 @@
         preview={r.preview != null}
         onback={() => r.opened && (screen = { name: "entry", opened: r.opened, input: r.input, draftFile: r.draftFile, savedFile: r.savedFile, preview: r.preview })}
         oneditor={() => (screen = { name: "editor" })}
+        onfeedback={(questionnaire) => (screen = { name: "support", questionnaire, back: r })}
       />
     {:else if screen.name === "saved"}
       <Saved onopen={(res) => showSaved(res, null)} />
@@ -163,7 +167,10 @@
     {:else if screen.name === "editor" && draft}
       <Editor bind:doc={draft} onclose={() => go({ name: "definitions" })} onpreview={preview} />
     {:else if screen.name === "settings"}
-      <Settings oninstall={installUpdate} />
+      <Settings oninstall={installUpdate} onsupport={() => (screen = { name: "support", questionnaire: null, back: { name: "settings" } })} />
+    {:else if screen.name === "support"}
+      {@const s = screen}
+      <Support questionnaire={s.questionnaire} onback={() => (screen = s.back)} onregistry={() => (screen = { name: "registry" })} />
     {/if}
   </main>
   <ConfirmDialog />

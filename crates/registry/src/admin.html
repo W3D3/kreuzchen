@@ -42,7 +42,7 @@
   .danger:hover { background: color-mix(in oklab, var(--danger) 88%, var(--fg)); }
   .quiet-danger { color: var(--danger); }
   .ghost { border-color: transparent; background: transparent; }
-  input[type=text], input[type=password] { font: inherit; padding: .45rem .6rem; width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); }
+  input[type=text], input[type=password], select, textarea { font: inherit; padding: .45rem .6rem; width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); }
   input[type=checkbox] { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; }
   label.check { display: flex; align-items: center; gap: .45rem; padding: .1rem 0; cursor: pointer; }
   .login { max-width: 26rem; margin: 3rem auto; padding: 1.5rem; display: grid; gap: .9rem; }
@@ -84,6 +84,20 @@
   .source .row > div { flex: 1; }
   .source ul { margin: .2rem 0 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
   .source pre { white-space: pre-wrap; margin: .1rem 0 0; font: .8rem/1.45 var(--mono); color: var(--danger); }
+  select { width: auto; }
+  textarea { min-height: 6rem; resize: vertical; }
+  .filters { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+  .filters label { font-weight: 600; font-size: .9rem; }
+  tr.click { cursor: pointer; }
+  tr.click:hover td { background: var(--hover); }
+  .status { display: inline-block; padding: 0 .5em; border-radius: 99px; font-size: .8rem; white-space: nowrap; }
+  .status.open { background: var(--accent-soft); color: var(--fg); font-weight: 600; }
+  .status.done { color: var(--muted); border: 1px solid var(--line); }
+  #dlg-ticket { width: min(42rem, calc(100vw - 2rem)); }
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; font-size: .9rem; }
+  .meta dt { color: var(--muted); }
+  .meta dd { margin: 0; overflow-wrap: anywhere; }
+  .msg { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: .7rem .8rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font: inherit; max-height: 22rem; overflow: auto; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -109,6 +123,7 @@
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-questionnaires" aria-controls="questionnaires">Fragebögen<span class="count" id="n-questionnaires"></span></button>
       <button class="tab" role="tab" id="tab-practices" aria-controls="practices">Praxen<span class="count" id="n-practices"></span></button>
+      <button class="tab" role="tab" id="tab-tickets" aria-controls="tickets" title="Offene Anfragen">Feedback<span class="count" id="n-tickets"></span></button>
     </nav>
 
     <div class="alert" id="error" role="alert" hidden>
@@ -144,6 +159,19 @@
       </div>
       <div class="card" id="p-card"></div>
     </section>
+
+    <section id="tickets" role="tabpanel" aria-labelledby="tab-tickets" hidden>
+      <div class="head">
+        <div><h2>Feedback</h2><p class="muted">Anfragen, Fehlermeldungen und Wünsche aus den Praxen. Offene zuerst.</p></div>
+        <div class="filters">
+          <label for="f-status">Status</label>
+          <select id="f-status"><option value="open">Offen</option><option value="done">Erledigt</option><option value="">Alle</option></select>
+          <label for="f-questionnaire">Fragebogen</label>
+          <select id="f-questionnaire"></select>
+        </div>
+      </div>
+      <div class="card" id="t-card"></div>
+    </section>
   </div>
   <input type="file" id="file-input" accept=".yaml,.yml" hidden>
 </main>
@@ -176,12 +204,32 @@
   <div class="buttons"><button class="btn" type="button" id="copy-key">Schlüssel kopieren</button><button class="btn primary" value="ok">Fertig</button></div>
 </form></dialog>
 
+<dialog id="dlg-ticket"><form id="ticket-form">
+  <h2 id="ticket-title"></h2>
+  <dl class="meta" id="ticket-meta"></dl>
+  <pre class="msg" id="ticket-message"></pre>
+  <div class="field">
+    <label for="ticket-note">Interne Notiz</label>
+    <textarea id="ticket-note" maxlength="10000"></textarea>
+    <p class="hint">Nur hier sichtbar, nicht für die Praxis.</p>
+  </div>
+  <p id="ticket-error" class="err" role="alert" hidden></p>
+  <div class="buttons">
+    <button class="btn" type="button" id="ticket-close">Schließen</button>
+    <button class="btn" type="button" id="ticket-save">Notiz speichern</button>
+    <button class="btn primary" type="submit" id="ticket-toggle"></button>
+  </div>
+</form></dialog>
+
 <script>
 "use strict";
 const KEY = "kreuzchen-admin-token";
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 let data = { practices: [], questionnaires: [] };
+let tickets = [];
+const TYPES = { question: "Frage", bug: "Fehler", feedback: "Feedback", wish: "Wunsch" };
+const TABS = ["questionnaires", "practices", "tickets"];
 let git = false;
 const GIT_MODE = "Im Git-Modus nicht verfügbar – Änderungen bitte im Repository vornehmen.";
 
@@ -240,7 +288,7 @@ function ask(title, text, ok) {
 }
 
 function showTab(name) {
-  for (const t of ["questionnaires", "practices"]) {
+  for (const t of TABS) {
     $(t).hidden = t !== name;
     $("tab-" + t).setAttribute("aria-selected", t === name);
   }
@@ -248,15 +296,17 @@ function showTab(name) {
 }
 $("tab-questionnaires").onclick = () => showTab("questionnaires");
 $("tab-practices").onclick = () => showTab("practices");
+$("tab-tickets").onclick = () => showTab("tickets");
 
 async function loadData() {
   let sync;
-  [data, sync] = await Promise.all([api("GET", "/questionnaires"), api("GET", "/sync")]);
+  [data, sync, tickets] = await Promise.all([api("GET", "/questionnaires"), api("GET", "/sync"), api("GET", "/tickets")]);
   drawSource(sync);
   $("n-questionnaires").textContent = data.questionnaires.length;
   $("n-practices").textContent = data.practices.length;
   drawQuestionnaires();
   drawPractices();
+  drawTickets();
 }
 
 function drawSource(s) {
@@ -357,6 +407,79 @@ function drawPractices() {
         makeButton("Löschen", "ghost quiet-danger", () => deletePractice(p))));
   })));
 }
+
+// Ticket text comes from the practices: it only ever reaches the page through textContent.
+function drawTickets() {
+  $("n-tickets").textContent = tickets.filter((t) => t.status === "open").length;
+  const chosen = $("f-questionnaire").value;
+  const seen = new Map(tickets.filter((t) => t.questionnaire).map((t) => [t.questionnaire.id, t.questionnaire.title]));
+  $("f-questionnaire").replaceChildren(el("option", { value: "*", textContent: "Alle" }), el("option", { value: "", textContent: "Allgemein" }),
+    ...[...seen].sort((a, b) => a[1].localeCompare(b[1], "de")).map(([id, title]) => el("option", { value: id, textContent: title })));
+  $("f-questionnaire").value = chosen && [...$("f-questionnaire").options].some((o) => o.value === chosen) ? chosen : "*";
+  const status = $("f-status").value, q = $("f-questionnaire").value;
+  const shown = tickets.filter((t) => (!status || t.status === status) && (q === "*" || (t.questionnaire?.id ?? "") === q));
+  if (!shown.length) return $("t-card").replaceChildren(el("div", { className: "empty" }, el("p", { className: "muted", textContent: tickets.length ? "Keine Anfragen für diesen Filter." : "Noch keine Anfragen." })));
+  $("t-card").replaceChildren(table(["Nr.", "Eingang", "Praxis", "Art", "Betreff", "Fragebogen", "Status"], shown.map((t) => {
+    const tr = el("tr", { className: "click", tabIndex: 0 },
+      el("td", { className: "mono", textContent: t.id }),
+      el("td", { textContent: new Date(t.created_at).toLocaleString("de") }),
+      el("td", { className: "mono", textContent: t.practice }),
+      el("td", { textContent: TYPES[t.type] || t.type }),
+      el("td", { textContent: t.subject }),
+      el("td", t.questionnaire ? { textContent: t.questionnaire.title } : { className: "muted", textContent: "allgemein" }),
+      el("td", {}, statusBadge(t.status)));
+    tr.onclick = () => openTicket(t);
+    tr.onkeydown = (e) => { if (e.key === "Enter") openTicket(t); };
+    return tr;
+  })));
+}
+const statusBadge = (s) => el("span", { className: "status " + s, textContent: s === "open" ? "offen" : "erledigt" });
+$("f-status").onchange = drawTickets;
+$("f-questionnaire").onchange = drawTickets;
+
+let ticket = null;
+function openTicket(t) {
+  ticket = t;
+  $("ticket-title").textContent = "Nr. " + t.id + " – " + t.subject;
+  const q = t.questionnaire;
+  const rows = [
+    ["Status", statusBadge(t.status)],
+    ["Art", TYPES[t.type] || t.type],
+    ["Praxis", t.practice],
+    ["Eingang", new Date(t.created_at).toLocaleString("de")],
+    ["Fragebogen", q ? q.title + " (" + q.id + ", Version " + q.version + ")" : "allgemein"],
+    ["Antwort an", t.reply_email || "–"],
+    ["App", t.app_version + " · " + t.os],
+  ];
+  $("ticket-meta").replaceChildren(...rows.flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", {}, v)]));
+  $("ticket-message").textContent = t.message;
+  $("ticket-note").value = t.admin_note;
+  $("ticket-toggle").textContent = t.status === "open" ? "Als erledigt markieren" : "Wieder öffnen";
+  $("ticket-error").hidden = true;
+  $("dlg-ticket").showModal();
+}
+
+async function patchTicket(body, message) {
+  $("ticket-error").hidden = true;
+  try {
+    const t = await api("PATCH", "/tickets/" + ticket.id, JSON.stringify(body), "application/json");
+    tickets = tickets.map((x) => (x.id === t.id ? t : x)).sort((a, b) => (a.status !== b.status ? (a.status === "open" ? -1 : 1) : b.id - a.id));
+    drawTickets();
+    $("dlg-ticket").close();
+    toast(message);
+  } catch (e) {
+    if (!e) return;
+    $("ticket-error").textContent = (SUMMARY[e.status] || "Fehler.") + (e.message ? " " + e.message : "");
+    $("ticket-error").hidden = false;
+  }
+}
+$("ticket-close").onclick = () => $("dlg-ticket").close();
+$("ticket-save").onclick = () => patchTicket({ admin_note: $("ticket-note").value }, "Notiz zu Nr. " + ticket.id + " gespeichert.");
+$("ticket-form").onsubmit = (ev) => {
+  ev.preventDefault();
+  const done = ticket.status === "open";
+  patchTicket({ status: done ? "done" : "open", admin_note: $("ticket-note").value }, "Nr. " + ticket.id + (done ? " als erledigt markiert." : " wieder geöffnet."));
+};
 
 let onFile = null;
 function pickFile(fn) { onFile = fn; $("file-input").value = ""; $("file-input").click(); }
@@ -495,7 +618,7 @@ $("login").onsubmit = async (ev) => {
 async function start() {
   if (!sessionStorage.getItem(KEY)) return logout();
   showApp(true);
-  showTab(location.hash === "#practices" ? "practices" : "questionnaires");
+  showTab(TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "questionnaires");
   try { await loadData(); } catch (e) { showError("Die Daten konnten nicht geladen werden", e); }
 }
 start();

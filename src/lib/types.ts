@@ -66,3 +66,8 @@ export interface RowsResult { online: boolean; rows: Row[]; error: string | null
 export type InstallOutcome = "installed" | "needs_replace_confirm";
 export interface Progress { received: number; total: number | null }
 export interface ConnectionInfo { url: string; user: string }
+
+export type TicketKind = "question" | "bug" | "feedback" | "wish";
+/** Exactly what the support form sends; the app adds only its version and the OS. */
+export interface TicketForm { type: TicketKind; subject: string; message: string; reply_email: string | null }
+export interface TicketSummary { id: number; created_at: string; type: TicketKind; subject: string; questionnaire: QRef | null; status: "open" | "done" }
