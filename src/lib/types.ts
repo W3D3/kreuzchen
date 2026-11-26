@@ -10,6 +10,8 @@ export interface Item { n: number | null; id: string | null; text: string; answe
 export interface Section { title: string; intro: string | null; items: Item[] }
 export interface Rule { id: string; label: string; when: string }
 export interface Caveat { when: string; text: string }
+/** Must hold for the result to be interpretable; `invalid` is shown when it does not. */
+export interface Validity { require: string; invalid: string }
 export type VerdictEntry = { when: string; text: string } | { else: string };
 
 export interface Definition {
@@ -22,6 +24,8 @@ export interface Definition {
   default_answers: string | null;
   fields: Field[]; scales: Scale[]; derived: Derived[]; sections: Section[];
   result: string[]; rules: Rule[]; caveats: Caveat[]; verdict: VerdictEntry[];
+  /** Left out by the engine when empty (files older than 0.7.0 have none). */
+  validity?: Validity[];
   norms?: Norms | null;
 }
 
@@ -38,6 +42,8 @@ export interface FieldLine { id: string; label: string; value: string }
 export interface Grading {
   fields: FieldLine[];
   rows: ResultRow[]; rules: RuleOutcome[]; caveats: string[];
+  /** Texts of failed validity criteria; absent in results saved before 0.7.0. */
+  invalid?: string[];
   verdict: string | null; missing: number; missing_items: string[];
 }
 

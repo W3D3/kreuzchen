@@ -43,7 +43,7 @@ The reference example is [`examples/definitions/beispiel.yaml`](examples/definit
 
 - `schema`, `id`, `version`, `title`: format version (currently `1`), a unique ID, the definition version and the display title.
 - `cutoff_compare`: optional, how scores are compared with cut-offs, `">="` (default) or `">"`.
-- `min_app`: optional, the oldest Kreuzchen version that can open the file, e.g. `"0.4.0"`. Set it when the file uses a newer feature: older versions then show „Update nötig“ instead of an error. Versions before 0.4.0 do not know this key. Files using the English expression names of 0.5.0 (`missing`, `X.present`, field `subject_id`) declare `min_app: "0.5.0"`. Files using `count(…)`, or derived values that read fields, items or `missing`, declare `min_app: "0.6.0"`; validation rejects them otherwise. The form editor has no field for `min_app`: saving from the form raises it to the version the expressions need (never lowers it).
+- `min_app`: optional, the oldest Kreuzchen version that can open the file, e.g. `"0.4.0"`. Set it when the file uses a newer feature: older versions then show „Update nötig“ instead of an error. Versions before 0.4.0 do not know this key. Files using the English expression names of 0.5.0 (`missing`, `X.present`, field `subject_id`) declare `min_app: "0.5.0"`. Files using `count(…)`, or derived values that read fields, items or `missing`, declare `min_app: "0.6.0"`; validation rejects them otherwise. Files with `validity` declare `min_app: "0.7.0"`. The form editor has no field for `min_app`: saving from the form raises it to the version the expressions need (never lowers it).
 - `answer_sets`: named lists of answer labels, in order; the position is the answer value. `default_answers` names the set used by items that do not set `answers`.
 - `shortcuts`: optional entry keys per answer set, one character per answer in order, e.g. `ja_nein: nj`. Sets without an entry use `0`, `1`, `2`, ….
 - `keys`: named scoring tables. An item's `key` is a table name or an inline list mapping answer position to points (reverse-keyed items use e.g. `[3, 2, 1, 0]`).
@@ -54,7 +54,8 @@ The reference example is [`examples/definitions/beispiel.yaml`](examples/definit
 - `result`: the IDs shown in the result table, in order.
 - `norms`: optional norm tables (e.g. T-values). `name` is the label (default `T`), `bands` the severity labels by lower bound (`{ from: 60, label: mild }`, ascending), and `tables` maps a scale or derived ID to `{ raw score: norm value }`. A raw score that is not listed takes the next lower listed one, as with a printed table that skips rows. Example: [`examples/definitions/beispiel_normen.yaml`](examples/definitions/beispiel_normen.yaml).
 - `rules`: named boolean expressions (`id`, `label`, `when`) that may reference earlier rules.
-- `caveats`: notes shown when their `when` expression is true.
+- `caveats`: warnings shown when their `when` expression is true. They stand above the verdict (on screen, in the PDF and in the copied text) and appear whether or not the result is valid.
+- `validity`: optional criteria that must all hold for the result to be interpretable, each with a `require` expression and an `invalid` text. When any `require` is false, the result is invalid: there is no verdict, every failed criterion's `invalid` text is shown in its place under „Nicht auswertbar“, and norm values, bands, the PDF profile and „über Cut-off“ marks are left out. Raw scores with their cut-offs, rules and missing answers are still shown, marked as not interpretable. Needs `min_app: "0.7.0"`.
 - `verdict`: ordered list; the first entry whose `when` is true gives the text; the entry with `else` is the fallback.
 
 Expression names: `X` is the score of scale or derived value `X`; `X.cutoff` is its cut-off; `X.over` is true when it reaches the cut-off per `cutoff_compare`. Field IDs, item IDs and rule IDs are usable as variables, `missing` is the number of unanswered items, and `X.missing` the unanswered items of scale `X`. A number field `F` that may stay empty is checked with `F.present`, e.g. `age.present and age > 24`: `and`/`or` stop once the left side decides. Expressions support `+` and `/`, comparisons, `and`, `or` and `not`. Derived values may have decimals (e.g. a mean `K / 9`); results show at most two, as `3,67`. Derived values see scales, fields, item IDs, `missing` and earlier derived values, but not rules (rules are evaluated after them and may use them).
@@ -69,6 +70,18 @@ derived:
     cutoff: 2
 rules:
   - { id: mehrfach, label: "Mindestens zwei Ereignisse", when: anzahl_ereignisse.over }
+```
+
+Validity criteria state what must be true, unlike `when`, which says when something applies. Example, the missing-answer limits of a score sheet:
+
+```yaml
+min_app: "0.7.0"
+validity:
+  - { require: SBew.missing <= 0, invalid: "SBew: mehr als 0 fehlende Antworten – nicht auswertbar." }
+  - { require: SKog.missing <= 2, invalid: "SKog: mehr als 2 fehlende Antworten – nicht auswertbar." }
+  - { require: missing <= 6, invalid: "Mehr als 6 fehlende Antworten – die Auswertung ist nicht zulässig." }
+caveats:
+  - { when: age.present and age > 65, text: "Für dieses Alter nicht normiert." }
 ```
 
 Inside `{ … }` flow mappings the commas of `count(…)` split the entry: quote the expression there, e.g. `{ id: n, label: N, value: 'count(a, b)' }`.

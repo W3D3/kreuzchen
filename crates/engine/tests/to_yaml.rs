@@ -53,3 +53,19 @@ fn raise_min_app_follows_the_expressions_and_never_lowers() {
         );
     }
 }
+
+#[test]
+fn form_save_raises_min_app_for_validity() {
+    let y = YAML.replacen(
+        "verdict:\n",
+        "validity:\n  - { require: missing <= 1, invalid: \"Zu viele fehlende Antworten.\" }\nverdict:\n",
+        1,
+    );
+    let mut def = parse_definition(&y).unwrap();
+    assert!(load(&y).is_err(), "min_app 0.5.0 is too old for validity");
+    raise_min_app(&mut def);
+    assert_eq!(def.min_app.as_deref(), Some("0.7.0"));
+    let out = to_yaml(&def);
+    assert!(load(&out).is_ok());
+    assert_eq!(needs_newer_app(&out, "0.6.0").as_deref(), Some("0.7.0"));
+}

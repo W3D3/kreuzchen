@@ -260,6 +260,7 @@ mod tests {
                 rows: vec![],
                 rules: vec![],
                 caveats: vec![],
+                invalid: vec![],
                 verdict: None,
                 missing: 0,
                 missing_items: vec![],

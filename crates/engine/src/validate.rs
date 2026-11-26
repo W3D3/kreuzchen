@@ -12,6 +12,8 @@ pub struct Questionnaire {
     pub(crate) rules: Vec<(Rule, Expr)>,
     /// Caveats paired with their compiled `when`.
     pub(crate) caveats: Vec<(Caveat, Expr)>,
+    /// Validity criteria paired with their compiled `require`.
+    pub(crate) validity: Vec<(Validity, Expr)>,
     /// Verdict lines in order: `Some(when)` or `None` for the `else` line, plus its text.
     pub(crate) verdict: Vec<(Option<Expr>, String)>,
 }
@@ -151,11 +153,20 @@ fn valid_name(n: &str) -> bool {
         && !["and", "or", "not", "true", "false", "missing"].contains(&n)
 }
 
-/// The app version `def`'s expressions need when it is newer than 0.5.0. Before 0.6.0 derived
-/// values saw only scales and earlier derived values, and there was no `count`: such a file must
-/// say so, or older apps reject it instead of asking for an update. Unparsable expressions are
-/// skipped; validation reports them.
+/// The app version `def` needs when it is newer than 0.5.0: 0.7.0 for `validity`, 0.6.0 for the
+/// expression language of [`uses_0_6_language`]. A file must say so, or older apps reject it
+/// instead of asking for an update.
 pub(crate) fn required_app(def: &Definition) -> Option<&'static str> {
+    if !def.validity.is_empty() {
+        Some("0.7.0")
+    } else {
+        uses_0_6_language(def).then_some("0.6.0")
+    }
+}
+
+/// Before 0.6.0 derived values saw only scales and earlier derived values, and there was no
+/// `count`. Unparsable expressions are skipped; validation reports them.
+fn uses_0_6_language(def: &Definition) -> bool {
     let items = def.sections.iter().flat_map(|s| &s.items);
     let late: BTreeSet<&str> = (def.fields.iter().map(|f| f.id.as_str()))
         .chain(items.filter_map(|i| i.id.as_deref()))
@@ -174,14 +185,13 @@ pub(crate) fn required_app(def: &Definition) -> Option<&'static str> {
         .collect();
     let mut others = (def.rules.iter().map(|r| &r.when))
         .chain(def.caveats.iter().map(|c| &c.when))
+        .chain(def.validity.iter().map(|v| &v.require))
         .chain(def.verdict.iter().filter_map(|v| match v {
             VerdictEntry::When { when, .. } => Some(when),
             VerdictEntry::Else { .. } => None,
         }))
         .filter_map(parsed);
-    let new_language = derived.iter().any(|e| reads_late(e) || expr::counts(e))
-        || others.any(|e| expr::counts(&e));
-    new_language.then_some("0.6.0")
+    derived.iter().any(|e| reads_late(e) || expr::counts(e)) || others.any(|e| expr::counts(&e))
 }
 
 pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>> {
@@ -343,11 +353,26 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
     )
     .expect("stand-in callbacks never fail");
     errors = errs.into_inner();
+    let min_app = def.min_app.as_deref().and_then(crate::app_version);
     let mut caveats = Vec::new();
     for (i, c) in def.caveats.iter().enumerate() {
         let w = format!("Hinweis {}", i + 1);
         let e = compile(&c.when, &env, Want::Bool, &w, &mut errors);
         caveats.extend(e.map(|e| (c.clone(), e)));
+    }
+    let mut validity = Vec::new();
+    for (i, v) in def.validity.iter().enumerate() {
+        let w = format!("Gültigkeitskriterium {}", i + 1);
+        if v.invalid.trim().is_empty() {
+            errors.push(err(format!("{w}: Text bei „invalid“ fehlt")));
+        }
+        let e = compile(&v.require, &env, Want::Bool, &w, &mut errors);
+        validity.extend(e.map(|e| (v.clone(), e)));
+    }
+    if !def.validity.is_empty() && min_app.as_ref().is_none_or(|v| *v < vec![0, 7, 0]) {
+        errors.push(err(
+            "Gültigkeitskriterien (validity) brauchen min_app: \"0.7.0\"".to_string(),
+        ));
     }
     let mut verdict = Vec::new();
     for (i, v) in def.verdict.iter().enumerate() {
@@ -361,12 +386,11 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
         }
     }
 
-    if let Some(need) = required_app(&def) {
-        if def.min_app.as_deref().and_then(crate::app_version) < crate::app_version(need) {
-            errors.push(err(format!(
-                "count(…) und Felder, Fragen oder „missing“ in abgeleiteten Werten brauchen min_app: \"{need}\""
-            )));
-        }
+    if uses_0_6_language(&def) && min_app.as_ref().is_none_or(|v| *v < vec![0, 6, 0]) {
+        errors.push(err(
+            "count(…) und Felder, Fragen oder „missing“ in abgeleiteten Werten brauchen min_app: \"0.6.0\""
+                .to_string(),
+        ));
     }
 
     // Result entries: scale, derived or item id.
@@ -400,6 +424,7 @@ pub(crate) fn validate(def: Definition) -> Result<Questionnaire, Vec<LoadError>>
             derived,
             rules,
             caveats,
+            validity,
             verdict,
         })
     } else {

@@ -6,6 +6,7 @@
   import Copy from "@lucide/svelte/icons/copy";
   import Info from "@lucide/svelte/icons/info";
   import MessageSquare from "@lucide/svelte/icons/message-square";
+  import OctagonX from "@lucide/svelte/icons/octagon-x";
   import PencilLine from "@lucide/svelte/icons/pencil-line";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Save from "@lucide/svelte/icons/save";
@@ -54,6 +55,8 @@
     opened ? { id: opened.definition.id, title: opened.definition.title, version: opened.definition.version, hash: opened.hash } : (record?.questionnaire ?? null),
   );
   const anyMet = $derived(g.rules.some((r) => r.met));
+  // Results saved before 0.7.0 have no `invalid`.
+  const invalid = $derived(g.invalid ?? []);
   // Same notation as the engine's copy text: `55`, `3,5`, `3,67`.
   // Values that round to zero keep their sign; `signDisplay` would fix that but throws on older WebKitGTK.
   const num = (v: number) => v.toLocaleString("de-DE", { maximumFractionDigits: 2, useGrouping: false }).replace(/^-0$/, "0");
@@ -158,8 +161,32 @@
     {/each}
   </div>
 
-  <section class="flex flex-col gap-4 overflow-hidden rounded-xl border border-l-[6px] px-6 py-5 shadow-sm {anyMet ? 'border-over/50 border-l-over bg-over-soft' : 'border-primary/30 border-l-primary bg-primary/8'}">
-    {#if g.verdict}
+  {#if g.caveats.length}
+    <section aria-labelledby="warnings" class="rounded-xl border border-l-[6px] border-over/50 border-l-over bg-card px-5 py-3.5 shadow-sm">
+      <h2 id="warnings" class="flex items-center gap-2 text-[13px] font-bold tracking-wide text-over uppercase">
+        <TriangleAlert class="size-4.5 shrink-0" aria-hidden="true" />{g.caveats.length > 1 ? "Warnungen" : "Warnung"}
+      </h2>
+      <ul class="mt-1.5 flex flex-col gap-1 text-[16px]">
+        {#each g.caveats as c, i (i)}<li>{c}</li>{/each}
+      </ul>
+    </section>
+  {/if}
+
+  <section class="flex flex-col gap-4 overflow-hidden rounded-xl border border-l-[6px] px-6 py-5 shadow-sm {invalid.length ? 'border-destructive/50 border-l-destructive bg-destructive/8' : anyMet ? 'border-over/50 border-l-over bg-over-soft' : 'border-primary/30 border-l-primary bg-primary/8'}">
+    {#if invalid.length}
+      <div class="flex items-start gap-4">
+        <span class="flex size-11 shrink-0 items-center justify-center rounded-full bg-destructive text-background" aria-hidden="true">
+          <OctagonX class="size-6" />
+        </span>
+        <div class="min-w-0">
+          <h2 class="text-[30px] leading-tight font-bold text-destructive">Nicht auswertbar</h2>
+          <ul class="mt-1 flex flex-col gap-1 text-[18px] font-bold break-words">
+            {#each invalid as t, i (i)}<li>{t}</li>{/each}
+          </ul>
+          <p class="mt-1.5 text-[15px] text-muted-foreground">Es gibt kein Gesamturteil und keine Normwerte; die Rohwerte sind nicht interpretierbar.</p>
+        </div>
+      </div>
+    {:else if g.verdict}
       <div class="flex items-center gap-4">
         <span class="flex size-11 shrink-0 items-center justify-center rounded-full {anyMet ? 'bg-over text-background' : 'bg-primary text-primary-foreground'}" aria-hidden="true">
           {#if anyMet}<TriangleAlert class="size-6" />{:else}<CircleCheck class="size-6" />{/if}
@@ -170,11 +197,13 @@
         </div>
       </div>
     {/if}
-    <ul class="flex flex-col gap-1.5 text-[16px] {g.verdict ? 'border-t border-current/15 pt-4' : ''}">
+    <ul class="flex flex-col gap-1.5 text-[16px] {g.verdict || invalid.length ? 'border-t border-current/15 pt-4' : ''}">
       {#each g.rules as r (r.id)}
-        <li class="flex items-center gap-2 {r.met ? '' : 'text-muted-foreground'}">
-          {#if r.met}<Check class="size-4.5 shrink-0 text-over" strokeWidth={3} aria-label="erfüllt" />{:else}<X class="size-4.5 shrink-0" aria-label="nicht erfüllt" />{/if}
-          <span class:font-bold={r.met}>{r.label}</span>
+        {@const hit = r.met && !invalid.length}
+        <!-- An invalid result highlights no rule: a met cut-off rule would read as a finding. -->
+        <li class="flex items-center gap-2 {hit ? '' : 'text-muted-foreground'}">
+          {#if r.met}<Check class="size-4.5 shrink-0 {hit ? 'text-over' : ''}" strokeWidth={3} aria-label="erfüllt" />{:else}<X class="size-4.5 shrink-0" aria-label="nicht erfüllt" />{/if}
+          <span class:font-bold={hit}>{r.label}</span>
         </li>
       {/each}
       <li class="text-[15px] text-muted-foreground {g.rules.length ? 'mt-1' : ''}">
@@ -195,6 +224,11 @@
   {/if}
 
   <Card.Root class="gap-0 py-2">
+    {#if invalid.length}
+      <p class="mx-6 mt-2 flex items-center gap-2 rounded-lg bg-destructive/8 px-3 py-2 text-[15px] font-bold text-destructive">
+        <OctagonX class="size-4.5 shrink-0" aria-hidden="true" />Nicht interpretierbar – die Auswertung ist ungültig.
+      </p>
+    {/if}
     <!-- One grid with subgrid rows, so every column sizes to its widest value. -->
     <Card.Content class="grid grid-cols-[minmax(0,1fr)_repeat(4,auto)] gap-x-4">
       <div class="col-span-full grid grid-cols-subgrid items-center border-b py-2 text-[13px] font-bold text-muted-foreground">
@@ -233,12 +267,6 @@
       {/each}
     </Card.Content>
   </Card.Root>
-
-  {#each g.caveats as c, i (i)}
-    <p class="flex items-center gap-2.5 rounded-xl border border-dashed border-muted-foreground/50 px-5 py-3 text-[15px]">
-      <Info class="size-4.5 shrink-0 text-muted-foreground" />Hinweis: {c}
-    </p>
-  {/each}
 
   {#if qref && !preview}
     <div><Button variant="ghost" class="-ml-2.5 h-11 px-3 text-muted-foreground" onclick={() => onfeedback(qref)}><MessageSquare />Feedback zu diesem Fragebogen</Button></div>

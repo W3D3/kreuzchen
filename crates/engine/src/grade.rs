@@ -20,7 +20,12 @@ pub struct Grading {
     pub fields: Vec<FieldLine>,
     pub rows: Vec<ResultRow>,
     pub rules: Vec<RuleOutcome>,
+    /// Shown above the verdict.
     pub caveats: Vec<String>,
+    /// Texts of the failed validity criteria; when any failed there is no verdict, no norm values
+    /// and no row is marked over its cut-off.
+    #[serde(default)]
+    pub invalid: Vec<String>,
     pub verdict: Option<String>,
     pub missing: u32,
     pub missing_items: Vec<String>,
@@ -260,8 +265,14 @@ impl Questionnaire {
                 caveats.push(c.text.clone());
             }
         }
+        let mut invalid = Vec::new();
+        for (v, e) in &self.validity {
+            if !truth(eval(e, &env)?)? {
+                invalid.push(v.invalid.clone());
+            }
+        }
         let mut verdict = None;
-        for (when, text) in &self.verdict {
+        for (when, text) in self.verdict.iter().filter(|_| invalid.is_empty()) {
             if when.as_ref().map_or(Ok(true), |e| truth(eval(e, &env)?))? {
                 verdict = Some(text.clone());
                 break;
@@ -277,15 +288,21 @@ impl Questionnaire {
                     label: label.clone(),
                     value,
                     cutoff,
-                    over,
-                    norm: def.norms.as_ref().and_then(|n| {
-                        let (value, band) = n.lookup(id, value)?;
-                        Some(NormValue {
-                            name: n.name.clone(),
-                            value,
-                            band,
-                        })
-                    }),
+                    // Over cut-off, a T-value or a band would read as a finding on an invalid
+                    // protocol; rules and verdict still see the real flag.
+                    over: over && invalid.is_empty(),
+                    norm: def
+                        .norms
+                        .as_ref()
+                        .filter(|_| invalid.is_empty())
+                        .and_then(|n| {
+                            let (value, band) = n.lookup(id, value)?;
+                            Some(NormValue {
+                                name: n.name.clone(),
+                                value,
+                                band,
+                            })
+                        }),
                 };
                 if let Some(s) = def.scales.iter().find(|s| &s.id == id) {
                     sum(&s.label, s.cutoff, scale_vals[id.as_str()])
@@ -326,6 +343,7 @@ impl Questionnaire {
             rows,
             rules,
             caveats,
+            invalid,
             verdict,
             missing,
             missing_items,

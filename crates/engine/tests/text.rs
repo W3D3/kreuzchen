@@ -33,16 +33,16 @@ Kennung: Anonym 11.11.2026 22:23
 Alter: 9
 Volljährig: Nein
 
-Gesamtsumme: 7 (Cut-off 7) – über Cut-off
-Skala X: 4 (Cut-off 4) – über Cut-off
-Skala Y: 3 (Cut-off 3) – über Cut-off
-Zusatzfrage: Nein
-
+Ergebnis: Auffällig (Regel 2)
 Regel 1: Gesamtsumme über Cut-off: erfüllt
 Regel 2: Gesamtsumme und Skala X über Cut-off: erfüllt
 Höchstens 1 Antwort fehlt: erfüllt
 Fehlende Antworten: 0
-Ergebnis: Auffällig (Regel 2)";
+
+Gesamtsumme: 7 (Cut-off 7) – über Cut-off
+Skala X: 4 (Cut-off 4) – über Cut-off
+Skala Y: 3 (Cut-off 3) – über Cut-off
+Zusatzfrage: Nein";
     assert_eq!(t, expected);
 }
 

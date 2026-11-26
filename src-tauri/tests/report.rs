@@ -198,3 +198,47 @@ fn no_missing_answers_line_when_all_are_answered() {
     );
     assert!(!pdf.contains("Fehlende Antworten"));
 }
+
+/// `beispiel_normen` with scale A required complete; its caveats warn about missing answers.
+fn validity(name: &str, answers: &[(&str, usize)]) -> String {
+    let yaml = fs::read_to_string("../examples/definitions/beispiel_normen.yaml")
+        .unwrap()
+        .replacen("min_app: \"0.5.0\"", "min_app: \"0.7.0\"", 1)
+        .replacen(
+            "verdict:\n",
+            "validity:\n  - { require: A.missing == 0, invalid: \"Skala A unvollständig.\" }\nverdict:\n",
+            1,
+        );
+    let answers = answers.iter().map(|&(k, v)| (k.to_string(), v)).collect();
+    render(name, &yaml, answers)
+}
+
+#[test]
+fn warnings_come_before_the_verdict() {
+    // Items 5 and 6 (scale B) missing: still valid, but the „more than 1 missing“ caveat fires.
+    let pdf = validity("warnung", &[("1", 3), ("2", 0), ("3", 2), ("4", 1)]);
+    let warn = pdf.find("(WARNUNGEN)").expect("warnings");
+    let verdict = pdf.find("(ERGEBNIS)").expect("verdict");
+    assert!(warn < verdict);
+    assert!(!pdf.contains("(NICHT AUSWERTBAR)"));
+    assert!(shows(&pdf, "Mehr als 1 fehlende Antwort."));
+    assert!(pdf.contains("(Profil (T-Werte))"));
+}
+
+#[test]
+fn invalid_result_names_why_and_has_no_verdict_or_profile() {
+    let pdf = validity(
+        "ungueltig",
+        &[("1", 3), ("3", 2), ("4", 1), ("5", 1), ("6", 0)],
+    );
+    assert!(pdf.contains("(NICHT AUSWERTBAR)"));
+    assert!(shows(&pdf, "Skala A unvollständig."));
+    assert!(pdf.contains("(Die Werte unten sind nicht interpretierbar.)"));
+    assert!(pdf.find("(WARNUNGEN)").unwrap() < pdf.find("(NICHT AUSWERTBAR)").unwrap());
+    assert!(!pdf.contains("(ERGEBNIS)"));
+    assert!(!pdf.contains("Profil"));
+    // gesamt is 10, at its cut-off 10, but nothing is marked as over it.
+    assert!(pdf.contains("(10) Tj"));
+    assert!(!shows(&pdf, "über Cut-off"));
+    assert!(pdf.contains("(Ergebnisse)"));
+}
