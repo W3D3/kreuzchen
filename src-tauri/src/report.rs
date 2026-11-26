@@ -99,17 +99,17 @@ pub fn pdf(r: &Report) -> Vec<u8> {
         p.draw(&mut d);
     }
     if !rest.is_empty() {
-        // Without norms, every scale with a cut-off reads „auffällig“ or „unauffällig“. An invalid
-        // result keeps the norm wording, which the engine has emptied: „unauffällig“ is a finding too.
-        let normed = !g.invalid.is_empty()
-            || r.norms.is_some()
-            || g.rows
+        // An invalid result gets neither word: „unauffällig“ would be a finding too.
+        let cutoff_wording = g.invalid.is_empty()
+            && r.norms.is_none()
+            && !g
+                .rows
                 .iter()
                 .any(|row| matches!(row, ResultRow::Sum { norm: Some(_), .. }));
         table(
             &mut d,
             &rest,
-            normed,
+            cutoff_wording,
             typical(r.norms.as_ref()),
             r.colors.over,
         );
@@ -597,8 +597,16 @@ const T_CUT: f32 = 385.0;
 const T_NORM: f32 = 440.0;
 const T_CLASS: f32 = 452.0;
 
-/// `normed`: whether the definition has norms, which decides the wording of „Einordnung“.
-fn table(d: &mut Doc, rows: &[&ResultRow], normed: bool, typical: Option<&str>, over_color: u32) {
+/// `cutoff_wording`: „Einordnung“ reads „auffällig“ or „unauffällig“ for every scale with a cut-off,
+/// as for a valid result of a definition without norms; otherwise it holds the norm band and
+/// „über Cut-off“, see [`class`].
+fn table(
+    d: &mut Doc,
+    rows: &[&ResultRow],
+    cutoff_wording: bool,
+    typical: Option<&str>,
+    over_color: u32,
+) {
     heading(d, "Ergebnisse");
     let norm_column = rows
         .iter()
@@ -682,9 +690,9 @@ fn table(d: &mut Doc, rows: &[&ResultRow], normed: bool, typical: Option<&str>, 
             } else {
                 (Font::Regular, FG)
             };
-            let class = match normed {
-                true => class(norm.as_ref(), *over, typical),
-                false => cutoff_class(*cutoff, *over).into(),
+            let class = match cutoff_wording {
+                true => cutoff_class(*cutoff, *over).into(),
+                false => class(norm.as_ref(), *over, typical),
             };
             ink(c, color);
             text(
