@@ -1,20 +1,23 @@
-const AUTO_SAVE = "kreuzchen.autoSaveResult";
-
 /** On unless explicitly turned off. */
-export const parseAutoSaveResult = (raw: string | null): boolean => raw !== "off";
+export const parseFlag = (raw: string | null): boolean => raw !== "off";
 
-export function loadAutoSaveResult(): boolean {
-  try {
-    return parseAutoSaveResult(localStorage.getItem(AUTO_SAVE));
-  } catch {
-    return true;
-  }
-}
+/** An on/off setting in localStorage, on by default. */
+const flag = (key: string) => ({
+  load(): boolean {
+    try {
+      return parseFlag(localStorage.getItem(key));
+    } catch {
+      return true;
+    }
+  },
+  save(on: boolean) {
+    try {
+      localStorage.setItem(key, on ? "on" : "off");
+    } catch {
+      // Storage unavailable: the choice applies until the app closes.
+    }
+  },
+});
 
-export function saveAutoSaveResult(on: boolean) {
-  try {
-    localStorage.setItem(AUTO_SAVE, on ? "on" : "off");
-  } catch {
-    // Storage unavailable: the choice applies until the app closes.
-  }
-}
+export const autoSaveResult = flag("kreuzchen.autoSaveResult");
+export const groupSavedByDate = flag("kreuzchen.groupSavedByDate");

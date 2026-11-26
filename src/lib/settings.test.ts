@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
-import { parseAutoSaveResult } from "./settings";
+import { parseFlag } from "./settings";
 
-it("auto-saving results is on unless turned off", () => {
-  expect(parseAutoSaveResult(null)).toBe(true);
-  expect(parseAutoSaveResult("on")).toBe(true);
-  expect(parseAutoSaveResult("off")).toBe(false);
+it("on/off settings are on unless turned off", () => {
+  expect(parseFlag(null)).toBe(true);
+  expect(parseFlag("on")).toBe(true);
+  expect(parseFlag("off")).toBe(false);
 });
