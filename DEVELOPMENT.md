@@ -182,8 +182,56 @@ There is no webhook; changes arrive within `interval_minutes` or on a manual syn
 
 The token is a bearer secret: serve `/admin` only over HTTPS (reverse proxy or tunnel), never plain HTTP over the internet. Consider restricting `/admin` at the proxy to your own IPs.
 
+### Support tickets
+
+Practices send questions, bug reports, feedback and wishes from the app (Einstellungen → Support & Feedback, or „Feedback zu diesem Fragebogen“ on a result). The server stores one JSON file per ticket in `tickets/` in the data directory (`000012.json`), written atomically, one write at a time. Tickets work with both sources. A ticket holds the practice, type, subject, message, optional reply email, optional questionnaire reference (id, title, version, hash), app version and OS, its status (`open`/`done`), an internal `admin_note`, and a thread of `replies` (`{id, author: practice|admin, created_at, message}`, oldest first, `id` counting from 1 within the ticket).
+
+| Request | Auth | Effect |
+|---|---|---|
+| `POST /v1/tickets` | practice | New ticket. `201 {"id"}`. |
+| `GET /v1/tickets` | practice | The practice's own tickets: `id, created_at, type, subject, message, questionnaire, status, replies`. Never the `admin_note` or the reply email. |
+| `POST /v1/tickets/{id}/replies` (`{"message"}`) | practice | Reply on one of its **own** tickets; any other id answers `404`. Returns the ticket as above. |
+| `GET /admin/api/tickets[?status=open\|done][&questionnaire=<id>]` | admin | All tickets with every field, open first. `questionnaire=` (empty) selects the general ones. |
+| `PATCH /admin/api/tickets/{id}` (`{"status"?, "admin_note"?}`) | admin | Status and internal note. |
+| `POST /admin/api/tickets/{id}/replies` (`{"message"}`) | admin | Admin reply; the practice sees it in the app. Returns the full ticket. |
+| `GET /admin/api/notify` | admin | `{"channels": ["discord"…], "public_url"}`: which notification channels are set up, never their secrets. |
+| `POST /admin/api/notify/test` | admin | Sends a test message to every channel: `{"results": [{channel, ok, error}…]}`; `409` when none is set up. |
+
+- **A practice reply on a `done` ticket re-opens it** (status `open`), so it shows up again under open tickets. Admin replies and status changes leave the status as it is.
+- Limits: subject 1–200 characters, message and each reply 1–10 000, reply email ≤ 254, request body 64 KiB. Each practice may create 10 tickets and send 10 replies per hour (two separate budgets, in memory) → `429`. Admins have no limit. Error messages name the field, never its content.
+- The app keeps which admin replies the user has opened on the device only (`localStorage`, highest seen admin reply id per ticket) and marks tickets with newer ones „neue Antwort“. There is no read state on the server.
+- `/admin` → **Feedback** lists the tickets with the last activity and who wrote last; the dialog shows the thread, a reply box and the internal note. `/admin#ticket-12` opens ticket 12 directly (after the login, if needed).
+- Ticket files written before replies existed load unchanged (no `replies` key means an empty thread).
+
+### Notifications
+
+The server can push a short notice when a practice creates a ticket or replies on one. Admin replies and admin status changes never notify. Each channel is optional and set through environment variables only (never in `config.yaml`); empty counts as unset. The startup line names the active channels (`notify discord,telegram` or `notify off`), and `/admin` → Feedback shows them with a **Testnachricht senden** button.
+
+| Variable | Channel |
+|---|---|
+| `KREUZCHEN_DISCORD_WEBHOOK_URL` | Discord incoming webhook. `POST {"content", "allowed_mentions": {"parse": []}}`. |
+| `KREUZCHEN_TELEGRAM_BOT_TOKEN` + `KREUZCHEN_TELEGRAM_CHAT_ID` | Telegram Bot API `sendMessage` (`{"chat_id", "text"}`). Both or neither: one alone stops the server at start. |
+| `KREUZCHEN_NOTIFY_WEBHOOK_URL` | Generic JSON webhook: `POST {"event": "new_ticket"\|"new_reply"\|"test", "ticket_id", "practice", "type", "questionnaire": {id, title, version}\|null, "url"}`. |
+| `KREUZCHEN_PUBLIC_URL` | Base URL of this server, e.g. `https://bibliothek.example.org`. Notices link to `<url>/admin#ticket-12`. Unset: notices have no link. |
+
+**Privacy: a notice carries metadata and the link only**, for example `Neues Ticket #12 – praxis_mitsche – Fehler – SRS-2 4–18 (v2)` or `Neue Antwort auf Ticket #12 – praxis_mitsche`. The subject, the message, replies and the reply email are never sent to Discord, Telegram or the webhook; read them in `/admin` behind the link. The tests in `crates/registry/src/notify.rs` and `crates/registry/tests/notify.rs` check every request body for that.
+
+Delivery never blocks or fails the ticket request: it starts in the background once the ticket is stored, with a 10-second timeout per attempt and up to three retries (after 2, 10 and 30 seconds) on network errors, `429` and `5xx`. Other errors are not retried. A notice that still fails is dropped and logged as `notify <channel>: Ticket #12 nicht zugestellt (… Versuche): <status>`. Logs and the test button's errors contain the channel and the HTTP status, never the token or the webhook URL. Notices are not stored, so one sent while the server restarts can be lost; the ticket itself is safe.
+
+Discord setup:
+
+1. In Discord, open the server settings → **Integrationen** → **Webhooks** → **Neuer Webhook**, pick the channel, and copy the webhook URL.
+2. Set `KREUZCHEN_DISCORD_WEBHOOK_URL` to it. The URL is a secret: anyone with it can post to the channel.
+
+Telegram setup:
+
+1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and follow the steps. BotFather replies with the bot token (`123456789:AA…`). Set it as `KREUZCHEN_TELEGRAM_BOT_TOKEN`.
+2. Open the new bot and send it any message (e.g. `/start`). A bot cannot write to you before you write to it.
+3. Get the chat id: open `https://api.telegram.org/bot<token>/getUpdates` in a browser. The answer contains `"chat":{"id":123456789,…}`. That number is the chat id of your direct chat with the bot; set it as `KREUZCHEN_TELEGRAM_CHAT_ID`. For a group, add the bot to the group, send a message there, and use the group's id from `getUpdates` (negative, e.g. `-1001234567890`).
+4. Restart the server, open `/admin` → Feedback and click **Testnachricht senden**.
+
 Published image: `ghcr.io/w3d3/kreuzchen-registry` (amd64). `.github/workflows/registry.yml` builds the image for every change to the engine or the registry and publishes it when a `registry-v*` tag is pushed, e.g. `registry-v0.1.0` → tags `0.1.0`, `0.1` and `latest`. The registry is versioned separately from the app. The image contains only the server, never definitions or keys.
 
-Container: `docker build -f crates/registry/Dockerfile -t kreuzchen-registry .` builds a static musl binary into a distroless, non-root image (`EXPOSE 8080`, `VOLUME /data`). [`docker-compose.example.yml`](crates/registry/docker-compose.example.yml) mounts the data directory writable and passes `KREUZCHEN_ADMIN_TOKEN` (and, for a `type: github` source, `KREUZCHEN_GITHUB_TOKEN`) from the environment or an `.env` file. `docker compose restart` applies hand edits to the data.
+Container: `docker build -f crates/registry/Dockerfile -t kreuzchen-registry .` builds a static musl binary into a distroless, non-root image (`EXPOSE 8080`, `VOLUME /data`). [`docker-compose.example.yml`](crates/registry/docker-compose.example.yml) mounts the data directory writable and passes `KREUZCHEN_ADMIN_TOKEN` (and, for a `type: github` source, `KREUZCHEN_GITHUB_TOKEN`; for notifications the variables in [Notifications](#notifications)) from the environment or an `.env` file. `docker compose restart` applies hand edits to the data.
 
 The server speaks plain HTTP. Run it behind a Cloudflare tunnel or another HTTPS reverse proxy (required when the admin token is set) and add a rate-limit rule on `/v1/` and `/admin/api/` to throttle guessing.

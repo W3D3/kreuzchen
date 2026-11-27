@@ -44,3 +44,4 @@ export const registryRemove = (file: string) => invoke<void>("registry_remove", 
 export const migrationProblems = () => invoke<{ problems: string[]; folder: string }>("migration_problems");
 export const sendTicket = (form: TicketForm, questionnaire: QRef | null) => invoke<number>("send_ticket", { form, questionnaire });
 export const listTickets = () => invoke<TicketSummary[]>("list_tickets");
+export const replyTicket = (id: number, message: string) => invoke<TicketSummary>("reply_ticket", { id, message });

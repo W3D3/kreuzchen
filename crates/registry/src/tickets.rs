@@ -14,7 +14,7 @@ use crate::config::{safe_id, write_atomic};
 
 /// Largest accepted ticket request body.
 pub const MAX_BODY: usize = 64 * 1024;
-/// Tickets one practice may send per hour.
+/// Tickets one practice may send per hour; replies have their own budget of the same size.
 pub const PER_HOUR: usize = 10;
 const SUBJECT: usize = 200;
 const MESSAGE: usize = 10_000;
@@ -37,6 +37,30 @@ pub enum Kind {
 pub enum Status {
     Open,
     Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Author {
+    Practice,
+    Admin,
+}
+
+/// One message in a ticket's thread after the first; `id` counts from 1 within the ticket.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Reply {
+    pub id: u64,
+    pub author: Author,
+    /// UTC, RFC 3339.
+    pub created_at: String,
+    pub message: String,
+}
+
+/// A reply as sent by a practice or an admin.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewReply {
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -81,6 +105,9 @@ pub struct Ticket {
     pub status: Status,
     /// Internal to the admins; practices never see it.
     pub admin_note: String,
+    /// Oldest first. Absent in tickets stored before replies existed.
+    #[serde(default)]
+    pub replies: Vec<Reply>,
 }
 
 /// An admin's change to a ticket; absent fields stay as they are.
@@ -91,10 +118,29 @@ pub struct Patch {
     pub admin_note: Option<String>,
 }
 
+/// Per-practice send times for the rate limits.
+#[derive(Default)]
+struct Sent {
+    tickets: HashMap<String, Vec<Instant>>,
+    replies: HashMap<String, Vec<Instant>>,
+}
+
 pub(crate) struct Tickets {
     dir: PathBuf,
-    /// Held for each whole read-modify-write; also the per-practice send times for the rate limit.
-    sent: Mutex<HashMap<String, Vec<Instant>>>,
+    /// Held for each whole read-modify-write, so ticket writes never interleave.
+    lock: Mutex<Sent>,
+}
+
+/// Errs once `times` holds `PER_HOUR` sends within the last hour.
+fn rate_limit(times: &mut Vec<Instant>, now: Instant) -> Result<(), Fail> {
+    times.retain(|t| now.duration_since(*t) < Duration::from_secs(3600));
+    if times.len() >= PER_HOUR {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            "Zu viele Anfragen – bitte später erneut versuchen".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn bad(msg: impl Into<String>) -> Fail {
@@ -159,7 +205,7 @@ impl Tickets {
     pub fn new(data: &std::path::Path) -> Self {
         Self {
             dir: data.join("tickets"),
-            sent: Mutex::default(),
+            lock: Mutex::default(),
         }
     }
 
@@ -201,16 +247,10 @@ impl Tickets {
 
     pub async fn create(&self, practice: &str, new: NewTicket) -> Result<Ticket, Fail> {
         let new = normalize(new)?;
-        let mut sent = self.sent.lock().await;
+        let mut sent = self.lock.lock().await;
         let now = Instant::now();
-        let times = sent.entry(practice.to_owned()).or_default();
-        times.retain(|t| now.duration_since(*t) < Duration::from_secs(3600));
-        if times.len() >= PER_HOUR {
-            return Err((
-                StatusCode::TOO_MANY_REQUESTS,
-                "Zu viele Anfragen – bitte später erneut versuchen".into(),
-            ));
-        }
+        let times = sent.tickets.entry(practice.to_owned()).or_default();
+        rate_limit(times, now)?;
         let t = Ticket {
             id: self.ids()?.into_iter().max().unwrap_or(0) + 1,
             created_at: rfc3339(SystemTime::now()),
@@ -224,6 +264,7 @@ impl Tickets {
             os: new.os,
             status: Status::Open,
             admin_note: String::new(),
+            replies: Vec::new(),
         };
         self.write(&t)?;
         times.push(now);
@@ -232,7 +273,7 @@ impl Tickets {
 
     /// Every ticket, newest first; a file that does not parse is skipped (named in the log).
     pub async fn list(&self) -> Result<Vec<Ticket>, Fail> {
-        let _w = self.sent.lock().await;
+        let _w = self.lock.lock().await;
         let mut out: Vec<Ticket> = self
             .ids()?
             .into_iter()
@@ -252,7 +293,7 @@ impl Tickets {
                 return Err(bad(format!("admin_note: höchstens {NOTE} Zeichen")));
             }
         }
-        let _w = self.sent.lock().await;
+        let _w = self.lock.lock().await;
         let mut t = self.read(id)?;
         if let Some(s) = patch.status {
             t.status = s;
@@ -261,6 +302,42 @@ impl Tickets {
             t.admin_note = n;
         }
         self.write(&t)?;
+        Ok(t)
+    }
+
+    /// Appends a reply. `practice` is `Some` for a practice: it may answer only its own tickets
+    /// (any other id is 404, as if it did not exist), is rate-limited, and its reply re-opens a
+    /// done ticket. An admin reply leaves the status as it is.
+    pub async fn reply(
+        &self,
+        id: u64,
+        practice: Option<&str>,
+        new: NewReply,
+    ) -> Result<Ticket, Fail> {
+        let message = new.message.trim().to_owned();
+        check_len("message", &message, MESSAGE)?;
+        let mut sent = self.lock.lock().await;
+        let mut t = self.read(id)?;
+        let now = Instant::now();
+        let author = match practice {
+            Some(p) if p != t.practice => return Err((StatusCode::NOT_FOUND, String::new())),
+            Some(p) => {
+                rate_limit(sent.replies.entry(p.to_owned()).or_default(), now)?;
+                t.status = Status::Open;
+                Author::Practice
+            }
+            None => Author::Admin,
+        };
+        t.replies.push(Reply {
+            id: t.replies.last().map_or(0, |r| r.id) + 1,
+            author,
+            created_at: rfc3339(SystemTime::now()),
+            message,
+        });
+        self.write(&t)?;
+        if let Some(p) = practice {
+            sent.replies.entry(p.to_owned()).or_default().push(now);
+        }
         Ok(t)
     }
 }

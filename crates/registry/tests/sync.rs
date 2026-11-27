@@ -184,7 +184,12 @@ async fn setup(fail_first: bool) -> Env {
         m.fail = fail_first;
     }
     let dir = data_dir(&github(mock.clone()).await);
-    let app = router(load(dir.path()).unwrap(), Some(ADMIN), Some(GH_TOKEN));
+    let app = router(
+        load(dir.path()).unwrap(),
+        Some(ADMIN),
+        Some(GH_TOKEN),
+        Default::default(),
+    );
     for _ in 0..500 {
         let s = status(&app).await;
         if !s["checked_at"].is_null() || !s["error"].is_null() {
@@ -567,7 +572,12 @@ async fn local_mode_reports_its_source_and_refuses_sync() {
         format!("practices:\n  - user: p\n    key_hash: {key_hash:?}\n    questionnaires: []\n"),
     )
     .unwrap();
-    let app = router(load(dir.path()).unwrap(), Some(ADMIN), Some(GH_TOKEN));
+    let app = router(
+        load(dir.path()).unwrap(),
+        Some(ADMIN),
+        Some(GH_TOKEN),
+        Default::default(),
+    );
     assert_eq!(status(&app).await, serde_json::json!({"source": "local"}));
     let (s, _) = admin(&app, "POST", "/admin/api/sync", "").await;
     assert_eq!(s, StatusCode::CONFLICT);

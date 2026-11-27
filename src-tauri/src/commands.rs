@@ -414,6 +414,17 @@ pub async fn list_tickets(paths: State<'_, Paths>) -> Result<Vec<TicketSummary>,
     registry::list_tickets(&c).await
 }
 
+/// Only the typed text goes out, nothing else.
+#[tauri::command]
+pub async fn reply_ticket(
+    paths: State<'_, Paths>,
+    id: u64,
+    message: String,
+) -> Result<TicketSummary, String> {
+    let c = registry::load_connection(&paths.data).ok_or(NOT_CONNECTED)?;
+    registry::reply_ticket(&c, id, &message).await
+}
+
 #[tauri::command]
 pub fn registry_remove(paths: State<Paths>, file: String) -> Result<(), String> {
     registry::remove(&paths.registry, &file)

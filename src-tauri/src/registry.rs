@@ -14,6 +14,9 @@ const BAD_URL: &str = "Ungültige Adresse";
 const FILE: &str = "registry.json";
 const OLD_SERVER: &str =
     "Der Bibliotheksserver unterstützt noch kein Feedback – bitte Server aktualisieren.";
+/// Servers before replies (registry 0.5.0) answer 404 on the reply route.
+const NO_REPLIES: &str =
+    "Antworten sind mit diesem Bibliotheksserver noch nicht möglich – bitte Server aktualisieren.";
 const INVALID_ANSWER: &str = "Antwort des Bibliotheksservers ist ungültig";
 
 #[derive(Serialize, Deserialize)]
@@ -346,7 +349,7 @@ pub struct NewTicket<'a> {
     pub os: &'a str,
 }
 
-/// A practice's own ticket as the server lists it.
+/// A practice's own ticket as the server lists it, with its thread.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct TicketSummary {
     pub id: u64,
@@ -354,8 +357,22 @@ pub struct TicketSummary {
     #[serde(rename = "type")]
     pub kind: TicketKind,
     pub subject: String,
+    /// Absent from servers before replies (registry 0.5.0).
+    #[serde(default)]
+    pub message: String,
     pub questionnaire: Option<QRef>,
     pub status: String,
+    #[serde(default)]
+    pub replies: Vec<TicketReply>,
+}
+
+/// One answer in a ticket's thread; `author` is `practice` or `admin`.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct TicketReply {
+    pub id: u64,
+    pub author: String,
+    pub created_at: String,
+    pub message: String,
 }
 
 /// German message for a failed ticket request; old servers lack the route (404, 405 behind proxies).
@@ -375,13 +392,19 @@ fn ticket_error(status: StatusCode, body: &[u8]) -> String {
     }
 }
 
-/// `<url>/v1/tickets` with Basic auth, optionally with a JSON body; the response body on success.
-async fn tickets_request(c: &Connection, body: Option<Vec<u8>>) -> Result<Vec<u8>, String> {
+/// `<url>/v1/tickets/<path…>` with Basic auth, optionally with a JSON body; the response body on
+/// success.
+async fn tickets_request(
+    c: &Connection,
+    path: &[&str],
+    body: Option<Vec<u8>>,
+) -> Result<Vec<u8>, String> {
     let mut url = Url::parse(&c.url).map_err(|_| BAD_URL.to_string())?;
     url.path_segments_mut()
         .map_err(|()| BAD_URL.to_string())?
         .pop_if_empty()
-        .extend(["v1", "tickets"]);
+        .extend(["v1", "tickets"])
+        .extend(path);
     let req = match body {
         Some(b) => client()
             .post(url)
@@ -410,14 +433,30 @@ pub async fn send_ticket(c: &Connection, t: &NewTicket<'_>) -> Result<u64, Strin
         id: u64,
     }
     let body = serde_json::to_vec(t).map_err(|e| e.to_string())?;
-    let resp = tickets_request(c, Some(body)).await?;
+    let resp = tickets_request(c, &[], Some(body)).await?;
     serde_json::from_slice::<Created>(&resp)
         .map(|c| c.id)
         .map_err(|_| INVALID_ANSWER.into())
 }
 
 pub async fn list_tickets(c: &Connection) -> Result<Vec<TicketSummary>, String> {
-    let resp = tickets_request(c, None).await?;
+    let resp = tickets_request(c, &[], None).await?;
+    serde_json::from_slice(&resp).map_err(|_| INVALID_ANSWER.into())
+}
+
+/// Adds the user's answer to one of their tickets (re-opens it if done); the updated ticket.
+pub async fn reply_ticket(c: &Connection, id: u64, message: &str) -> Result<TicketSummary, String> {
+    let body = serde_json::to_vec(&serde_json::json!({ "message": message }))
+        .map_err(|e| e.to_string())?;
+    let resp = tickets_request(c, &[&id.to_string(), "replies"], Some(body))
+        .await
+        .map_err(|e| {
+            if e == OLD_SERVER {
+                NO_REPLIES.into()
+            } else {
+                e
+            }
+        })?;
     serde_json::from_slice(&resp).map_err(|_| INVALID_ANSWER.into())
 }
 
@@ -566,7 +605,13 @@ mod tests {
         .unwrap();
         let reg = kreuzchen_registry::load(dir.path()).unwrap();
         (
-            serve(kreuzchen_registry::router(reg, None, None)).await,
+            serve(kreuzchen_registry::router(
+                reg,
+                None,
+                None,
+                Default::default(),
+            ))
+            .await,
             dir,
         )
     }
@@ -862,6 +907,19 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!((list[0].id, list[0].status.as_str()), (1, "open"));
         assert_eq!(list[0].questionnaire.as_ref(), Some(&q));
+        assert_eq!(list[0].message, "Skala A zählt Frage 3 doppelt.");
+        let r = reply_ticket(&c, 1, " Betrifft Version 1. ").await.unwrap();
+        assert_eq!(
+            (r.replies.len(), r.replies[0].author.as_str()),
+            (1, "practice")
+        );
+        assert_eq!(r.replies[0].message, "Betrifft Version 1.");
+        assert_eq!(list_tickets(&c).await.unwrap()[0].replies, r.replies);
+        assert_eq!(
+            reply_ticket(&c, 99, "x").await,
+            Err(NO_REPLIES.into()),
+            "a missing ticket is a 404, like an old server"
+        );
 
         assert_eq!(
             send_ticket(&conn(&url, "wrong"), &t).await,

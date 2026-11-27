@@ -1,5 +1,6 @@
 <script lang="ts">
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import Info from "@lucide/svelte/icons/info";
   import Send from "@lucide/svelte/icons/send";
@@ -12,8 +13,8 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
-  import { listDefinitions, listTickets, registryConnection, sendTicket } from "../lib/api";
-  import { choices, KINDS, kindLabel, statusLabel, ticketForm } from "../lib/support";
+  import { listDefinitions, listTickets, registryConnection, replyTicket, sendTicket } from "../lib/api";
+  import { choices, KINDS, kindLabel, markSeen, statusLabel, thread, ticketForm, ticketsSeen, unread } from "../lib/support";
   import type { ConnectionInfo, QRef, TicketKind, TicketSummary } from "../lib/types";
 
   let { questionnaire = null, onback, onregistry }: {
@@ -35,6 +36,12 @@
   let sent = $state<number | null>(null);
   let tickets = $state<TicketSummary[] | null>(null);
   let listError = $state<string | null>(null);
+  let seen = $state(ticketsSeen.load());
+  let openId = $state<number | null>(null);
+  let replyText = $state("");
+  let replyBusy = $state(false);
+  let replyError = $state<string | null>(null);
+  const when = (at: string) => new Date(at).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
   const pickedLabel = $derived(options.find((q) => q.id === picked)?.title ?? "Allgemein");
 
   async function loadTickets() {
@@ -51,6 +58,34 @@
     if (c) loadTickets();
   });
   listDefinitions().then((entries) => (options = choices(entries, questionnaire)), () => (options = choices([], questionnaire)));
+
+  function markRead(t: TicketSummary) {
+    seen = markSeen(seen, t);
+    ticketsSeen.save(seen);
+  }
+
+  function toggle(t: TicketSummary) {
+    openId = openId === t.id ? null : t.id;
+    replyText = "";
+    replyError = null;
+    if (openId === t.id) markRead(t);
+  }
+
+  async function sendReply(e: SubmitEvent, t: TicketSummary) {
+    e.preventDefault();
+    replyBusy = true;
+    replyError = null;
+    try {
+      const updated = await replyTicket(t.id, replyText.trim());
+      tickets = tickets?.map((x) => (x.id === updated.id ? updated : x)) ?? null;
+      markRead(updated);
+      replyText = "";
+    } catch (err) {
+      replyError = String(err);
+    } finally {
+      replyBusy = false;
+    }
+  }
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -149,12 +184,43 @@
         <Card.Root class="gap-0 py-0">
           <ul class="divide-y">
             {#each tickets as t (t.id)}
-              <li class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-                <div class="min-w-0 flex-1">
-                  <p class="font-bold">Nr. {t.id} · {t.subject}</p>
-                  <p class="text-[15px] text-muted-foreground">{kindLabel(t.type)} · {t.questionnaire?.title ?? "Allgemein"} · {new Date(t.created_at).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })}</p>
-                </div>
-                <Badge variant={t.status === "open" ? "secondary" : "outline"} class="h-6 px-2 text-[13px]">{statusLabel(t.status)}</Badge>
+              {@const open = openId === t.id}
+              <li>
+                <button type="button" class="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring" aria-expanded={open} aria-controls="ticket-{t.id}" onclick={() => toggle(t)}>
+                  <div class="min-w-0 flex-1">
+                    <p class="font-bold">Nr. {t.id} · {t.subject}</p>
+                    <p class="text-[15px] text-muted-foreground">{kindLabel(t.type)} · {t.questionnaire?.title ?? "Allgemein"} · {when(t.created_at)}{t.replies.length ? ` · ${t.replies.length} ${t.replies.length === 1 ? "Antwort" : "Antworten"}` : ""}</p>
+                  </div>
+                  {#if unread(t, seen)}
+                    <Badge class="h-6 px-2 text-[13px]">neue Antwort</Badge>
+                  {/if}
+                  <Badge variant={t.status === "open" ? "secondary" : "outline"} class="h-6 px-2 text-[13px]">{statusLabel(t.status)}</Badge>
+                  <ChevronDown class={["size-4.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180"]} />
+                </button>
+                {#if open}
+                  <div id="ticket-{t.id}" class="flex flex-col gap-3 px-5 pt-1 pb-5">
+                    <ol class="flex flex-col gap-2.5" aria-label="Verlauf">
+                      {#each thread(t) as m (m.key)}
+                        <li class={["flex flex-col gap-1", m.mine ? "items-end" : "items-start"]}>
+                          <span class="text-[13px] text-muted-foreground">{m.who} · {when(m.created_at)}</span>
+                          <p class={["max-w-[85%] rounded-xl px-4 py-2.5 text-[15px] whitespace-pre-wrap [overflow-wrap:anywhere]", m.mine ? "bg-secondary" : "border border-primary/40 bg-card"]}>{m.message}</p>
+                        </li>
+                      {/each}
+                    </ol>
+                    <form class="grid gap-2.5" onsubmit={(e) => sendReply(e, t)}>
+                      <Label for="reply-{t.id}" class="text-[14px] font-bold">Antworten</Label>
+                      <textarea
+                        id="reply-{t.id}"
+                        class="min-h-24 w-full rounded-md border border-input bg-transparent p-3 text-[15px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        bind:value={replyText} required maxlength={10000}></textarea>
+                      <Banner kind="info" icon={Info}>Bitte keine Patientendaten eintragen.{t.status === "done" ? " Mit Ihrer Antwort wird die Anfrage wieder geöffnet." : ""}</Banner>
+                      {#if replyError}
+                        <Banner>{replyError}</Banner>
+                      {/if}
+                      <div><Button type="submit" class="h-11 px-5 font-bold" disabled={replyBusy || !replyText.trim()}><Send />{replyBusy ? "Wird gesendet …" : "Antwort senden"}</Button></div>
+                    </form>
+                  </div>
+                {/if}
               </li>
             {/each}
           </ul>

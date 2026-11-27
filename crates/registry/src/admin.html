@@ -97,6 +97,11 @@
   .meta { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; font-size: .9rem; }
   .meta dt { color: var(--muted); }
   .meta dd { margin: 0; overflow-wrap: anywhere; }
+  .thread { display: grid; gap: .6rem; }
+  .thread .who { font-size: .85rem; color: var(--muted); margin-bottom: .2rem; }
+  .thread .admin .msg { background: var(--accent-soft); }
+  .notify { padding: .9rem 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .notify > div { flex: 1; display: grid; gap: .2rem; }
   .msg { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: .7rem .8rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font: inherit; max-height: 22rem; overflow: auto; }
   [hidden] { display: none !important; }
 </style>
@@ -170,6 +175,10 @@
           <select id="f-questionnaire"></select>
         </div>
       </div>
+      <div class="card notify">
+        <div><p><strong>Benachrichtigungen:</strong> <span id="notify-text"></span></p><p class="hint" id="notify-hint"></p></div>
+        <button class="btn" id="notify-test">Testnachricht senden</button>
+      </div>
       <div class="card" id="t-card"></div>
     </section>
   </div>
@@ -207,7 +216,13 @@
 <dialog id="dlg-ticket"><form id="ticket-form">
   <h2 id="ticket-title"></h2>
   <dl class="meta" id="ticket-meta"></dl>
-  <pre class="msg" id="ticket-message"></pre>
+  <div class="thread" id="ticket-thread"></div>
+  <div class="field">
+    <label for="ticket-reply">Antwort an die Praxis</label>
+    <textarea id="ticket-reply" maxlength="10000"></textarea>
+    <p class="hint">Die Praxis sieht die Antwort in Kreuzchen unter „Meine Anfragen“. Bitte keine Patientendaten eintragen.</p>
+    <div><button class="btn" type="button" id="ticket-reply-send">Antwort senden</button></div>
+  </div>
   <div class="field">
     <label for="ticket-note">Interne Notiz</label>
     <textarea id="ticket-note" maxlength="10000"></textarea>
@@ -228,6 +243,7 @@ const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 let data = { practices: [], questionnaires: [] };
 let tickets = [];
+const WHO = { practice: "Praxis", admin: "Admin" };
 const TYPES = { question: "Frage", bug: "Fehler", feedback: "Feedback", wish: "Wunsch" };
 const TABS = ["questionnaires", "practices", "tickets"];
 let git = false;
@@ -300,8 +316,10 @@ $("tab-tickets").onclick = () => showTab("tickets");
 
 async function loadData() {
   let sync;
-  [data, sync, tickets] = await Promise.all([api("GET", "/questionnaires"), api("GET", "/sync"), api("GET", "/tickets")]);
+  let notify;
+  [data, sync, tickets, notify] = await Promise.all([api("GET", "/questionnaires"), api("GET", "/sync"), api("GET", "/tickets"), api("GET", "/notify")]);
   drawSource(sync);
+  drawNotify(notify);
   $("n-questionnaires").textContent = data.questionnaires.length;
   $("n-practices").textContent = data.practices.length;
   drawQuestionnaires();
@@ -419,10 +437,11 @@ function drawTickets() {
   const status = $("f-status").value, q = $("f-questionnaire").value;
   const shown = tickets.filter((t) => (!status || t.status === status) && (q === "*" || (t.questionnaire?.id ?? "") === q));
   if (!shown.length) return $("t-card").replaceChildren(el("div", { className: "empty" }, el("p", { className: "muted", textContent: tickets.length ? "Keine Anfragen für diesen Filter." : "Noch keine Anfragen." })));
-  $("t-card").replaceChildren(table(["Nr.", "Eingang", "Praxis", "Art", "Betreff", "Fragebogen", "Status"], shown.map((t) => {
+  $("t-card").replaceChildren(table(["Nr.", "Letzte Aktivität", "Praxis", "Art", "Betreff", "Fragebogen", "Status"], shown.map((t) => {
+    const l = last(t);
     const tr = el("tr", { className: "click", tabIndex: 0 },
       el("td", { className: "mono", textContent: t.id }),
-      el("td", { textContent: new Date(t.created_at).toLocaleString("de") }),
+      el("td", {}, el("div", { textContent: new Date(l.created_at).toLocaleString("de") }), el("div", { className: "hint", textContent: WHO[l.author] + (t.replies.length ? " · " + (t.replies.length + 1) + " Nachrichten" : "") })),
       el("td", { className: "mono", textContent: t.practice }),
       el("td", { textContent: TYPES[t.type] || t.type }),
       el("td", { textContent: t.subject }),
@@ -433,12 +452,44 @@ function drawTickets() {
     return tr;
   })));
 }
+// The newest message: the last reply, or the ticket itself.
+const last = (t) => t.replies.at(-1) ?? { author: "practice", created_at: t.created_at };
 const statusBadge = (s) => el("span", { className: "status " + s, textContent: s === "open" ? "offen" : "erledigt" });
 $("f-status").onchange = drawTickets;
 $("f-questionnaire").onchange = drawTickets;
 
+function drawNotify(n) {
+  const names = { discord: "Discord", telegram: "Telegram", webhook: "Webhook" };
+  $("notify-text").textContent = n.channels.length ? n.channels.map((c) => names[c] || c).join(", ") : "keine eingerichtet";
+  $("notify-hint").textContent = !n.channels.length ? "Neue Anfragen und Antworten der Praxen können per Discord oder Telegram gemeldet werden (Umgebungsvariablen, siehe DEVELOPMENT.md)."
+    : n.public_url ? "Bei neuen Anfragen und Antworten der Praxen, ohne Inhalt, mit Link nach " + n.public_url + "/admin."
+    : "Bei neuen Anfragen und Antworten der Praxen, ohne Inhalt. Ohne KREUZCHEN_PUBLIC_URL ohne Link.";
+  $("notify-test").disabled = !n.channels.length;
+}
+$("notify-test").onclick = async () => {
+  const button = $("notify-test");
+  button.disabled = true;
+  clearError();
+  try {
+    const r = await api("POST", "/notify/test");
+    const failed = r.results.filter((c) => !c.ok);
+    if (failed.length) showError("Testnachricht nicht überall angekommen", new ApiError(0, failed.map((c) => c.channel + ": " + c.error).join("\n")), "Die übrigen Kanäle haben die Nachricht angenommen.");
+    else toast("Testnachricht gesendet an: " + r.results.map((c) => c.channel).join(", ") + ".");
+  } catch (e) { showError("Testnachricht fehlgeschlagen", e); }
+  finally { button.disabled = false; }
+};
+
 let ticket = null;
 function openTicket(t) {
+  drawTicket(t);
+  $("ticket-reply").value = "";
+  $("ticket-error").hidden = true;
+  if (!$("dlg-ticket").open) $("dlg-ticket").showModal();
+  history.replaceState(null, "", "#ticket-" + t.id);
+}
+$("dlg-ticket").addEventListener("close", () => history.replaceState(null, "", "#tickets"));
+
+function drawTicket(t) {
   ticket = t;
   $("ticket-title").textContent = "Nr. " + t.id + " – " + t.subject;
   const q = t.questionnaire;
@@ -452,19 +503,43 @@ function openTicket(t) {
     ["App", t.app_version + " · " + t.os],
   ];
   $("ticket-meta").replaceChildren(...rows.flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", {}, v)]));
-  $("ticket-message").textContent = t.message;
+  const entry = (author, at, message) => el("div", { className: author },
+    el("div", { className: "who", textContent: WHO[author] + " · " + new Date(at).toLocaleString("de") }),
+    el("pre", { className: "msg", textContent: message }));
+  $("ticket-thread").replaceChildren(entry("practice", t.created_at, t.message), ...t.replies.map((r) => entry(r.author, r.created_at, r.message)));
   $("ticket-note").value = t.admin_note;
   $("ticket-toggle").textContent = t.status === "open" ? "Als erledigt markieren" : "Wieder öffnen";
-  $("ticket-error").hidden = true;
-  $("dlg-ticket").showModal();
 }
+
+function storeTicket(t) {
+  tickets = tickets.map((x) => (x.id === t.id ? t : x)).sort((a, b) => (a.status !== b.status ? (a.status === "open" ? -1 : 1) : b.id - a.id));
+  drawTickets();
+}
+
+$("ticket-reply-send").onclick = async () => {
+  const message = $("ticket-reply").value.trim();
+  if (!message) return $("ticket-reply").focus();
+  const button = $("ticket-reply-send");
+  button.disabled = true;
+  $("ticket-error").hidden = true;
+  try {
+    const t = await api("POST", "/tickets/" + ticket.id + "/replies", JSON.stringify({ message }), "application/json");
+    storeTicket(t);
+    drawTicket(t);
+    $("ticket-reply").value = "";
+    toast("Antwort zu Nr. " + t.id + " gesendet.");
+  } catch (e) {
+    if (!e) return;
+    $("ticket-error").textContent = (SUMMARY[e.status] || "Fehler.") + (e.message ? " " + e.message : "");
+    $("ticket-error").hidden = false;
+  } finally { button.disabled = false; }
+};
 
 async function patchTicket(body, message) {
   $("ticket-error").hidden = true;
   try {
     const t = await api("PATCH", "/tickets/" + ticket.id, JSON.stringify(body), "application/json");
-    tickets = tickets.map((x) => (x.id === t.id ? t : x)).sort((a, b) => (a.status !== b.status ? (a.status === "open" ? -1 : 1) : b.id - a.id));
-    drawTickets();
+    storeTicket(t);
     $("dlg-ticket").close();
     toast(message);
   } catch (e) {
@@ -618,9 +693,23 @@ $("login").onsubmit = async (ev) => {
 async function start() {
   if (!sessionStorage.getItem(KEY)) return logout();
   showApp(true);
-  showTab(TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "questionnaires");
-  try { await loadData(); } catch (e) { showError("Die Daten konnten nicht geladen werden", e); }
+  const hash = location.hash.slice(1);
+  const linked = /^ticket-(\d+)$/.exec(hash);
+  showTab(linked ? "tickets" : TABS.includes(hash) ? hash : "questionnaires");
+  try { await loadData(); } catch (e) { return showError("Die Daten konnten nicht geladen werden", e); }
+  if (linked) openLinked(Number(linked[1]));
 }
+
+// `#ticket-12`, as in the notifications' links.
+function openLinked(id) {
+  const t = tickets.find((x) => x.id === id);
+  if (t) openTicket(t);
+  else toast("Anfrage Nr. " + id + " gibt es nicht.");
+}
+window.addEventListener("hashchange", () => {
+  const linked = /^#ticket-(\d+)$/.exec(location.hash);
+  if (linked && sessionStorage.getItem(KEY)) { showTab("tickets"); openLinked(Number(linked[1])); }
+});
 start();
 </script>
 </body>

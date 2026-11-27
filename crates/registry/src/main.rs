@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use axum::extract::Request;
 use axum::middleware::{from_fn, Next};
 use axum::response::Response;
-use kreuzchen_registry::Source;
+use kreuzchen_registry::{Notify, Source};
 
 const USAGE: &str = "usage: kreuzchen-registry serve [--data DIR] [--port N] | key";
 
@@ -60,13 +60,20 @@ async fn serve(args: &[String]) -> Result<(), String> {
     let token = std::env::var("KREUZCHEN_ADMIN_TOKEN").ok();
     let admin = token.as_deref().is_some_and(|t| !t.is_empty());
     let github_token = std::env::var("KREUZCHEN_GITHUB_TOKEN").ok();
-    let app = kreuzchen_registry::router(reg, token.as_deref(), github_token.as_deref())
+    let notify = Notify::from_env(|k| std::env::var(k).ok())?;
+    let channels: Vec<_> = notify.channels().into_iter().map(|c| c.name()).collect();
+    let channels = if channels.is_empty() {
+        "off".to_owned()
+    } else {
+        channels.join(",")
+    };
+    let app = kreuzchen_registry::router(reg, token.as_deref(), github_token.as_deref(), notify)
         .layer(from_fn(log));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
         .await
         .map_err(|e| format!("Port {port}: {e}"))?;
     eprintln!(
-        "listening on 0.0.0.0:{port}, data {}, admin {}, source {source}",
+        "listening on 0.0.0.0:{port}, data {}, admin {}, source {source}, notify {channels}",
         data.display(),
         if admin { "on" } else { "off" }
     );
